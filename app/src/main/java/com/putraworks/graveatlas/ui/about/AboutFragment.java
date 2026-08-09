@@ -1,5 +1,7 @@
 package com.putraworks.graveatlas.ui.about;
 
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -20,6 +22,7 @@ public class AboutFragment extends Fragment {
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
         TextView tv = new TextView(getContext());
         tv.setText("GraveAtlas\n\n" +
+                "Version: " + getVersionInfo() + "\n\n" +
                 "A community-driven project for discovering and recording public cemetery information.\n\n" +
                 "Phase 3 — Android API Integration\n\n" +
                 "Architecture:\n" +
@@ -36,5 +39,28 @@ public class AboutFragment extends Fragment {
         tv.setTextSize(14);
         tv.setPadding(48, 48, 48, 48);
         return tv;
+    }
+
+    /**
+     * Reads the live version name + build number from the installed package,
+     * so this always reflects the actual APK — no manual edits needed on release.
+     */
+    private String getVersionInfo() {
+        try {
+            PackageManager pm = requireContext().getPackageManager();
+            PackageInfo info = pm.getPackageInfo(requireContext().getPackageName(), 0);
+            long versionCode = getVersionCodeCompat(info);
+            return info.versionName + " (Build " + versionCode + ")";
+        } catch (Exception e) {
+            return "unknown";
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private long getVersionCodeCompat(PackageInfo info) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            return info.getLongVersionCode();
+        }
+        return info.versionCode;
     }
 }
