@@ -1,4 +1,4 @@
-package com.putraworks.kuburai;
+package com.putraworks.graveatlas;
 
 import android.Manifest;
 import android.content.ClipData;
@@ -37,12 +37,12 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.textfield.TextInputEditText;
-import com.putraworks.kuburai.chat.AIClient;
-import com.putraworks.kuburai.chat.AIProvider;
-import com.putraworks.kuburai.chat.ChatAdapter;
-import com.putraworks.kuburai.chat.ChatHistoryManager;
-import com.putraworks.kuburai.chat.ChatMessage;
-import com.putraworks.kuburai.chat.SettingsManager;
+import com.putraworks.graveatlas.chat.AIClient;
+import com.putraworks.graveatlas.chat.AIProvider;
+import com.putraworks.graveatlas.chat.ChatAdapter;
+import com.putraworks.graveatlas.chat.ChatHistoryManager;
+import com.putraworks.graveatlas.chat.ChatMessage;
+import com.putraworks.graveatlas.chat.SettingsManager;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -51,7 +51,7 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Kubur AI — Main Activity
+ * GraveAtlas — Main Activity
  *
  * The main page IS the AI chat. Features:
  * - Multiple AI providers (Pollinations, Groq, Gemini, OpenRouter, etc.)
@@ -444,7 +444,7 @@ public class MainActivity extends AppCompatActivity {
 
         setSupportActionBar(toolbar);
         if (getSupportActionBar() != null) {
-            getSupportActionBar().setTitle("Kubur AI");
+            getSupportActionBar().setTitle("GraveAtlas");
         }
 
         adapter = new ChatAdapter();
@@ -458,7 +458,7 @@ public class MainActivity extends AppCompatActivity {
             adapter.restoreMessages(savedHistory);
         } else {
             adapter.addMessage(new ChatMessage(
-                "Welcome to Kubur AI!\n\n"
+                "Welcome to GraveAtlas!\n\n"
                 + "✅ Pollinations is ready — no API key needed, just start chatting!\n\n"
                 + "Want more models? Pick another provider and tap the wrench icon to add your free API key.\n"
                 + "• Press \"Test All\" to check which models are online (✓/✗).\n"

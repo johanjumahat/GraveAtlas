@@ -1,4 +1,4 @@
-# Kubur AI
+# GraveAtlas
 
 An AI chat app for Android with multi-provider support, voice conversation mode, and text-to-speech.
 
@@ -32,7 +32,7 @@ An AI chat app for Android with multi-provider support, voice conversation mode,
 
 For release signing, add to `local.properties`:
 ```
-keystore.file=kubur-ai-release.p12
+keystore.file=graveatlas-release.p12
 keystore.type=pkcs12
 keystore.storePassword=your_password
 keystore.keyAlias=your_alias
@@ -42,7 +42,7 @@ keystore.keyPassword=your_password
 ## Project Structure
 
 ```
-app/src/main/java/com/putraworks/kuburai/
+app/src/main/java/com/putraworks/graveatlas/
 ├── MainActivity.java          # Main chat page
 └── chat/
     ├── AIClient.java          # HTTP calls to AI APIs

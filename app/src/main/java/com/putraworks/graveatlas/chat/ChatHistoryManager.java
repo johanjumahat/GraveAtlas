@@ -1,4 +1,4 @@
-package com.putraworks.kuburai.chat;
+package com.putraworks.graveatlas.chat;
 
 import android.content.Context;
 import android.content.SharedPreferences;

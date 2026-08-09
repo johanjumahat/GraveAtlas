@@ -1,4 +1,4 @@
-# Kubur AI — Status
+# GraveAtlas — Status
 
 **Current Version:** 1.0
 **Status:** Initial release
@@ -21,4 +21,4 @@
 
 - Pollinations works out of the box with no API key
 - All other providers require free API keys from their respective platforms
-- App ID: `com.putraworks.kuburai`
+- App ID: `com.putraworks.graveatlas`

@@ -1,4 +1,4 @@
-package com.putraworks.kuburai.chat;
+package com.putraworks.graveatlas.chat;
 
 import java.util.Arrays;
 import java.util.List;

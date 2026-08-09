@@ -1,4 +1,4 @@
-package com.putraworks.kuburai.chat;
+package com.putraworks.graveatlas.chat;
 
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -11,7 +11,7 @@ import org.json.JSONObject;
  * Also stores per-model "working" test results.
  */
 public class SettingsManager {
-    private static final String PREFS_NAME = "kubur_ai_settings";
+    private static final String PREFS_NAME = "graveatlas_settings";
     private static final String KEY_PREFIX = "api_key_";
     private static final String KEY_PROVIDER = "selected_provider";
     private static final String KEY_MODEL_PREFIX = "selected_model_";

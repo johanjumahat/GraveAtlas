@@ -1,4 +1,4 @@
-# Kubur AI — Features
+# GraveAtlas — Features
 
 ## Chat
 

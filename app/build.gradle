@@ -3,11 +3,11 @@ plugins {
 }
 
 android {
-    namespace 'com.putraworks.kuburai'
+    namespace 'com.putraworks.graveatlas'
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.putraworks.kuburai"
+        applicationId "com.putraworks.graveatlas"
         minSdk 24
         targetSdk 34
         versionCode 1
@@ -23,11 +23,11 @@ android {
             if (localPropsFile.exists()) {
                 localProps.load(new FileInputStream(localPropsFile))
             }
-            storeFile file(localProps.getProperty('keystore.file', 'kubur-ai-release.p12'))
+            storeFile file(localProps.getProperty('keystore.file', 'graveatlas-release.p12'))
             storeType localProps.getProperty('keystore.type', 'pkcs12')
-            storePassword localProps.getProperty('keystore.storePassword', System.getenv('KUBUR_KEYSTORE_PASSWORD') ?: '')
-            keyAlias localProps.getProperty('keystore.keyAlias', System.getenv('KUBUR_KEY_ALIAS') ?: '')
-            keyPassword localProps.getProperty('keystore.keyPassword', System.getenv('KUBUR_KEY_PASSWORD') ?: '')
+            storePassword localProps.getProperty('keystore.storePassword', System.getenv('GRAVEATLAS_KEYSTORE_PASSWORD') ?: '')
+            keyAlias localProps.getProperty('keystore.keyAlias', System.getenv('GRAVEATLAS_KEY_ALIAS') ?: '')
+            keyPassword localProps.getProperty('keystore.keyPassword', System.getenv('GRAVEATLAS_KEY_PASSWORD') ?: '')
         }
     }
 

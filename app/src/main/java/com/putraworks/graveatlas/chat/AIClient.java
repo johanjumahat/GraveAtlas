@@ -1,4 +1,4 @@
-package com.putraworks.kuburai.chat;
+package com.putraworks.graveatlas.chat;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -92,7 +92,7 @@ public class AIClient {
 
         JSONObject systemMsg = new JSONObject();
         systemMsg.put("role", "system");
-        systemMsg.put("content", "You are Kubur AI, a helpful and knowledgeable AI assistant. "
+        systemMsg.put("content", "You are GraveAtlas, a helpful and knowledgeable AI assistant. "
                 + "Be concise, friendly, and helpful. You can assist with any topic.");
         msgArray.put(systemMsg);
 
@@ -140,8 +140,8 @@ public class AIClient {
                 conn.setRequestProperty("Authorization", authHeader);
             }
             if (provider.getId().equals("openrouter")) {
-                conn.setRequestProperty("HTTP-Referer", "https://github.com/putraworks2026/Kubur-AI");
-                conn.setRequestProperty("X-Title", "Kubur AI");
+                conn.setRequestProperty("HTTP-Referer", "https://github.com/putraworks2026/GraveAtlas");
+                conn.setRequestProperty("X-Title", "GraveAtlas");
             }
             conn.setDoOutput(true);
             conn.setConnectTimeout(30000);

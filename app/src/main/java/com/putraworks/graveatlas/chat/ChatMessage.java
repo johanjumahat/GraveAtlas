@@ -1,4 +1,4 @@
-package com.putraworks.kuburai.chat;
+package com.putraworks.graveatlas.chat;
 
 /**
  * Data model for a single chat message.

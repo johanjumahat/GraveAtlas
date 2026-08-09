@@ -1,4 +1,4 @@
-# Kubur AI — Standing Instructions
+# GraveAtlas — Standing Instructions
 
 ## Core Rules
 
@@ -34,7 +34,7 @@ Keep these files updated automatically:
 
 - Configure GitHub Actions to build the APK automatically.
 - Auto increment version code on each build.
-- Keep application ID (`com.putraworks.kuburai`) unchanged unless approved.
+- Keep application ID (`com.putraworks.graveatlas`) unchanged unless approved.
 - Generate app icon if missing.
 - Sign release builds.
 - Upload build artifacts after every successful build.
