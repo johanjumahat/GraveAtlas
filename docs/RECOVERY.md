@@ -1,136 +1,92 @@
-# GraveAtlas Data Recovery
+# Recovery Procedures
 
-## Overview
+**Last updated:** 2026-08-09
 
-GraveAtlas can recover from accidental deletion, incorrect approval, malicious submission, corrupted data, and bad updates. Recovery relies on Git history and the audit trail.
+## Recovery from Common Issues
 
-## Recovery Scenarios
+### Bad Commit
 
-### 1. Accidental Deletion
+**Scenario:** A commit introduced incorrect or corrupted data.
 
-**How to identify:** A record that previously existed is no longer found in `graves/` or `cemeteries/`.
+**Recovery:**
+1. Identify the commit using `git log` in the data repository
+2. Use `git revert <commit>` to create a reverting commit
+3. Verify the revert with data quality checks
+4. Do NOT force-push (preserves history)
 
-**How to restore:**
-1. Check the audit trail: `GET /api/admin/audit/:entityId`
-2. Find the DELETE event and its `previousState`
-3. Use admin restore: `POST /api/admin/restore/:id`
-4. Or restore from Git history:
-   ```bash
-   cd graveatlas-data
-   git log --oneline -- graves/<id>.json
-   git show <commit>:graves/<id>.json > graves/<id>.json
-   git commit -m "restore: recover deleted record <id>"
-   ```
+### Accidental Deletion
 
-**How to verify:** Check the record exists and is valid: `node scripts/data-quality-check.js`
+**Scenario:** A record was accidentally deleted.
 
-**How to prevent:** Soft delete (ARCHIVED/REMOVED) prevents accidental permanent deletion.
+**Recovery:**
+1. Use `git log --all -- <file_path>` to find the last commit containing the file
+2. Use `git checkout <commit>^ -- <file_path>` to restore the file
+3. Commit the restored file
+4. Alternatively, use the admin restore endpoint: `POST /api/admin/restore/:id`
 
-### 2. Incorrect Approval
+### Corrupted Dataset
 
-**How to identify:** A bad submission was approved and published.
+**Scenario:** Data files are malformed or corrupted.
 
-**How to restore:**
-1. Find the approval in the audit trail: `GET /api/admin/audit/:entityId`
-2. The audit event's `previousState` shows the state before approval
-3. Archive the bad record: set `lifecycleStatus` to `ARCHIVED`
-4. If a previous version existed, restore it from Git:
-   ```bash
-   git log --oneline -- graves/<id>.json
-   git show <previous-commit>:graves/<id>.json > graves/<id>.json
-   git commit -m "revert: undo incorrect approval of <id>"
-   ```
+**Recovery:**
+1. Run data quality check: `GET /api/admin/data-quality`
+2. Identify affected files from the error report
+3. Restore from git history or re-import from source
+4. Verify with data quality check after recovery
 
-**How to verify:** Run data quality check: `node scripts/data-quality-check.js`
+### Bad Import
 
-**How to prevent:** All approvals require admin review. Status transitions are server-enforced.
+**Scenario:** An import introduced incorrect or unwanted records.
 
-### 3. Malicious Submission
+**Recovery:**
+1. Identify the import by `import_id`
+2. Find all records with that import_id (records are tagged)
+3. Remove only the affected records
+4. Use the audit trail to verify what was changed
+5. Do NOT use global destructive operations
 
-**How to identify:** A submission contains inappropriate, fake, or harmful content.
+**Rollback test data only.** Never perform destructive rollback on production data without explicit approval.
 
-**How to restore:**
-1. If still pending: reject with reason `INAPPROPRIATE_CONTENT`
-2. If published: archive the record and report the contributor
-3. Check the contributor's other submissions for similar issues
-4. Remove all malicious records via admin archive
+### Malicious Submission
 
-**How to verify:** Data quality check + manual review of contributor's submissions
+**Scenario:** A submission contained harmful content.
 
-**How to prevent:** Rate limiting, input validation, admin review, contributor tracking.
+**Recovery:**
+1. Reject the submission in moderation queue
+2. If already published, archive the record
+3. Use the report system to flag the record
+4. Remove via admin restore/rollback
+5. Review audit trail for the actor
 
-### 4. Corrupted Data
+### Incorrect Merge
 
-**How to identify:** JSON parse errors in data quality check output.
+**Scenario:** A duplicate merge was performed incorrectly.
 
-**How to restore:**
-1. Identify the corrupted file from the data quality check
-2. Restore from Git history:
-   ```bash
-   git log --oneline -- <path-to-corrupted-file>
-   git show <commit>:<path> > <path>
-   git commit -m "fix: restore corrupted file from <commit>"
-   ```
+**Recovery:**
+1. Use git history to find the pre-merge state
+2. Restore the original records
+3. Re-evaluate the merge decision
+4. Document the correction in the audit trail
 
-**How to verify:** `node scripts/data-quality-check.js` shows no errors
+## Recovery Infrastructure
 
-**How to prevent:** CI validates JSON syntax on every push.
+| Resource | Available | Notes |
+|----------|-----------|-------|
+| Git history | ✅ | Full history in both repositories |
+| Import IDs | ✅ | All imported records tagged |
+| Audit trail | ✅ | All admin actions logged |
+| Rollback instructions | ✅ | Documented in docs/IMPORT-RECOVERY.md |
+| Data quality checks | ✅ | /api/admin/data-quality endpoint |
+| Record restore | ✅ | /api/admin/restore/:id endpoint |
 
-### 5. Bad Update (Correction Applied Incorrectly)
+## Recovery Owner
 
-**How to identify:** A correction was applied that made the data worse.
+The repository owner (putraworks2026) is responsible for recovery operations. Admin actions require the ADMIN_TOKEN.
 
-**How to restore:**
-1. Find the correction's audit event: `GET /api/admin/audit/:entityId`
-2. The audit event's `previousState` contains the original values
-3. Submit a new correction to restore the original values
-4. Or restore from Git:
-   ```bash
-   git log --oneline -- graves/<id>.json
-   git show <previous-commit>:graves/<id>.json > graves/<id>.json
-   git commit -m "revert: undo bad correction on <id>"
-   ```
+## Important Rules
 
-**How to verify:** Compare current record against audit trail `previousState`
-
-**How to prevent:** Corrections preserve `previousValues` in the correction record. Audit trail always records the previous state.
-
-### 6. Accidental Overwrite
-
-**How to identify:** A record's content was overwritten with different data.
-
-**How to restore:** Same as "Bad Update" — use Git history or audit trail `previousState`.
-
-**How to verify:** Data quality check + manual comparison.
-
-**How to prevent:** All writes go through the Cloudflare Worker, which enforces validation. Direct GitHub writes are blocked (only the GitHub App can write, and only the Worker uses the GitHub App).
-
-## Git Recovery
-
-Git is the primary backup mechanism. Every change creates a commit with a descriptive message.
-
-### Find When a Change Was Made
-```bash
-git log --oneline -- graves/<id>.json
-```
-
-### See What Changed
-```bash
-git log -p -- graves/<id>.json | head -100
-```
-
-### Restore a Previous Version
-```bash
-git show <commit-hash>:graves/<id>.json > graves/<id>.json
-git add graves/<id>.json
-git commit -m "restore: recover <id> from <commit-hash>"
-git push
-```
-
-## No Paid Backup Service
-
-GraveAtlas uses Git history as its backup mechanism. No paid backup service is used. Git provides:
-- Full history of every change
-- Ability to restore any previous version
-- Diff between any two versions
-- Free, reliable, and auditable
+1. Never use `git push --force` on the data repository
+2. Never perform global destructive operations
+3. Always verify recovery with data quality checks
+4. Always document recovery actions in the audit trail
+5. Do not perform destructive recovery on production data without explicit approval

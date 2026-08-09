@@ -1,5 +1,74 @@
 # CHANGELOG
 
+## v5.5.0 — Phase 5 & 5.5: Global Discovery, Open-Data Import & Production Readiness (2026-08-09)
+
+### Added — Phase 5: Global Discovery (Parts 1-39)
+- backend/src/countries.js — 177 countries with ISO codes, local names, alt names, Unicode search
+- backend/src/import-framework.js — Full import pipeline (source registry, license verification, format detection, validation, duplicate detection, data quality scoring, status transitions, reports, previews, file validation)
+- CountryFragment.java — Country discovery UI with search, cemetery counts, local names
+- Import status workflow: CREATED → LICENSE_REVIEW → VALIDATING → DUPLICATE_CHECK → PENDING_APPROVAL → APPROVED → IMPORTING → COMPLETED/PARTIAL/FAILED/REJECTED/ROLLED_BACK
+- Recognized licenses: CC0, CC-BY, CC-BY-SA, ODbL, Public Domain, PDDL
+- Duplicate detection: EXACT_DUPLICATE/HIGH_CONFIDENCE_MATCH/POSSIBLE_MATCH/NEW_RECORD with weighted scoring
+- Import idempotency: source_id + dataset_version deduplication
+- Import rollback: tagged records for safe removal
+- Data quality scoring: per-record deterministic score
+- Safe update classification: NEW, UNCHANGED, UPDATED, POSSIBLE_CONFLICT
+- 10 new documentation files (GLOBAL-DATA, IMPORTS, SOURCES, LICENSES, DUPLICATES, GEOSEARCH, SCALABILITY, IMPORT-FRAMEWORK, IMPORT-RECOVERY, DATA-VERSIONING)
+
+### Added — Phase 5 Tests (111 new, 457 total)
+- tests/phase5.test.js — 47 tests (country directory, license, format, validation, duplicates, quality, transitions, source registry, reports, previews, file validation, Unicode)
+- tests/phase5-import-pipeline.test.js — 64 tests (full pipeline, duplicates, licenses, invalid data, rollback, security, performance, search quality, data quality, country coverage, idempotency)
+- tests/synthetic-data/phase5-test-dataset.json — 5 cemeteries, 10 graves, 10 people, 1 source (all marked PHASE5_TEST_DATA)
+
+### Added — Phase 5.5: Production Readiness & Security Audit (Parts 1-63)
+- Full project audit (docs/PHASE-5.5-AUDIT.md) — all components verified
+- Security audit — no secrets in any files (Android, backend, tests, docs, config)
+- Data integrity audit — no duplicate IDs, broken references, or orphan records
+- Privacy audit — no personal info of living persons exposed
+- Import safety audit — full pipeline verified
+- Rollback test — synthetic data rollback verified, unrelated records unaffected
+- E2E test (59 checks) — all stages verified with synthetic data
+- Regression test — 516 total, 0 failures
+- Production blocker audit — 0 CRITICAL, 1 HIGH (Worker secrets need configuration)
+- Test data cleanup — all synthetic data in tests/ only
+- Final security scan — PASS
+- GitHub audit — app repo private, data repo public, no secrets
+- API contract test — Android and Worker endpoints aligned
+- Performance test — 100 records: 1ms, 1000 records: 6ms, country search: 0ms
+- Incident response procedures (8 types documented in docs/INCIDENT-RESPONSE.md)
+- Operations guide (docs/OPERATIONS.md)
+- Privacy policy draft (docs/PRIVACY.md — requires legal review)
+- Terms of use draft (docs/TERMS.md — requires legal review)
+- Production checklist (docs/FINAL-CHECKLIST.md)
+- Acceptance criteria checklist (docs/PHASE5-ACCEPTANCE.md)
+
+### Added — Phase 5.5 Tests (59 new, 516 total)
+- tests/phase55-e2e.test.js — 59 E2E checks covering all stages
+
+### Changed
+- tests/run.js now runs all 4 test suites (backend, Phase 5 core, pipeline, E2E)
+- STATUS.md updated to reflect Phase 5 & 5.5 completion
+- FEATURES.md updated with Phase 5 features
+- CHANGELOG.md updated
+
+### Verified
+- All 516 tests pass (346 backend + 47 Phase 5 + 64 pipeline + 59 E2E)
+- No secrets in any files
+- No paid services added
+- No AI for deterministic operations
+- All GitHub writes through Worker only
+- Import data treated as untrusted input
+- Path traversal prevention active
+- Test data uses test_ prefix and PHASE5_TEST_DATA markers
+- Production blockers: 1 HIGH (Worker redeploy + secrets needed)
+
+### Known Production Blockers
+1. Cloudflare Worker running v2.0.0, needs redeploy with v5.5.0 code
+2. GitHub App credentials not configured in Worker
+3. Admin token not configured in Worker
+4. Android APK not built (no SDK in build environment)
+
+
 ## v4.5.0 — Phase 4.5: Data Governance, Moderation, Trust & Production Readiness (2026-08-09)
 
 ### Added — Admin Dashboard (Part 2)
