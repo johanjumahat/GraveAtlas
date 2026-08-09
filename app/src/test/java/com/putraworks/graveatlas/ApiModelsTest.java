@@ -282,11 +282,9 @@ public class ApiModelsTest {
         assertEquals("Choa Chu Kang Cemetery", json.optString("name"));
         assertEquals("published", json.optString("status"));
     }
-}
 
 
     // ── Phase 3.5: Idempotency & Pagination ──
-
     @Test
     public void apiClient_generatesIdempotencyKey() {
         // The ApiClient.submitGrave generates a UUID internally.
@@ -557,3 +555,4 @@ public class ApiModelsTest {
         assertTrue(subtitle.contains("1901"));
         assertTrue(subtitle.contains("1980"));
     }
+}
