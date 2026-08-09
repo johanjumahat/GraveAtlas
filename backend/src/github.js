@@ -28,7 +28,7 @@ async function generateJWT(appId, privateKey) {
   const payloadB64 = base64UrlEncode(JSON.stringify(payload));
   const signingInput = `${headerB64}.${payloadB64}`;
 
-  // Import the private key
+  // Import the private key (handles both PKCS#1 and PKCS#8 formats)
   const keyData = pemToDer(privateKey);
   const key = await crypto.subtle.importKey(
     'pkcs8',
@@ -219,17 +219,89 @@ function base64UrlEncodeBytes(bytes) {
     .replace(/=+$/, '');
 }
 
+/**
+ * Convert a PEM private key to DER bytes.
+ * Handles both PKCS#1 ("BEGIN RSA PRIVATE KEY") and PKCS#8 ("BEGIN PRIVATE KEY") formats.
+ * GitHub App private keys are typically PKCS#1; some tools generate PKCS#8.
+ * The Web Crypto API requires PKCS#8 for importKey, so PKCS#1 keys are wrapped.
+ */
 function pemToDer(pem) {
+  const isPkcs1 = pem.includes('-----BEGIN RSA PRIVATE KEY-----');
+
   const pemContents = pem
-    .replace(/-----BEGIN PRIVATE KEY-----/, '')
-    .replace(/-----END PRIVATE KEY-----/, '')
+    .replace(/-----BEGIN (RSA )?PRIVATE KEY-----/, '')
+    .replace(/-----END (RSA )?PRIVATE KEY-----/, '')
     .replace(/\s/g, '');
+
   const binary = atob(pemContents);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {
     bytes[i] = binary.charCodeAt(i);
   }
+
+  if (isPkcs1) {
+    // Wrap PKCS#1 RSAPrivateKey in PKCS#8 PrivateKeyInfo structure
+    // so Web Crypto API's importKey('pkcs8', ...) can parse it.
+    return wrapPkcs1InPkcs8(bytes);
+  }
+
   return bytes;
+}
+
+/**
+ * Wrap a PKCS#1 RSAPrivateKey DER in a PKCS#8 PrivateKeyInfo DER.
+ *
+ * PrivateKeyInfo ::= SEQUENCE {
+ *   version INTEGER (0),
+ *   privateKeyAlgorithm AlgorithmIdentifier { rsaEncryption (1.2.840.113549.1.1.1), NULL },
+ *   privateKey OCTET STRING { RSAPrivateKey }
+ * }
+ */
+function wrapPkcs1InPkcs8(pkcs1Key) {
+  // AlgorithmIdentifier for RSA: SEQUENCE { OID 1.2.840.113549.1.1.1, NULL }
+  const algId = new Uint8Array([
+    0x30, 0x0d,
+    0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01,
+    0x05, 0x00
+  ]);
+
+  // version: INTEGER 0
+  const version = new Uint8Array([0x02, 0x01, 0x00]);
+
+  // OCTET STRING header for the inner PKCS#1 key
+  const keyLen = pkcs1Key.length;
+  let octetHeader;
+  if (keyLen < 0x80) {
+    octetHeader = new Uint8Array([0x04, keyLen]);
+  } else if (keyLen < 0x100) {
+    octetHeader = new Uint8Array([0x04, 0x81, keyLen]);
+  } else {
+    octetHeader = new Uint8Array([0x04, 0x82, (keyLen >> 8) & 0xff, keyLen & 0xff]);
+  }
+
+  // Inner content: version + algId + octetHeader + key
+  const innerLen = version.length + algId.length + octetHeader.length + keyLen;
+
+  // Outer SEQUENCE header
+  let seqHeader;
+  if (innerLen < 0x80) {
+    seqHeader = new Uint8Array([0x30, innerLen]);
+  } else if (innerLen < 0x100) {
+    seqHeader = new Uint8Array([0x30, 0x81, innerLen]);
+  } else {
+    seqHeader = new Uint8Array([0x30, 0x82, (innerLen >> 8) & 0xff, innerLen & 0xff]);
+  }
+
+  // Assemble
+  const result = new Uint8Array(seqHeader.length + innerLen);
+  let offset = 0;
+  result.set(seqHeader, offset); offset += seqHeader.length;
+  result.set(version, offset); offset += version.length;
+  result.set(algId, offset); offset += algId.length;
+  result.set(octetHeader, offset); offset += octetHeader.length;
+  result.set(pkcs1Key, offset);
+
+  return result;
 }
 
 // Export functions for use in Worker
