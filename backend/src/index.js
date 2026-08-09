@@ -198,7 +198,7 @@ async function handleRequest(request, env, ctx) {
     // ── Public routes ──
 
     if (path === '/' && method === 'GET') {
-      return jsonResponse({ name: 'GraveAtlas API', version: '7.0.0', status: 'operational' }, 200, corsHeaders);
+      return jsonResponse({ name: 'GraveAtlas API', version: '7.1.0', status: 'operational' }, 200, corsHeaders);
     }
 
     if (path === '/api/health' && method === 'GET') {
@@ -590,7 +590,7 @@ async function handleHealth(request, env, cors) {
   return jsonResponse({
     status: 'ok',
     service: 'GraveAtlas',
-    version: '7.0.0',
+    version: '7.1.0',
     githubConfigured: hasGithubConfig,
     adminConfigured: hasAdminToken,
     timestamp: new Date().toISOString()
