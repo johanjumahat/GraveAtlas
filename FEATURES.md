@@ -129,3 +129,20 @@
 - **Related Records** — Nearby cemeteries, same-cemetery people, same-region cemeteries
 - **Internationalization** — Full Unicode support (Arabic, Chinese, Japanese, Korean, Thai, Hebrew, Cyrillic)
 - **11 New API Endpoints** — Global search, person/cemetery/location search, directories, browse, related
+
+## Phase 7B — Advanced Maps, Nearby & Saved Places
+
+- **Nearby Discovery** — Find cemeteries and memorials near your location
+- **Distance Filters** — 1km, 5km, 10km, 25km radius selection
+- **Location Privacy** — One-shot GPS request, no continuous tracking
+- **Directions** — Open results in device's native map/navigation app via geo: intent
+- **Coordinate Accuracy** — Approximate vs exact coordinate labeling
+- **Saved Items** — Bookmark cemeteries, people, memorials, graves (max 500)
+- **Recently Viewed** — Local browsing history (max 20, never uploaded)
+- **Sharing** — Shareable HTTPS URLs for public records
+- **Deep Linking** — graveatlas:// scheme + HTTPS app links with auto-verification
+- **Recommendations** — Deterministic geographic proximity (haversine, no AI fabrication)
+- **Map Filters** — Cemetery, memorial, country, region, distance
+- **Offline Maps** — Graceful degradation when no network
+- **Location Permission** — On-demand only, app works without it
+- **Data Quality** — Invalid/null coordinates filtered from map display
