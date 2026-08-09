@@ -17,6 +17,7 @@
  */
 
 import { getToken, writeFile, readFile, listFiles, deleteFile, sanitizePathSegment } from './github.js';
+import * as Phase6A from './phase6a.js';
 
 // ── Constants ──
 
@@ -196,7 +197,7 @@ async function handleRequest(request, env, ctx) {
     // ── Public routes ──
 
     if (path === '/' && method === 'GET') {
-      return jsonResponse({ name: 'GraveAtlas API', version: '4.5.0', status: 'operational' }, 200, corsHeaders);
+      return jsonResponse({ name: 'GraveAtlas API', version: '6.0.0', status: 'operational' }, 200, corsHeaders);
     }
 
     if (path === '/api/health' && method === 'GET') {
@@ -310,6 +311,84 @@ async function handleRequest(request, env, ctx) {
 
     if (path === '/api/cities' && method === 'GET') {
       return await handleGetCities(request, env, corsHeaders);
+    }
+
+
+    // ── Phase 6A: Community & Contribution routes ──
+
+    // User registration/profile
+    if (path === '/api/user/register' && method === 'POST') {
+      return await handleUserRegister(request, env, corsHeaders);
+    }
+
+    if (path === '/api/user/profile' && method === 'GET') {
+      return await handleGetOwnProfile(request, env, corsHeaders);
+    }
+
+    if (path === '/api/user/profile' && method === 'PUT') {
+      return await handleUpdateProfile(request, env, corsHeaders);
+    }
+
+    if (path.match(/^\/api\/users\/[^/]+\/profile$/) && method === 'GET') {
+      const userId = path.split('/')[2];
+      return await handleGetPublicProfile(userId, env, corsHeaders);
+    }
+
+    // Contributions
+    if (path === '/api/contributions' && method === 'POST') {
+      return await handleCreateContribution(request, env, corsHeaders);
+    }
+
+    if (path === '/api/contributions' && method === 'GET') {
+      return await handleListContributions(request, env, corsHeaders);
+    }
+
+    if (path.match(/^\/api\/contributions\/[^/]+$/) && method === 'GET') {
+      const id = path.split('/').pop();
+      return await handleGetContribution(id, request, env, corsHeaders);
+    }
+
+    if (path.match(/^\/api\/contributions\/[^/]+\/cancel$/) && method === 'POST') {
+      const id = path.split('/')[3];
+      return await handleCancelContribution(id, request, env, corsHeaders);
+    }
+
+    if (path === '/api/contributions/check-duplicate' && method === 'POST') {
+      return await handleCheckDuplicate(request, env, corsHeaders);
+    }
+
+    // Drafts
+    if (path === '/api/drafts' && method === 'POST') {
+      return await handleCreateDraft(request, env, corsHeaders);
+    }
+
+    if (path === '/api/drafts' && method === 'GET') {
+      return await handleListDrafts(request, env, corsHeaders);
+    }
+
+    if (path.match(/^\/api\/drafts\/[^/]+$/) && method === 'GET') {
+      const id = path.split('/').pop();
+      return await handleGetDraft(id, request, env, corsHeaders);
+    }
+
+    if (path.match(/^\/api\/drafts\/[^/]+$/) && method === 'PUT') {
+      const id = path.split('/').pop();
+      return await handleUpdateDraft(id, request, env, corsHeaders);
+    }
+
+    if (path.match(/^\/api\/drafts\/[^/]+$/) && method === 'DELETE') {
+      const id = path.split('/').pop();
+      return await handleDeleteDraft(id, request, env, corsHeaders);
+    }
+
+    if (path.match(/^\/api\/drafts\/[^/]+\/submit$/) && method === 'POST') {
+      const id = path.split('/')[3];
+      return await handleSubmitDraft(id, request, env, corsHeaders);
+    }
+
+    // Photo contributions
+    if (path === '/api/photos' && method === 'POST') {
+      return await handleSubmitPhoto(request, env, corsHeaders);
     }
 
     // ── Admin routes (auth-protected) ──
@@ -439,7 +518,7 @@ async function handleHealth(request, env, cors) {
   return jsonResponse({
     status: 'ok',
     service: 'GraveAtlas',
-    version: '4.5.0',
+    version: '6.0.0',
     githubConfigured: hasGithubConfig,
     adminConfigured: hasAdminToken,
     timestamp: new Date().toISOString()
@@ -2546,4 +2625,337 @@ function jsonResponse(data, status, cors = {}) {
 
 function notFound(cors) {
   return jsonResponse({ success: false, error: 'Not found' }, 404, cors);
+}
+
+// ── Phase 6A: Community & Contribution Handlers ──
+
+function getUserIdFromRequest(request) {
+  const userId = request.headers.get('X-User-Id');
+  if (!userId || typeof userId !== 'string' || userId.length > 200) return null;
+  if (!/^user_[a-z0-9]+$/i.test(userId)) return null;
+  return userId;
+}
+
+async function handleUserRegister(request, env, cors) {
+  const userId = getUserIdFromRequest(request);
+  if (!userId) return jsonResponse({ success: false, error: 'X-User-Id header required' }, 400, cors);
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ success: false, error: 'Invalid JSON' }, 400, cors);
+  }
+
+  const nameError = Phase6A.validateDisplayName(body.displayName);
+  if (nameError) return jsonResponse({ success: false, error: nameError }, 400, cors);
+
+  const bioError = Phase6A.validateProfileBio(body.bio);
+  if (bioError) return jsonResponse({ success: false, error: bioError }, 400, cors);
+
+  const result = await Phase6A.createOrUpdateUser(env, userId, body.displayName, body.bio, body.authMethod || 'anonymous');
+
+  if (result.isNew) {
+    await Phase6A.createContributionAuditEvent(env, Phase6A.AUDIT_ACTIONS.USER_REGISTERED, userId, userId, { displayName: body.displayName });
+  }
+
+  return jsonResponse({ success: true, user: Phase6A.getPublicProfile(result.user), isNew: result.isNew }, 200, cors);
+}
+
+async function handleGetOwnProfile(request, env, cors) {
+  const userId = getUserIdFromRequest(request);
+  if (!userId) return jsonResponse({ success: false, error: 'X-User-Id header required' }, 400, cors);
+
+  const user = await Phase6A.getUser(env, userId);
+  if (!user) return jsonResponse({ success: false, error: 'User not found' }, 404, cors);
+
+  return jsonResponse({ success: true, profile: Phase6A.getPublicProfile(user) }, 200, cors);
+}
+
+async function handleUpdateProfile(request, env, cors) {
+  const userId = getUserIdFromRequest(request);
+  if (!userId) return jsonResponse({ success: false, error: 'X-User-Id header required' }, 400, cors);
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ success: false, error: 'Invalid JSON' }, 400, cors);
+  }
+
+  const nameError = body.displayName ? Phase6A.validateDisplayName(body.displayName) : null;
+  if (nameError) return jsonResponse({ success: false, error: nameError }, 400, cors);
+
+  const bioError = body.bio !== undefined ? Phase6A.validateProfileBio(body.bio) : null;
+  if (bioError) return jsonResponse({ success: false, error: bioError }, 400, cors);
+
+  const result = await Phase6A.createOrUpdateUser(env, userId, body.displayName, body.bio);
+  await Phase6A.createContributionAuditEvent(env, Phase6A.AUDIT_ACTIONS.USER_PROFILE_UPDATED, userId, userId, {});
+
+  return jsonResponse({ success: true, profile: Phase6A.getPublicProfile(result.user) }, 200, cors);
+}
+
+async function handleGetPublicProfile(userId, env, cors) {
+  const user = await Phase6A.getUser(env, userId);
+  if (!user) return jsonResponse({ success: false, error: 'User not found' }, 404, cors);
+
+  if (user.accountStatus === 'DEACTIVATED') {
+    return jsonResponse({ success: false, error: 'User not found' }, 404, cors);
+  }
+
+  return jsonResponse({ success: true, profile: Phase6A.getPublicProfile(user) }, 200, cors);
+}
+
+async function handleCreateContribution(request, env, cors) {
+  const userId = getUserIdFromRequest(request);
+  if (!userId) return jsonResponse({ success: false, error: 'X-User-Id header required' }, 400, cors);
+
+  const user = await Phase6A.getUser(env, userId);
+  if (!user) return jsonResponse({ success: false, error: 'User not registered' }, 401, cors);
+  if (user.accountStatus === 'SUSPENDED') return jsonResponse({ success: false, error: 'Account suspended' }, 403, cors);
+  if (user.accountStatus === 'DEACTIVATED') return jsonResponse({ success: false, error: 'Account deactivated' }, 403, cors);
+
+  const rl = Phase6A.checkUserRateLimit(userId);
+  if (!rl.allowed) return jsonResponse({ success: false, error: 'Rate limit exceeded' }, 429, cors);
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ success: false, error: 'Invalid JSON' }, 400, cors);
+  }
+
+  const typeError = Phase6A.validateContributionType(body.type);
+  if (typeError) return jsonResponse({ success: false, error: typeError }, 400, cors);
+
+  let validationErrors = [];
+  if (body.type === 'cemetery') validationErrors = Phase6A.validateCemeteryContribution(body.data || {});
+  else if (body.type === 'grave') validationErrors = Phase6A.validateGraveContribution(body.data || {});
+  else if (body.type === 'correction') validationErrors = Phase6A.validateCorrectionContribution(body.data || {});
+  if (validationErrors.length > 0) return jsonResponse({ success: false, error: 'Validation failed', details: validationErrors }, 400, cors);
+
+  const contribution = await Phase6A.createContribution(env, userId, body.type, body.data || {}, 'PENDING_REVIEW');
+  await Phase6A.createContributionAuditEvent(env, Phase6A.AUDIT_ACTIONS.SUBMISSION_CREATED, userId, contribution.id, { type: body.type });
+  await Phase6A.updateUserStats(env, userId, false);
+
+  return jsonResponse({ success: true, contribution: { id: contribution.id, type: contribution.type, status: contribution.status, createdAt: contribution.createdAt } }, 201, cors);
+}
+
+async function handleListContributions(request, env, cors) {
+  const userId = getUserIdFromRequest(request);
+  if (!userId) return jsonResponse({ success: false, error: 'X-User-Id header required' }, 400, cors);
+
+  const url = new URL(request.url);
+  const page = parseInt(url.searchParams.get('page') || '1', 10);
+  const pageSize = parseInt(url.searchParams.get('pageSize') || '20', 10);
+  const type = url.searchParams.get('type') || undefined;
+  const status = url.searchParams.get('status') || undefined;
+
+  const result = await Phase6A.listUserContributions(env, userId, { page, pageSize, type, status });
+  return jsonResponse({ success: true, ...result }, 200, cors);
+}
+
+async function handleGetContribution(id, request, env, cors) {
+  const userId = getUserIdFromRequest(request);
+  if (!userId) return jsonResponse({ success: false, error: 'X-User-Id header required' }, 400, cors);
+
+  const auth = await Phase6A.authorizeContributionAccess(env, id, userId);
+  if (!auth.authorized) return jsonResponse({ success: false, error: auth.reason }, 403, cors);
+
+  const c = auth.contribution;
+  return jsonResponse({
+    success: true,
+    contribution: {
+      id: c.id,
+      type: c.type,
+      status: c.status,
+      data: c.data,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+      reviewerMessage: c.reviewerMessage || null,
+    }
+  }, 200, cors);
+}
+
+async function handleCancelContribution(id, request, env, cors) {
+  const userId = getUserIdFromRequest(request);
+  if (!userId) return jsonResponse({ success: false, error: 'X-User-Id header required' }, 400, cors);
+
+  const auth = await Phase6A.authorizeContributionAccess(env, id, userId);
+  if (!auth.authorized) return jsonResponse({ success: false, error: auth.reason }, 403, cors);
+
+  const c = auth.contribution;
+  if (c.status === 'APPROVED' || c.status === 'REJECTED') {
+    return jsonResponse({ success: false, error: 'Cannot cancel a contribution that is already approved or rejected' }, 409, cors);
+  }
+
+  const updated = await Phase6A.updateContribution(env, id, { status: 'CANCELLED' });
+  await Phase6A.createContributionAuditEvent(env, Phase6A.AUDIT_ACTIONS.SUBMISSION_CANCELLED, userId, id, {});
+
+  return jsonResponse({ success: true, contribution: { id: updated.id, status: updated.status } }, 200, cors);
+}
+
+async function handleCheckDuplicate(request, env, cors) {
+  const userId = getUserIdFromRequest(request);
+  if (!userId) return jsonResponse({ success: false, error: 'X-User-Id header required' }, 400, cors);
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ success: false, error: 'Invalid JSON' }, 400, cors);
+  }
+
+  const type = body.type || 'grave';
+  const existingRecords = [];
+
+  // Fetch existing records of the same type
+  try {
+    const dir = type === 'cemetery' ? 'cemeteries/' : 'graves/';
+    const files = await listFiles(env, dir);
+    if (files) {
+      for (const file of files.slice(0, 100)) {
+        try {
+          const content = await readFile(env, dir + (file.name || file));
+          if (content) existingRecords.push(JSON.parse(content));
+        } catch (e) { /* skip */ }
+      }
+    }
+  } catch (e) { /* no existing data */ }
+
+  const result = Phase6A.checkDuplicateSubmission(existingRecords, body.data || {});
+  return jsonResponse({ success: true, ...result }, 200, cors);
+}
+
+async function handleCreateDraft(request, env, cors) {
+  const userId = getUserIdFromRequest(request);
+  if (!userId) return jsonResponse({ success: false, error: 'X-User-Id header required' }, 400, cors);
+
+  const user = await Phase6A.getUser(env, userId);
+  if (!user) return jsonResponse({ success: false, error: 'User not registered' }, 401, cors);
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ success: false, error: 'Invalid JSON' }, 400, cors);
+  }
+
+  const typeError = Phase6A.validateContributionType(body.type);
+  if (typeError) return jsonResponse({ success: false, error: typeError }, 400, cors);
+
+  const draft = await Phase6A.createDraft(env, userId, body.type, body.data || {});
+  await Phase6A.createContributionAuditEvent(env, Phase6A.AUDIT_ACTIONS.DRAFT_UPDATED, userId, draft.id, { action: 'created' });
+
+  return jsonResponse({ success: true, draft: { id: draft.id, type: draft.type, status: draft.status, createdAt: draft.createdAt } }, 201, cors);
+}
+
+async function handleListDrafts(request, env, cors) {
+  const userId = getUserIdFromRequest(request);
+  if (!userId) return jsonResponse({ success: false, error: 'X-User-Id header required' }, 400, cors);
+
+  const result = await Phase6A.listUserDrafts(env, userId);
+  return jsonResponse({ success: true, ...result }, 200, cors);
+}
+
+async function handleGetDraft(id, request, env, cors) {
+  const userId = getUserIdFromRequest(request);
+  if (!userId) return jsonResponse({ success: false, error: 'X-User-Id header required' }, 400, cors);
+
+  const auth = await Phase6A.authorizeDraftAccess(env, id, userId);
+  if (!auth.authorized) return jsonResponse({ success: false, error: auth.reason }, 403, cors);
+
+  return jsonResponse({ success: true, draft: auth.draft }, 200, cors);
+}
+
+async function handleUpdateDraft(id, request, env, cors) {
+  const userId = getUserIdFromRequest(request);
+  if (!userId) return jsonResponse({ success: false, error: 'X-User-Id header required' }, 400, cors);
+
+  const auth = await Phase6A.authorizeDraftAccess(env, id, userId);
+  if (!auth.authorized) return jsonResponse({ success: false, error: auth.reason }, 403, cors);
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ success: false, error: 'Invalid JSON' }, 400, cors);
+  }
+
+  const updated = await Phase6A.updateDraft(env, id, body.data || {});
+  await Phase6A.createContributionAuditEvent(env, Phase6A.AUDIT_ACTIONS.DRAFT_UPDATED, userId, id, { action: 'updated' });
+
+  return jsonResponse({ success: true, draft: { id: updated.id, status: updated.status, updatedAt: updated.updatedAt } }, 200, cors);
+}
+
+async function handleDeleteDraft(id, request, env, cors) {
+  const userId = getUserIdFromRequest(request);
+  if (!userId) return jsonResponse({ success: false, error: 'X-User-Id header required' }, 400, cors);
+
+  const auth = await Phase6A.authorizeDraftAccess(env, id, userId);
+  if (!auth.authorized) return jsonResponse({ success: false, error: auth.reason }, 403, cors);
+
+  await Phase6A.deleteDraft(env, id);
+  return jsonResponse({ success: true }, 200, cors);
+}
+
+async function handleSubmitDraft(id, request, env, cors) {
+  const userId = getUserIdFromRequest(request);
+  if (!userId) return jsonResponse({ success: false, error: 'X-User-Id header required' }, 400, cors);
+
+  const auth = await Phase6A.authorizeDraftAccess(env, id, userId);
+  if (!auth.authorized) return jsonResponse({ success: false, error: auth.reason }, 403, cors);
+
+  const draft = auth.draft;
+
+  // Validate the draft data as a contribution
+  let validationErrors = [];
+  if (draft.type === 'cemetery') validationErrors = Phase6A.validateCemeteryContribution(draft.data || {});
+  else if (draft.type === 'grave') validationErrors = Phase6A.validateGraveContribution(draft.data || {});
+  else if (draft.type === 'correction') validationErrors = Phase6A.validateCorrectionContribution(draft.data || {});
+  if (validationErrors.length > 0) return jsonResponse({ success: false, error: 'Validation failed', details: validationErrors }, 400, cors);
+
+  // Create contribution from draft
+  const contribution = await Phase6A.createContribution(env, userId, draft.type, draft.data, 'PENDING_REVIEW');
+  await Phase6A.createContributionAuditEvent(env, Phase6A.AUDIT_ACTIONS.SUBMISSION_CREATED, userId, contribution.id, { type: draft.type, fromDraft: id });
+
+  // Delete the draft
+  await Phase6A.deleteDraft(env, id);
+  await Phase6A.updateUserStats(env, userId, false);
+
+  return jsonResponse({ success: true, contribution: { id: contribution.id, type: contribution.type, status: contribution.status, createdAt: contribution.createdAt } }, 201, cors);
+}
+
+async function handleSubmitPhoto(request, env, cors) {
+  const userId = getUserIdFromRequest(request);
+  if (!userId) return jsonResponse({ success: false, error: 'X-User-Id header required' }, 400, cors);
+
+  const user = await Phase6A.getUser(env, userId);
+  if (!user) return jsonResponse({ success: false, error: 'User not registered' }, 401, cors);
+  if (user.accountStatus === 'SUSPENDED') return jsonResponse({ success: false, error: 'Account suspended' }, 403, cors);
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ success: false, error: 'Invalid JSON' }, 400, cors);
+  }
+
+  const errors = Phase6A.validatePhotoSubmission(body);
+  if (errors.length > 0) return jsonResponse({ success: false, error: 'Validation failed', details: errors }, 400, cors);
+
+  const rl = Phase6A.checkUserRateLimit(userId);
+  if (!rl.allowed) return jsonResponse({ success: false, error: 'Rate limit exceeded' }, 429, cors);
+
+  const photo = await Phase6A.createPhotoContribution(
+    env, userId, body.targetId, body.targetType, body.photoUrl, body.rights, body.description, body.sourceRef
+  );
+  await Phase6A.createContributionAuditEvent(env, Phase6A.AUDIT_ACTIONS.PHOTO_SUBMITTED, userId, photo.id, {
+    targetId: body.targetId, targetType: body.targetType, rights: body.rights
+  });
+
+  return jsonResponse({
+    success: true,
+    photo: { id: photo.id, status: photo.status, rights: photo.rights, createdAt: photo.createdAt }
+  }, 201, cors);
 }

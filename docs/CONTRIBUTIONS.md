@@ -1,92 +1,154 @@
-# GraveAtlas Contributions
-
-## Overview
-
-Users can contribute to GraveAtlas without a GitHub account. All contributions go through the Cloudflare Worker and are reviewed before publication.
+# Contribution System
 
 ## Contribution Types
 
-| Type | Endpoint | Description |
-|------|----------|-------------|
-| Add Grave | POST `/api/graves` | Submit a new grave/memorial |
-| Add Cemetery | POST `/api/cemeteries` | Submit a new cemetery |
-| Suggest Correction | POST `/api/corrections` | Correct an existing record |
-| Report | POST `/api/graves/:id/report` | Report incorrect information |
+| Type | Description | Validation |
+|------|-------------|------------|
+| `cemetery` | New cemetery submission | Name required, coordinates validated, country code ISO 3166-1 |
+| `grave` | New grave/memorial record | Name required, cemetery or cemeteryId required, dates validated |
+| `correction` | Proposed change to existing record | targetId, targetType, corrections object, reason required |
+| `photo` | Photo for a cemetery or grave | targetId, targetType, photoUrl, rights declaration required |
+| `report` | Report incorrect information | Routed through existing report system |
 
-## Submission Lifecycle
-
-```
-User Submission
-     ↓
-PENDING (stored in pending/ directory)
-     ↓
-Admin Review (via /api/admin/submissions)
-     ↓
-APPROVED → Published (moved to graves/ or cemeteries/)
-REJECTED → Stays in pending/ with status "rejected"
-```
-
-Submissions are **never** auto-published. All submissions require admin review.
-
-## Idempotency
-
-All POST endpoints accept an `Idempotency-Key` header. If the same key is used within 1 hour, the original submission ID is returned instead of creating a duplicate. This prevents duplicate records from network retries.
-
-Android generates a UUID per submission. Offline retries use the same key.
-
-## Correction Lifecycle
+## Submission Statuses
 
 ```
-Existing Record
-     ↓
-User submits correction (POST /api/corrections)
-     ↓
-Correction stored in pending/ (original record unchanged)
-     ↓
-Admin Review
-     ↓
-ACCEPT → Original record updated
-REJECT → Correction rejected, original unchanged
+DRAFT → PENDING_REVIEW → CHANGES_REQUESTED → PENDING_REVIEW (resubmit)
+                     ↘ APPROVED (terminal)
+                     ↘ REJECTED (terminal)
+                     ↘ CANCELLED (terminal)
 ```
 
-Corrections do **not** overwrite the original record. They create a proposal that must be reviewed.
+### Valid Transitions
 
-### Correction Fields
+| From | To |
+|------|-----|
+| DRAFT | PENDING_REVIEW, CANCELLED |
+| PENDING_REVIEW | CHANGES_REQUESTED, APPROVED, REJECTED, CANCELLED |
+| CHANGES_REQUESTED | PENDING_REVIEW, CANCELLED |
+| APPROVED | (terminal) |
+| REJECTED | (terminal) |
+| CANCELLED | (terminal) |
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `targetId` | Yes | ID of record to correct |
-| `targetType` | Yes | `grave`, `cemetery`, `person`, or `source` |
-| `corrections` | Yes | Object: `{ fieldName: suggestedValue }` |
-| `reason` | No | Why the correction is needed (max 2000 chars) |
-| `sourceRefs` | No | Supporting source references |
+## Creating a Contribution
 
-## My Submissions
+```
+POST /api/contributions
+Headers: X-User-Id: user_xxx
+Content-Type: application/json
 
-Users can track their own submissions via:
-- GET `/api/submissions/:id` — Check submission status
-- GET `/api/corrections/:id` — Check correction status
+{
+  "type": "grave",
+  "data": {
+    "name": "John Doe",
+    "cemetery": "Bukit Cemetery",
+    "birthDate": "1950",
+    "deathDate": "2000-01-15",
+    "latitude": 1.3521,
+    "longitude": 103.8198
+  }
+}
+```
 
-Users cannot see other users' submissions.
+**Response (201):**
+```json
+{
+  "success": true,
+  "contribution": {
+    "id": "contrib_...",
+    "type": "grave",
+    "status": "PENDING_REVIEW",
+    "createdAt": "2026-08-09T..."
+  }
+}
+```
 
-## Offline Support
+## Listing Contributions
 
-- Submissions are queued locally when offline
-- OfflineSubmissionManager retries with exponential backoff
-- Same idempotency key prevents duplicates on retry
-- Queued submissions are never lost
+```
+GET /api/contributions?page=1&pageSize=20&type=grave&status=PENDING_REVIEW
+Headers: X-User-Id: user_xxx
+```
 
-## Privacy
+Returns paginated list of the user's own contributions. Supports filtering by type and status.
 
-- No device identifiers in submissions
-- No user IP addresses stored in records
-- No personal data beyond what's needed for the memorial
-- Contributor identity is not required or tracked
+## Contribution Details
 
-## Safety
+```
+GET /api/contributions/:id
+Headers: X-User-Id: user_xxx
+```
 
-- All submissions go through the Cloudflare Worker
-- Android never directly writes to GitHub
-- Client cannot set: `id`, `status`, `verificationStatus`, `repo`, `branch`, or `filePath`
-- All fields are server-side validated
-- Rate limited: 10 requests/minute/IP on POST endpoints
+Returns full contribution data. Users can only access their own contributions — attempting to view another user's contribution returns 403.
+
+## Cancelling a Contribution
+
+```
+POST /api/contributions/:id/cancel
+Headers: X-User-Id: user_xxx
+```
+
+Only works for contributions in DRAFT, PENDING_REVIEW, or CHANGES_REQUESTED status. Approved and rejected contributions cannot be cancelled.
+
+## Duplicate Detection
+
+Before submitting, users can check for potential duplicates:
+
+```
+POST /api/contributions/check-duplicate
+Headers: X-User-Id: user_xxx
+
+{
+  "type": "grave",
+  "data": { "name": "John Doe", "cemetery": "Bukit Cemetery" }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "status": "NO_MATCH" | "POSSIBLE_DUPLICATE" | "HIGH_CONFIDENCE_MATCH" | "EXACT_DUPLICATE",
+  "match": null | { ...existing record... }
+}
+```
+
+### Scoring
+
+| Score | Classification |
+|-------|---------------|
+| ≥ 85 | EXACT_DUPLICATE |
+| ≥ 55 | HIGH_CONFIDENCE_MATCH |
+| ≥ 25 | POSSIBLE_DUPLICATE |
+| < 25 | NO_MATCH |
+
+Scoring factors:
+- Name exact match: 40 points
+- Name partial match: 25 points
+- Cemetery exact match: 20 points
+- Coordinates within 1km: 20 points
+- Coordinates within 500km: 10 points
+- Birth date match: 10 points
+- Death date match: 10 points
+
+## Rate Limiting
+
+- 30 contribution actions per user per hour
+- Existing IP-based rate limiting remains for public endpoints
+- Rate-limited responses return HTTP 429
+
+## Audit Events
+
+Every contribution action creates an audit event:
+
+| Action | Trigger |
+|--------|---------|
+| `SUBMISSION_CREATED` | New contribution submitted |
+| `DRAFT_UPDATED` | Draft created or updated |
+| `CORRECTION_CREATED` | Correction submitted |
+| `PHOTO_SUBMITTED` | Photo contribution submitted |
+| `SUBMISSION_CANCELLED` | User cancels contribution |
+| `USER_REGISTERED` | New user account created |
+| `USER_PROFILE_UPDATED` | Profile updated |
+
+Audit events are stored in `audit/` directory and include user ID, target ID, action, and timestamp. No secrets are stored in audit logs.

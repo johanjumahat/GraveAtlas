@@ -1,5 +1,74 @@
 # CHANGELOG
 
+## v6.0.0 — Phase 6A: Community Accounts & Contribution System (2026-08-09)
+
+### Added — User Accounts (Parts 2-3)
+- User registration endpoint (POST /api/user/register)
+- User profile: display name, bio, contribution count, accepted count, joined date
+- Account states: ACTIVE, SUSPENDED, DEACTIVATED
+- Public profile endpoint (GET /api/users/:id/profile) — exposes only safe public data
+- Profile update endpoint (PUT /api/user/profile)
+
+### Added — Contribution System (Parts 4-13)
+- Contribution center with 5 types: cemetery, grave, correction, photo, report
+- Submission statuses: DRAFT, PENDING_REVIEW, CHANGES_REQUESTED, APPROVED, REJECTED, CANCELLED
+- Validated status transitions — invalid transitions rejected
+- Contribution creation (POST /api/contributions) with per-type validation
+- Contribution listing (GET /api/contributions) with pagination, type and status filters
+- Contribution details (GET /api/contributions/:id) — user-scoped access
+- Contribution cancellation (POST /api/contributions/:id/cancel)
+- Contribution history with pagination support
+
+### Added — Drafts (Part 14)
+- Draft creation (POST /api/drafts)
+- Draft listing (GET /api/drafts)
+- Draft details (GET /api/drafts/:id)
+- Draft update (PUT /api/drafts/:id)
+- Draft deletion (DELETE /api/drafts/:id)
+- Draft submission (POST /api/drafts/:id/submit) — validates then creates contribution
+
+### Added — Duplicate Detection (Part 9)
+- Duplicate check endpoint (POST /api/contributions/check-duplicate)
+- 4-level classification: NO_MATCH, POSSIBLE_DUPLICATE, HIGH_CONFIDENCE_MATCH, EXACT_DUPLICATE
+- Absolute scoring: name (40), cemetery (20), coordinates (20), dates (10+10)
+- Thresholds: ≥85 exact, ≥55 high confidence, ≥25 possible
+
+### Added — Photo Contributions (Parts 16-18)
+- Photo submission endpoint (POST /api/photos)
+- 5 rights declarations: OWN_WORK, PERMISSION_GRANTED, OPEN_LICENSE, PUBLIC_DOMAIN, UNKNOWN
+- UNKNOWN rights flagged for extra manual review
+- Photo validation: URL format, target type, path traversal protection
+- File:// URLs rejected
+
+### Added — Authorization (Part 20)
+- User-scoped access — users can only see/modify their own contributions and drafts
+- Authorization checks on all contribution and draft endpoints
+- Cross-user access returns 403
+
+### Added — Audit Events (Part 21)
+- 9 audit actions: CONTRIBUTION_CREATED, DRAFT_UPDATED, SUBMISSION_CREATED, CORRECTION_CREATED, PHOTO_SUBMITTED, SUBMISSION_CANCELLED, USER_REGISTERED, USER_PROFILE_UPDATED, USER_STATUS_CHANGED
+- Audit events stored in audit/ directory
+- No secrets in audit logs
+
+### Added — Rate Limiting (Part 22)
+- Per-user rate limiting: 30 actions per hour
+- In addition to existing IP-based rate limiting
+
+### Added — Documentation (Part 29)
+- docs/COMMUNITY.md — Community accounts, contribution center, API endpoints
+- docs/CONTRIBUTIONS.md — Contribution types, statuses, workflow, duplicate detection
+- docs/CORRECTIONS.md — Correction system, workflow, validation
+- docs/PHOTO-RIGHTS.md — Photo rights, validation, security
+
+### Added — Tests
+- 123 new Phase 6A tests (all passing)
+- Total tests: 639 (346 + 47 + 64 + 59 + 123)
+
+### Changed
+- API version bumped to 6.0.0
+- tests/run.js updated to include Phase 6A test suite
+
+
 ## v5.5.0 — Phase 5 & 5.5: Global Discovery, Open-Data Import & Production Readiness (2026-08-09)
 
 ### Added — Phase 5: Global Discovery (Parts 1-39)

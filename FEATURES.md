@@ -91,3 +91,20 @@
 - Edge TTS (voice)
 - Cloudflare Worker backend
 - GitHub App authentication
+
+## Phase 6A — Community Accounts & Contributions
+
+- **User Accounts** — Register with display name, track contributions, account states (ACTIVE/SUSPENDED/DEACTIVATED)
+- **User Profiles** — Public profile with display name, bio, contribution count, accepted count, joined date
+- **Contribution Center** — Submit cemeteries, graves/memorials, corrections, photos, and reports
+- **Submission Workflow** — DRAFT → PENDING_REVIEW → CHANGES_REQUESTED → APPROVED/REJECTED/CANCELLED
+- **Drafts** — Save incomplete contributions, continue editing, delete, or submit when ready
+- **Contribution History** — Paginated list of own submissions with type and status filters
+- **Contribution Details** — Full submission data with reviewer feedback
+- **Cancel Contributions** — Users can cancel pending submissions
+- **Duplicate Detection** — 4-level check (NO_MATCH, POSSIBLE_DUPLICATE, HIGH_CONFIDENCE_MATCH, EXACT_DUPLICATE) before submitting
+- **Photo Contributions** — Submit photos with rights declaration (OWN_WORK, PERMISSION_GRANTED, OPEN_LICENSE, PUBLIC_DOMAIN, UNKNOWN)
+- **Authorization** — Users can only access their own contributions and drafts
+- **Audit Events** — 9 action types tracked for all contribution operations
+- **Rate Limiting** — 30 actions per user per hour
+- **18 New API Endpoints** — User, contribution, draft, and photo operations

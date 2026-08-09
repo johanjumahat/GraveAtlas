@@ -1,125 +1,79 @@
-# GraveAtlas Status
+# GraveAtlas — Status
 
-**Last Updated:** 2026-08-09
-**Phase:** 5.5 — Production Readiness Complete
-**Tests:** 516 total (346 backend + 47 Phase 5 + 64 import pipeline + 59 E2E)
-**Branch:** phase-5/global-discovery
-**Version:** 5.5.0
+**Last updated:** 2026-08-09
+**Version:** 6.0.0 (Phase 6A)
+**Repository:** putraworks2026/GraveAtlas
+**Data repo:** putraworks2026/graveatlas-data
+**Worker:** graveatlas.putraworks-2026.workers.dev
 
-## Completed
+---
 
-### Phase 1 — Architecture & Foundation ✓
-### Phase 2 — GitHub App Security Configuration ✓
-### Phase 3 — Android API Integration ✓
-### Phase 3.5 — Production Readiness & Security Hardening ✓
-### Phase 4 — Worldwide Cemetery & Memorial Platform ✓ COMPLETE
-### Phase 4.5 — Data Governance, Moderation, Trust & Production Readiness ✓
-### Phase 5 — Global Discovery, Open-Data Import & Worldwide Expansion ✓
-### Phase 5.5 — Production Readiness, Security Audit & Launch Gate ✓
+## Current Phase: 6A — Community Accounts & Contribution System
 
-## Phase 5 — Implemented Features
+### Completed Phases
 
-| Feature | Status |
-|---------|--------|
-| Country directory (177 countries, ISO codes, Unicode names) | ✓ |
-| Country discovery UI (CountryFragment with search) | ✓ |
-| Import framework (source registry, validation, approval, rollback) | ✓ |
-| License verification (CC0, CC-BY, CC-BY-SA, ODbL, Public Domain, PDDL) | ✓ |
-| Duplicate detection (4-level classification with weighted scoring) | ✓ |
-| Data quality scoring (per-record, deterministic) | ✓ |
-| Import status transitions (12-state machine) | ✓ |
-| Import idempotency (source_id + dataset_version) | ✓ |
-| Import rollback (tagged records, safe removal) | ✓ |
-| Import reports and previews | ✓ |
-| File validation (size, format, path traversal prevention) | ✓ |
-| Geographic search documentation | ✓ |
-| Map clustering documentation | ✓ |
-| Data versioning and safe updates | ✓ |
-| 10 new documentation files | ✓ |
+| Phase | Title | Status |
+|-------|-------|--------|
+| 1 | Project Architecture & Foundation | ✅ Complete |
+| 2 | Cloudflare Worker + GitHub App Security | ✅ Complete |
+| 3 | Cemetery Model & Advanced Search | ✅ Complete |
+| 4 | Submission Lifecycle & Governance | ✅ Complete |
+| 4.5 | Moderation, Audit & Reporting | ✅ Complete |
+| 5 | Global Discovery, Open-Data Import | ✅ Complete |
+| 5.5 | Production Readiness, Security Audit | ✅ Complete |
+| 6A | Community Accounts & Contribution System | ✅ Complete |
 
-## Phase 5.5 — Production Readiness
+### Phase 6A Features
 
-| Feature | Status |
-|--------|--------|
-| Full project audit (Android, backend, Worker, GitHub Actions) | ✓ |
-| Security audit (no secrets in any files) | ✓ |
-| Data integrity audit (no duplicates, broken refs, orphans) | ✓ |
-| Privacy audit (no personal info of living persons) | ✓ |
-| Import safety audit (full pipeline verified) | ✓ |
-| Rollback test (synthetic data, unrelated records unaffected) | ✓ |
-| E2E test (59 checks, all stages verified) | ✓ |
-| Regression test (516 total, 0 failures) | ✓ |
-| Production blocker audit (0 CRITICAL, 1 HIGH) | ✓ |
-| Test data cleanup (all synthetic in tests/ only) | ✓ |
-| Final security scan (PASS) | ✓ |
-| GitHub audit (repos private/public as intended) | ✓ |
-| API contract test (Android and Worker aligned) | ✓ |
-| Performance test (100 records: 1ms, 1000: 6ms) | ✓ |
-| Incident response procedures (8 types documented) | ✓ |
-| Operations guide | ✓ |
-| Privacy policy draft (requires legal review) | ✓ |
-| Terms of use draft (requires legal review) | ✓ |
+- **User accounts** — Registration, profile (display name, bio, contribution count), account states (ACTIVE/SUSPENDED/DEACTIVATED)
+- **Contribution system** — Cemetery, grave, correction, photo, and report submissions
+- **Submission statuses** — DRAFT → PENDING_REVIEW → CHANGES_REQUESTED → APPROVED/REJECTED/CANCELLED
+- **Status transitions** — Validated, invalid transitions rejected
+- **Drafts** — Save, update, delete, and submit incomplete contributions
+- **Contribution history** — Paginated list with filtering by type and status
+- **Contribution details** — Full submission data with reviewer feedback
+- **Cancel contributions** — Users can cancel pending submissions
+- **Duplicate detection** — 4-level (NO_MATCH, POSSIBLE_DUPLICATE, HIGH_CONFIDENCE_MATCH, EXACT_DUPLICATE) with absolute scoring
+- **Photo contributions** — With rights declaration (OWN_WORK, PERMISSION_GRANTED, OPEN_LICENSE, PUBLIC_DOMAIN, UNKNOWN)
+- **Photo validation** — URL format, target validation, path traversal protection
+- **Authorization** — Users can only access their own contributions and drafts
+- **Audit events** — CONTRIBUTION_CREATED, DRAFT_UPDATED, SUBMISSION_CREATED, CORRECTION_CREATED, PHOTO_SUBMITTED, SUBMISSION_CANCELLED, USER_REGISTERED, USER_PROFILE_UPDATED, USER_STATUS_CHANGED
+- **Rate limiting** — 30 actions per user per hour (in addition to existing IP-based limiting)
+- **18 new API endpoints** for user, contribution, draft, and photo operations
 
-## API Endpoints
+### Tests
 
-| Method | Path | Auth | Description | Phase |
-|--------|------|------|-------------|-------|
-| GET | /api/health | None | Health check | P2 |
-| GET | /api/graves | None | List graves (paginated) | P3.5 |
-| POST | /api/graves | Rate-limited | Submit grave | P3.5 |
-| GET | /api/graves/:id | None | Get grave detail | P2 |
-| POST | /api/graves/:id/report | Rate-limited | Report grave | P2 |
-| GET | /api/cemeteries | None | List cemeteries (paginated) | P3.5 |
-| POST | /api/cemeteries | Rate-limited | Submit cemetery | P4 |
-| GET | /api/cemeteries/:id | None | Get cemetery detail | P3 |
-| GET | /api/search | None | Unified search with ranking | P4 |
-| GET | /api/people/:id | None | Get person | P4 |
-| POST | /api/corrections | Rate-limited | Submit correction | P4 |
-| GET | /api/corrections/:id | None | Correction status | P4 |
-| GET | /api/countries | None | List countries | P4 |
-| GET | /api/regions | None | List regions | P4 |
-| GET | /api/cities | None | List cities | P4 |
-| GET | /api/submissions/:id | None | Submission status | P3 |
-| GET | /api/admin/submissions | Admin | List pending submissions | P2 |
-| GET | /api/admin/reports | Admin | List reports | P2 |
-| GET | /api/admin/status | Admin | System status | P2 |
-| POST | /api/admin/submissions/:id/approve | Admin | Approve submission | P2 |
-| POST | /api/admin/submissions/:id/reject | Admin | Reject submission | P2 |
-| GET | /api/admin/dashboard | Admin | Admin dashboard | P4.5 |
-| GET | /api/admin/corrections | Admin | List corrections | P4.5 |
-| POST | /api/admin/corrections/:id/approve | Admin | Approve correction | P4.5 |
-| POST | /api/admin/corrections/:id/reject | Admin | Reject correction | P4.5 |
-| GET | /api/admin/audit | Admin | List audit events | P4.5 |
-| GET | /api/admin/audit/:entityId | Admin | Audit trail | P4.5 |
-| GET | /api/admin/contributors | Admin | List contributors | P4.5 |
-| GET | /api/admin/data-quality | Admin | Data quality report | P4.5 |
-| POST | /api/admin/reports/:id/resolve | Admin | Resolve report | P4.5 |
-| POST | /api/admin/reports/:id/reject | Admin | Reject report | P4.5 |
-| POST | /api/admin/restore/:id | Admin | Restore record | P4.5 |
+| Suite | Passed | Failed |
+|-------|--------|--------|
+| Backend (Phase 1-4.5) | 346 | 0 |
+| Phase 5 | 47 | 0 |
+| Phase 5 Import Pipeline | 64 | 0 |
+| Phase 5.5 E2E | 59 | 0 |
+| Phase 6A | 123 | 0 |
+| **Total** | **639** | **0** |
 
-## Test Results
+### Security
 
-- **Backend tests:** 346 passed, 0 failed
-- **Phase 5 core tests:** 47 passed, 0 failed
-- **Phase 5 import pipeline tests:** 64 passed, 0 failed
-- **Phase 5.5 E2E tests:** 59 passed, 0 failed
-- **Total:** 516 passed, 0 failed
+- ✅ No secrets in any source files
+- ✅ No API keys, tokens, or credentials in code
+- ✅ Path traversal protection on all user inputs
+- ✅ User-scoped authorization — users can only access their own data
+- ✅ Admin endpoints remain Bearer-token protected
+- ✅ Rate limiting at both IP and user level
+- ✅ Photo URL validation (HTTP/HTTPS only)
+- ✅ No file execution — photos are never processed as code
 
-## Pending Manual Steps (Production Blockers)
+### API Version
 
-1. **Deploy updated Worker** — Production Worker runs v2.0.0, code is v4.5.0/v5.5.0
-   - `cd backend && npx wrangler deploy`
-2. **Configure Cloudflare Worker secrets:**
-   - `cd backend && npx wrangler secret put GITHUB_APP_ID`
-   - `cd backend && npx wrangler secret put GITHUB_PRIVATE_KEY`
-   - `cd backend && npx wrangler secret put GITHUB_INSTALLATION_ID`
-   - `cd backend && npx wrangler secret put ADMIN_TOKEN`
-3. **Verify after deploy:** Check `/api/health` shows `githubConfigured: true`
-4. **Build Android APK** (requires Android SDK):
-   - `./gradlew assembleRelease`
-5. **Merge phase-5 branch to main** after verification
+- Current: `6.0.0`
+- 18 new endpoints added in Phase 6A
 
-## Phase 6 (Future)
+### Production Blockers (Manual Steps)
 
-- Phase 6A — Community Accounts & Contribution System (30 parts)
-- Phase 6B — Community Moderation, Reputation, Reports, Notifications & Final QA (80 parts)
+1. **Deploy updated Cloudflare Worker** — Production runs v2.0.0, code is now v6.0.0
+2. **Configure Worker secrets** — GITHUB_APP_ID, GITHUB_PRIVATE_KEY, GITHUB_INSTALLATION_ID, ADMIN_TOKEN
+3. **Build Android APK** — Requires Android SDK
+
+### Next Phase
+
+Phase 6B — Community Moderation, Reputation, Reports, Notifications & Final QA
