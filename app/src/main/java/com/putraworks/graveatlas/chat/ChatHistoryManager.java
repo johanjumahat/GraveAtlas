@@ -6,23 +6,33 @@ import android.content.SharedPreferences;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import com.putraworks.graveatlas.auth.SecureStorage;
+
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Persists chat history to SharedPreferences so it survives activity
- * recreation, backgrounding, and process death. History is only wiped
- * when the user explicitly taps "Clear Chat".
+ * Persists chat history to EncryptedSharedPreferences, scoped per
+ * logged-in Google user. History survives activity recreation, backgrounding,
+ * and process death. Wiped only when user taps "Clear Chat".
  */
 public class ChatHistoryManager {
-    private static final String PREFS_NAME = "ai_chat_history";
     private static final String KEY_MESSAGES = "messages";
-    private static final int MAX_STORED_MESSAGES = 300; // cap to keep storage light
+    private static final int MAX_STORED_MESSAGES = 300;
 
     private final SharedPreferences prefs;
 
     public ChatHistoryManager(Context context) {
-        prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        SecureStorage.init(context);
+        String userId = SecureStorage.getCurrentUserId(context);
+
+        // Per-user encrypted prefs if logged in, encrypted global otherwise
+        String prefsName = (userId != null) ? "user_" + userId + "_chat" : "graveatlas_chat";
+        try {
+            prefs = SecureStorage.getEncryptedPrefs(context, prefsName);
+        } catch (Exception e) {
+            prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE);
+        }
     }
 
     public void save(List<ChatMessage> messages) {
@@ -40,7 +50,7 @@ public class ChatHistoryManager {
             }
             prefs.edit().putString(KEY_MESSAGES, arr.toString()).apply();
         } catch (Exception e) {
-            // ignore — non-fatal, just means history won't persist this time
+            // non-fatal
         }
     }
 
@@ -59,7 +69,7 @@ public class ChatHistoryManager {
                 result.add(m);
             }
         } catch (Exception e) {
-            // ignore — return whatever was parsed so far (empty on failure)
+            // return whatever was parsed
         }
         return result;
     }

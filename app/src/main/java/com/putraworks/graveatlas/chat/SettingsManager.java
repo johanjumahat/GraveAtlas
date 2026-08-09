@@ -5,13 +5,14 @@ import android.content.SharedPreferences;
 
 import org.json.JSONObject;
 
+import com.putraworks.graveatlas.auth.SecureStorage;
+
 /**
- * Manages API keys and chat settings via SharedPreferences.
- * Each provider has its own API key storage.
+ * Manages API keys and chat settings via EncryptedSharedPreferences,
+ * scoped per logged-in Google user. Each provider has its own API key.
  * Also stores per-model "working" test results.
  */
 public class SettingsManager {
-    private static final String PREFS_NAME = "graveatlas_settings";
     private static final String KEY_PREFIX = "api_key_";
     private static final String KEY_PROVIDER = "selected_provider";
     private static final String KEY_MODEL_PREFIX = "selected_model_";
@@ -22,7 +23,16 @@ public class SettingsManager {
     private final SharedPreferences prefs;
 
     public SettingsManager(Context context) {
-        prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        SecureStorage.init(context);
+        String userId = SecureStorage.getCurrentUserId(context);
+
+        // Use per-user encrypted prefs if logged in, fall back to encrypted global
+        String prefsName = (userId != null) ? "user_" + userId + "_settings" : "graveatlas_settings";
+        try {
+            prefs = SecureStorage.getEncryptedPrefs(context, prefsName);
+        } catch (Exception e) {
+            prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE);
+        }
     }
 
     // ── API Keys ──
@@ -58,7 +68,7 @@ public class SettingsManager {
         prefs.edit().putString(KEY_MODEL_PREFIX + providerId, modelId).apply();
     }
 
-    // ── Model test statuses (persisted until user re-tests) ──
+    // ── Model test statuses ──
 
     public Boolean getModelStatus(String providerId, String modelId) {
         JSONObject statuses = getStatuses(providerId);
@@ -82,7 +92,7 @@ public class SettingsManager {
         prefs.edit().remove(KEY_STATUS_PREFIX + providerId).apply();
     }
 
-    // ── Text-to-speech toggle (persisted) ──
+    // ── Text-to-speech ──
 
     public boolean isTtsEnabled() {
         return prefs.getBoolean(KEY_TTS_ENABLED, false);

@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="24dp">
+    android:padding="24dp"
+    android:background="@color/bg_surface">
 
     <TextView
         android:id="@+id/tvProviderName"
@@ -11,7 +13,7 @@
         android:layout_height="wrap_content"
         android:textSize="18sp"
         android:textStyle="bold"
-        android:textColor="@color/text_primary" />
+        android:textColor="@color/gold" />
 
     <TextView
         android:id="@+id/tvProviderDesc"
@@ -19,7 +21,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:textSize="13sp"
-        android:textColor="@color/text_secondary"
+        android:textColor="@color/text_secondary_dark"
         android:lineSpacingExtra="2dp" />
 
     <TextView
@@ -29,7 +31,7 @@
         android:layout_marginTop="12dp"
         android:text="Get your free API key →"
         android:textSize="13sp"
-        android:textColor="@color/primary"
+        android:textColor="@color/gold_light"
         android:textStyle="bold" />
 
     <com.google.android.material.textfield.TextInputLayout
@@ -38,14 +40,17 @@
         android:layout_marginTop="16dp"
         android:hint="Paste your API key here"
         app:passwordToggleEnabled="true"
-        xmlns:app="http://schemas.android.com/apk/res-auto">
+        app:hintTextColor="@color/text_muted_dark"
+        app:boxStrokeColor="@color/gold_dim"
+        app:boxBackgroundColor="@color/bg_surface_2">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/etApiKey"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:inputType="textPassword"
-            android:textSize="14sp" />
+            android:textSize="14sp"
+            android:textColor="@color/text_primary_dark" />
 
     </com.google.android.material.textfield.TextInputLayout>
 
