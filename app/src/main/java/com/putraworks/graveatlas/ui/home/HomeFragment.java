@@ -1,14 +1,17 @@
 package com.putraworks.graveatlas.ui.home;
 
 import android.Manifest;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.text.InputType;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
+import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ProgressBar;
 import android.widget.Spinner;
@@ -27,6 +30,7 @@ import com.putraworks.graveatlas.R;
 import com.putraworks.graveatlas.ui.addgrave.AddGraveFragment;
 import com.putraworks.graveatlas.ui.map.MapFragment;
 import com.putraworks.graveatlas.ui.search.SearchFragment;
+import com.putraworks.graveatlas.util.LocationData;
 import com.putraworks.graveatlas.util.LocationHelper;
 
 import java.util.ArrayList;
@@ -41,6 +45,10 @@ import java.util.Set;
  * GPS icon detects user's country, state/province, and city using reverse geocoding.
  * Max 3 dropdowns: Country, State/Province, City.
  * City-states (e.g. Singapore) hide the State dropdown — only 2 dropdowns shown.
+ *
+ * City options come from a local static dataset (LocationData) keyed by
+ * state/country, plus a "Type manually..." fallback so the dropdown is
+ * never left empty for uncovered states.
  */
 public class HomeFragment extends Fragment {
 
@@ -52,6 +60,7 @@ public class HomeFragment extends Fragment {
     private static final String PLACEHOLDER_COUNTRY = "Select country...";
     private static final String PLACEHOLDER_STATE = "Select state/province...";
     private static final String PLACEHOLDER_CITY = "Select city...";
+    private static final String OPTION_TYPE_MANUALLY = "Type manually...";
 
     // Countries with no meaningful state/province level — hide the State dropdown for these.
     private static final Set<String> CITY_STATES = new HashSet<>(Arrays.asList(
@@ -166,19 +175,19 @@ public class HomeFragment extends Fragment {
         updateStateVisibilityAndOptions(country);
 
         boolean isCityState = CITY_STATES.contains(country);
+        String effectiveState = "";
         if (!isCityState) {
             if (!state.isEmpty()) {
                 selectOrAddSpinnerValue(spinnerState, state, PLACEHOLDER_STATE);
+                effectiveState = state;
             } else {
                 resetSpinnerToPlaceholder(spinnerState);
             }
         }
 
+        populateCityOptions(country, effectiveState);
         if (!city.isEmpty()) {
-            resetCitySpinner();
             selectOrAddSpinnerValue(spinnerCity, city, PLACEHOLDER_CITY);
-        } else {
-            resetCitySpinner();
         }
 
         suppressSpinnerListeners = false;
@@ -204,7 +213,8 @@ public class HomeFragment extends Fragment {
                 String country = spinnerCountry.getSelectedItem().toString();
                 updateStateVisibilityAndOptions(country);
                 resetSpinnerToPlaceholder(spinnerState);
-                resetCitySpinner();
+                boolean isCityState = CITY_STATES.contains(country);
+                populateCityOptions(country, isCityState ? "" : "");
                 saveLocationFromSpinners();
             }
             @Override public void onNothingSelected(AdapterView<?> parent) {}
@@ -215,6 +225,9 @@ public class HomeFragment extends Fragment {
             public void onItemSelected(AdapterView<?> parent, View v, int position, long id) {
                 if (suppressSpinnerListeners) return;
                 if (position == 0) return;
+                String country = selectedOrEmpty(spinnerCountry);
+                String state = spinnerState.getSelectedItem().toString();
+                populateCityOptions(country, state);
                 saveLocationFromSpinners();
             }
             @Override public void onNothingSelected(AdapterView<?> parent) {}
@@ -225,10 +238,45 @@ public class HomeFragment extends Fragment {
             public void onItemSelected(AdapterView<?> parent, View v, int position, long id) {
                 if (suppressSpinnerListeners) return;
                 if (position == 0) return;
+                String selected = spinnerCity.getSelectedItem().toString();
+                if (OPTION_TYPE_MANUALLY.equals(selected)) {
+                    promptManualCity();
+                    return;
+                }
                 saveLocationFromSpinners();
             }
             @Override public void onNothingSelected(AdapterView<?> parent) {}
         });
+    }
+
+    /** Shows a text-entry dialog for a custom city, then adds+selects it in the spinner. */
+    private void promptManualCity() {
+        EditText input = new EditText(requireContext());
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        input.setHint("City / town name");
+
+        new AlertDialog.Builder(requireContext())
+                .setTitle("Enter your city")
+                .setView(input)
+                .setPositiveButton("Save", (dialog, which) -> {
+                    String value = input.getText().toString().trim();
+                    if (!value.isEmpty()) {
+                        // Insert before the "Type manually..." entry so it stays last
+                        @SuppressWarnings("unchecked")
+                        ArrayAdapter<String> adapter = (ArrayAdapter<String>) spinnerCity.getAdapter();
+                        int insertPos = adapter.getCount() - 1; // just before "Type manually..."
+                        adapter.insert(value, Math.max(insertPos, 1));
+                        suppressSpinnerListeners = true;
+                        spinnerCity.setSelection(Math.max(insertPos, 1));
+                        suppressSpinnerListeners = false;
+                        saveLocationFromSpinners();
+                    } else {
+                        resetSpinnerToPlaceholder(spinnerCity);
+                    }
+                })
+                .setNegativeButton("Cancel", (dialog, which) -> resetSpinnerToPlaceholder(spinnerCity))
+                .setOnCancelListener(dialog -> resetSpinnerToPlaceholder(spinnerCity))
+                .show();
     }
 
     private void setupSimpleSpinner(Spinner spinner, String placeholder) {
@@ -280,10 +328,26 @@ public class HomeFragment extends Fragment {
         spinner.setSelection(0);
     }
 
-    /** City options are freeform (GPS-detected or typed), so just reset to a single placeholder entry. */
-    private void resetCitySpinner() {
+    /**
+     * Populates the City dropdown from the local dataset for the given state
+     * (or country, for city-states), always ending with "Type manually..."
+     * so the dropdown is never empty even for uncovered regions.
+     */
+    private void populateCityOptions(String country, String state) {
         List<String> items = new ArrayList<>();
         items.add(PLACEHOLDER_CITY);
+
+        String[] cities = null;
+        boolean isCityState = CITY_STATES.contains(country);
+        if (isCityState) {
+            cities = LocationData.getCitiesForCountry(country);
+        } else if (state != null && !state.isEmpty()) {
+            cities = LocationData.getCitiesForState(state);
+        }
+
+        if (cities != null) items.addAll(Arrays.asList(cities));
+        items.add(OPTION_TYPE_MANUALLY);
+
         spinnerCity.setAdapter(buildAdapter(items));
     }
 
@@ -347,8 +411,15 @@ public class HomeFragment extends Fragment {
         if (pos >= 0) {
             spinner.setSelection(pos);
         } else {
-            adapter.add(value);
-            spinner.setSelection(adapter.getCount() - 1);
+            // Insert before any trailing "Type manually..." entry so it stays last
+            int insertPos = adapter.getCount();
+            if (insertPos > 0 && OPTION_TYPE_MANUALLY.equals(adapter.getItem(insertPos - 1))) {
+                adapter.insert(value, insertPos - 1);
+                spinner.setSelection(insertPos - 1);
+            } else {
+                adapter.add(value);
+                spinner.setSelection(adapter.getCount() - 1);
+            }
         }
     }
 
@@ -364,6 +435,7 @@ public class HomeFragment extends Fragment {
         String country = selectedOrEmpty(spinnerCountry);
         String state = stateGroup.getVisibility() == View.VISIBLE ? selectedOrEmpty(spinnerState) : "";
         String city = selectedOrEmpty(spinnerCity);
+        if (OPTION_TYPE_MANUALLY.equals(city)) city = ""; // placeholder-like, not a real value
 
         locPrefs.edit()
                 .putString(K_COUNTRY, country)
@@ -390,6 +462,7 @@ public class HomeFragment extends Fragment {
             if (!state.isEmpty() && stateGroup.getVisibility() == View.VISIBLE) {
                 selectOrAddSpinnerValue(spinnerState, state, PLACEHOLDER_STATE);
             }
+            populateCityOptions(country, state);
             if (!city.isEmpty()) {
                 selectOrAddSpinnerValue(spinnerCity, city, PLACEHOLDER_CITY);
             }

@@ -16,12 +16,10 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
-import com.putraworks.graveatlas.MainNavActivity;
 import com.putraworks.graveatlas.data.api.ApiClient;
 import com.putraworks.graveatlas.data.api.LocalCache;
 import com.putraworks.graveatlas.auth.SecureStorage;
 import com.putraworks.graveatlas.auth.LoginActivity;
-import com.putraworks.graveatlas.ui.about.AboutFragment;
 import android.content.Intent;
 import com.putraworks.graveatlas.R;
 
@@ -186,17 +184,6 @@ public class SettingsFragment extends Fragment {
         }
         layout.addView(accountBtn);
 
-        // ── About ──
-        Button aboutBtn = new Button(getContext());
-        aboutBtn.setText("About GraveAtlas");
-        aboutBtn.setAllCaps(false);
-        aboutBtn.setOnClickListener(v -> {
-            if (getActivity() instanceof MainNavActivity) {
-                ((MainNavActivity) getActivity()).loadFragment(new AboutFragment());
-            }
-        });
-        layout.addView(aboutBtn);
-
         return layout;
     }
 
@@ -215,6 +202,12 @@ public class SettingsFragment extends Fragment {
                         sb.append("Status: ").append(result.status != null ? result.status : "unknown").append("\n");
                         sb.append("Service: ").append(result.service != null ? result.service : "unknown").append("\n");
                         sb.append("Data: ").append(result.githubConfigured ? "Available" : "Not configured");
+                        if (!result.githubConfigured) {
+                            sb.append("\n\nThe server is reachable and submissions still work, ")
+                              .append("but the moderator's GitHub App credentials haven't been added ")
+                              .append("to the Cloudflare Worker yet — so published grave/cemetery data ")
+                              .append("can't be read back until that's configured on the backend.");
+                        }
                         healthResult.setText(sb.toString());
                     });
                 }
