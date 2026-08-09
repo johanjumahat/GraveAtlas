@@ -66,7 +66,7 @@ public class MainNavActivity extends AppCompatActivity {
         });
     }
 
-    private void loadFragment(Fragment fragment) {
+    public void loadFragment(Fragment fragment) {
         FragmentManager fm = getSupportFragmentManager();
         FragmentTransaction tx = fm.beginTransaction();
         tx.replace(R.id.fragment_container, fragment);

@@ -1,5 +1,7 @@
 package com.putraworks.graveatlas.compass;
 
+import com.putraworks.graveatlas.R;
+
 import android.Manifest;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
