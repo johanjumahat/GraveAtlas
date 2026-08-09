@@ -34,13 +34,22 @@
                 android:textSize="16sp"
                 android:gravity="center"
                 android:letterSpacing="0.08" />
+
+            <!-- GPS Icon Button -->
+            <ImageButton
+                android:id="@+id/gpsIconBtn"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_gps"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Detect my location"
+                app:tint="@color/gold" />
         </LinearLayout>
 
-        <!-- ===== INFO CARD ===== -->
+        <!-- ===== LOCATION CARD ===== -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:clipToOutline="true"
             app:cardBackgroundColor="@color/bg_surface"
             app:cardCornerRadius="18dp"
             app:cardElevation="0dp"
@@ -54,7 +63,7 @@
                 android:orientation="vertical"
                 android:padding="18dp">
 
-                <!-- Subtitle -->
+                <!-- Location label -->
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -63,6 +72,125 @@
                     android:textColor="@color/text_secondary_dark"
                     android:gravity="center"
                     android:layout_marginBottom="12dp" />
+
+                <!-- Detected location display -->
+                <TextView
+                    android:id="@+id/locationDisplay"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="13sp"
+                    android:textColor="@color/gold_light"
+                    android:gravity="center"
+                    android:text="Tap GPS icon to detect your location"
+                    android:layout_marginBottom="12dp" />
+
+                <!-- Country dropdown -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Country"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_muted_dark"
+                    android:letterSpacing="0.1"
+                    android:layout_marginBottom="4dp" />
+
+                <Spinner
+                    android:id="@+id/spinnerCountry"
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:background="@drawable/bg_input"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- State/Province dropdown -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="State / Province"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_muted_dark"
+                    android:letterSpacing="0.1"
+                    android:layout_marginBottom="4dp" />
+
+                <Spinner
+                    android:id="@+id/spinnerState"
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:background="@drawable/bg_input"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- County/District dropdown -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="County / District"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_muted_dark"
+                    android:letterSpacing="0.1"
+                    android:layout_marginBottom="4dp" />
+
+                <Spinner
+                    android:id="@+id/spinnerCounty"
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:background="@drawable/bg_input"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- City dropdown -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="City"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_muted_dark"
+                    android:letterSpacing="0.1"
+                    android:layout_marginBottom="4dp" />
+
+                <Spinner
+                    android:id="@+id/spinnerCity"
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:background="@drawable/bg_input"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- GPS progress -->
+                <ProgressBar
+                    android:id="@+id/gpsProgress"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:visibility="gone"
+                    android:layout_marginTop="4dp" />
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- ===== DATA SUMMARY CARD ===== -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardBackgroundColor="@color/bg_surface"
+            app:cardCornerRadius="18dp"
+            app:cardElevation="0dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginStart="6dp"
+            android:layout_marginEnd="6dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="18dp">
 
                 <!-- Data summary -->
                 <TextView
