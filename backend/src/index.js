@@ -67,6 +67,32 @@ function cleanupRateLimit() {
 }
 
 // ── In-memory idempotency cache (per Worker isolate) ──
+// ── In-memory response cache for frequently requested data ──
+const RESPONSE_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const responseCache = new Map();
+
+function getCacheEntry(key) {
+  const entry = responseCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > RESPONSE_CACHE_TTL) {
+    responseCache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function setCacheEntry(key, data) {
+  // Evict old entries if cache grows too large
+  if (responseCache.size > 50) {
+    const oldestKey = responseCache.keys().next().value;
+    responseCache.delete(oldestKey);
+  }
+  responseCache.set(key, { data, timestamp: Date.now() });
+}
+
+function clearResponseCache() {
+  responseCache.clear();
+}
 // Maps Idempotency-Key → { submissionId, timestamp }
 const idempotencyMap = new Map();
 
@@ -121,7 +147,7 @@ async function handleRequest(request, env, ctx) {
     // ── Public routes ──
 
     if (path === '/' && method === 'GET') {
-      return jsonResponse({ name: 'GraveAtlas API', version: '4.0.0', status: 'operational' }, 200, corsHeaders);
+      return jsonResponse({ name: 'GraveAtlas API', version: '4.1.0', status: 'operational' }, 200, corsHeaders);
     }
 
     if (path === '/api/health' && method === 'GET') {
@@ -312,7 +338,7 @@ async function handleHealth(request, env, cors) {
   return jsonResponse({
     status: 'ok',
     service: 'GraveAtlas',
-    version: '4.0.0',
+    version: '4.1.0',
     githubConfigured: hasGithubConfig,
     adminConfigured: hasAdminToken,
     timestamp: new Date().toISOString()
@@ -1109,8 +1135,15 @@ async function handleGetCountries(request, env, cors) {
       } catch (e) { /* skip */ }
     }
 
+    const cacheKey = 'countries';
+    const cached = getCacheEntry(cacheKey);
+    if (cached) {
+      return jsonResponse(cached, 200, cors, 600);
+    }
     const result = Array.from(countries.values()).sort((a, b) => a.name.localeCompare(b.name));
-    return jsonResponse({ success: true, countries: result, count: result.length }, 200, cors);
+    const response = { success: true, countries: result, count: result.length };
+    setCacheEntry(cacheKey, response);
+    return jsonResponse(response, 200, cors, 600);
   } catch (error) {
     return jsonResponse({ success: true, countries: [], count: 0, message: 'Unable to fetch countries.' }, 200, cors);
   }
@@ -1148,8 +1181,15 @@ async function handleGetRegions(request, env, cors) {
       } catch (e) { /* skip */ }
     }
 
+    const cacheKey = `regions:${country || 'all'}`;
+    const cached = getCacheEntry(cacheKey);
+    if (cached) {
+      return jsonResponse(cached, 200, cors, 600);
+    }
     const result = Array.from(regions.values()).sort((a, b) => a.name.localeCompare(b.name));
-    return jsonResponse({ success: true, regions: result, count: result.length }, 200, cors);
+    const response = { success: true, regions: result, count: result.length };
+    setCacheEntry(cacheKey, response);
+    return jsonResponse(response, 200, cors, 600);
   } catch (error) {
     return jsonResponse({ success: true, regions: [], count: 0, message: 'Unable to fetch regions.' }, 200, cors);
   }
@@ -1190,8 +1230,15 @@ async function handleGetCities(request, env, cors) {
       } catch (e) { /* skip */ }
     }
 
+    const cacheKey = `cities:${country || 'all'}:${region || 'all'}`;
+    const cached = getCacheEntry(cacheKey);
+    if (cached) {
+      return jsonResponse(cached, 200, cors, 600);
+    }
     const result = Array.from(cities.values()).sort((a, b) => a.name.localeCompare(b.name));
-    return jsonResponse({ success: true, cities: result, count: result.length }, 200, cors);
+    const response = { success: true, cities: result, count: result.length };
+    setCacheEntry(cacheKey, response);
+    return jsonResponse(response, 200, cors, 600);
   } catch (error) {
     return jsonResponse({ success: true, cities: [], count: 0, message: 'Unable to fetch cities.' }, 200, cors);
   }

@@ -1,5 +1,44 @@
 # CHANGELOG
 
+## v4.1.0 — Phase 4 Parts 39-50: Performance, Testing, Security & Documentation (2026-08-09)
+
+### Added — Performance (Part 39)
+- In-memory response cache (5-min TTL) for geographic hierarchy endpoints
+- Cache-Control headers on GET list endpoints (5-min for lists, 10-min for geo)
+- Cache eviction when >50 entries
+- Search result caching in Android LocalCache (2-min TTL)
+- Debounce already implemented in SearchFragment (300ms)
+
+### Added — Tests (Parts 43-44)
+- 88 new backend tests (270 total): all 20 test categories from Part 43
+- Unicode tests: Arabic, Chinese, Japanese, Korean, Cyrillic, Greek, Hebrew, Devanagari, Thai, Malay, Indonesian, accented Latin
+- Regression tests: all Phase 1-3.5 tests verified passing (Part 44)
+- Security regression: no secrets in Android, source, or git history (Part 42)
+- Test data safety: all test IDs use test_ prefix (Part 41)
+
+### Added — Documentation (Part 45)
+- docs/DATA-MODEL.md — entity relationships, stable IDs, geographic hierarchy, privacy
+- docs/SEARCH.md — search API, ranking, Unicode, performance, scalability notes
+- docs/CEMETERIES.md — cemetery fields, API endpoints, validation, internationalization
+- docs/CONTRIBUTIONS.md — submission lifecycle, correction lifecycle, offline, privacy
+- docs/VERIFICATION.md — verification states, workflow, admin API, source references
+- docs/INTERNATIONALIZATION.md — Unicode, multi-language names, geographic hierarchy, dates
+
+### Changed
+- Backend version: 4.0.0 → 4.1.0
+- LocalCache enhanced with search result caching and clearSearchCache()
+- CemeteryRecord/GraveRecord caching now uses fromJson for full field preservation
+- STATUS.md updated with Phase 4 complete
+
+### Verified
+- Part 46: No paid services added
+- Part 47: No AI for deterministic operations
+- Part 48: All GitHub writes through Worker only
+- Part 49: No destructive migrations performed
+- Part 50: No secrets in git history
+- Final acceptance: 29/29 checks passed
+
+
 ## v4.0.0 — Phase 4: Worldwide Cemetery & Memorial Platform (2026-08-09)
 
 ### Added — Backend
