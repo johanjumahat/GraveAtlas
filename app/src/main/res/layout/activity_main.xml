@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#fafafa">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="@color/primary"
+        app:titleTextColor="@color/white"
+        app:navigationIconTint="@color/white" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="8dp"
+        android:background="@color/white"
+        android:gravity="bottom"
+        android:weightSum="3">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:paddingEnd="6dp">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="AI Provider" android:textSize="11sp" android:textColor="@color/text_secondary" android:paddingStart="4dp" />
+            <Spinner android:id="@+id/spinnerProvider" android:layout_width="match_parent" android:layout_height="40dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:orientation="vertical" android:paddingHorizontal="6dp">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Model" android:textSize="11sp" android:textColor="@color/text_secondary" android:paddingStart="4dp" />
+            <Spinner android:id="@+id/spinnerModel" android:layout_width="match_parent" android:layout_height="40dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:orientation="vertical" android:paddingStart="6dp">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Status" android:textSize="11sp" android:textColor="@color/text_secondary" android:paddingStart="4dp" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnTestModels"
+                android:layout_width="match_parent" android:layout_height="40dp"
+                android:text="Test All" android:textSize="13sp"
+                app:backgroundTint="@color/primary" app:cornerRadius="8dp"
+                app:icon="@android:drawable/ic_menu_search" app:iconSize="16dp"
+                app:iconGravity="textStart" app:iconTint="@color/white" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvMessages"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp" />
+
+        <!-- Conversation mode overlay (hidden by default) -->
+        <LinearLayout
+            android:id="@+id/conversationOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top"
+            android:orientation="horizontal"
+            android:background="#E61a73e8"
+            android:padding="12dp"
+            android:gravity="center_vertical"
+            android:visibility="gone">
+
+            <ProgressBar
+                android:id="@+id/conversationProgress"
+                style="?android:attr/progressBarStyleSmall"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginEnd="8dp"
+                android:visibility="visible" />
+
+            <TextView
+                android:id="@+id/tvConversationStatus"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Listening..."
+                android:textColor="@color/white"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnStopConversation"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="Stop"
+                android:textSize="12sp"
+                android:minWidth="0dp"
+                android:paddingHorizontal="16dp"
+                app:backgroundTint="@color/danger"
+                app:cornerRadius="18dp"
+                app:iconTint="@color/white" />
+        </LinearLayout>
+    </FrameLayout>
+
+    <ProgressBar
+        android:id="@+id/progressTyping"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="2dp"
+        android:visibility="gone"
+        android:indeterminate="true"
+        android:progressTint="@color/primary" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="@color/white"
+        android:padding="8dp"
+        android:elevation="4dp"
+        android:gravity="center_vertical">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnMic"
+            android:layout_width="42dp" android:layout_height="42dp"
+            android:insetTop="0dp" android:insetBottom="0dp" android:padding="0dp"
+            app:icon="@android:drawable/ic_btn_speak_now" app:iconSize="18dp"
+            app:iconGravity="textStart" app:iconTint="@color/white"
+            app:backgroundTint="@color/text_secondary" app:cornerRadius="21dp"
+            android:contentDescription="Voice conversation" />
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etInput"
+            android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:layout_marginStart="8dp"
+            android:hint="Ask anything..." android:background="@drawable/bg_input"
+            android:maxLines="4" android:inputType="textMultiLine|textCapSentences"
+            android:paddingHorizontal="16dp" android:paddingVertical="12dp" android:textSize="14sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSpeaker"
+            android:layout_width="42dp" android:layout_height="42dp"
+            android:layout_marginStart="8dp" android:insetTop="0dp" android:insetBottom="0dp"
+            android:padding="0dp"
+            app:icon="@android:drawable/ic_lock_silent_mode_off" app:iconSize="18dp"
+            app:iconGravity="textStart" app:iconTint="@color/white"
+            app:backgroundTint="@color/text_secondary" app:cornerRadius="21dp"
+            android:contentDescription="Toggle read aloud" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSend"
+            android:layout_width="42dp" android:layout_height="42dp"
+            android:layout_marginStart="8dp" android:insetTop="0dp" android:insetBottom="0dp"
+            app:icon="@android:drawable/ic_menu_send" app:iconSize="18dp"
+            app:iconGravity="textStart" android:padding="0dp"
+            app:iconTint="@color/white" app:backgroundTint="@color/primary" app:cornerRadius="21dp" />
+    </LinearLayout>
+</LinearLayout>

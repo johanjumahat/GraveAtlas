@@ -1,0 +1,57 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.putraworks.kuburai'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.putraworks.kuburai"
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    signingConfigs {
+        release {
+            // Read signing config from local.properties or environment variables.
+            // Never hardcode keystore passwords in the repo.
+            def localProps = new Properties()
+            def localPropsFile = rootProject.file('local.properties')
+            if (localPropsFile.exists()) {
+                localProps.load(new FileInputStream(localPropsFile))
+            }
+            storeFile file(localProps.getProperty('keystore.file', 'kubur-ai-release.p12'))
+            storeType localProps.getProperty('keystore.type', 'pkcs12')
+            storePassword localProps.getProperty('keystore.storePassword', System.getenv('KUBUR_KEYSTORE_PASSWORD') ?: '')
+            keyAlias localProps.getProperty('keystore.keyAlias', System.getenv('KUBUR_KEY_ALIAS') ?: '')
+            keyPassword localProps.getProperty('keystore.keyPassword', System.getenv('KUBUR_KEY_PASSWORD') ?: '')
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            applicationIdSuffix ".debug"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.recyclerview:recyclerview:1.3.2'
+    implementation 'androidx.work:work-runtime:2.9.0'
+}

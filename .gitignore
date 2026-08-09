@@ -1,0 +1,29 @@
+# Gradle
+.gradle/
+build/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Local config (contains keystore passwords)
+local.properties
+
+# Keystore
+*.p12
+*.jks
+*.keystore
+
+# IDE
+.idea/
+*.iml
+.cxx/
+.vscode/
+
+# Logs
+*.log
+Logs/
+
+# OS
+.DS_Store
+Thumbs.db
