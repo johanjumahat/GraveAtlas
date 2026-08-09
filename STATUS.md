@@ -28,33 +28,28 @@
 - Backend reads published graves from graves/
 - Full moderation workflow (approve/reject)
 - Report correction workflow
-- 24 backend tests (all passing)
-- graveatlas-data repository created and structured
-- All kubur-sg references renamed to graveatlas
 
-## Repositories
-- **GraveAtlas** (app + backend): `putraworks2026/GraveAtlas` (private)
-- **graveatlas-data** (database): `putraworks2026/graveatlas-data` (private)
+### GitHub App Configuration ✓
+- GitHub App "GraveAtlas Backend" created (App ID: 4533958)
+- Permissions: Contents (read/write), Metadata (read-only) only
+- Installed on putraworks2026/graveatlas-data (public repo)
+- PKCS#1/PKCS#8 private key compatibility fix applied
+- github-app-token.sh script added for automated token generation
+- Full documentation in docs/GITHUB-APP.md
 
-## Still Missing
-- Cloudflare Worker deployment (requires Cloudflare account)
-- GitHub App creation and private key
-- Cloudflare secrets (GITHUB_APP_ID, GITHUB_PRIVATE_KEY, GITHUB_INSTALLATION_ID, ADMIN_TOKEN)
-- Map SDK integration (OSM or Google Maps)
-- Photo capture and upload
-- User authentication
-- Rate limiting with Cloudflare KV
-- Search index generation
+### Android Build ✓
+- APK build #7 successful (v1.0.1, build 7)
+- Signed release APK available
+- GitHub Actions CI/CD operational
+- Latest APK: https://github.com/putraworks2026/GraveAtlas/releases/tag/v1.0.1-b7
 
-## Secrets Required (via `wrangler secret put`)
-1. GITHUB_APP_ID
-2. GITHUB_PRIVATE_KEY
-3. GITHUB_INSTALLATION_ID
-4. ADMIN_TOKEN
+## Pending
 
-## Next Steps
-1. Create GitHub App (Settings → Developer settings → GitHub Apps)
-2. Deploy Cloudflare Worker (`cd backend && npx wrangler deploy`)
-3. Set Cloudflare secrets
-4. Configure Android API base URL in Settings
-5. Phase 3: Map SDK, photo upload, user auth
+### Cloudflare Deployment (Next Step)
+- Set Cloudflare Worker secrets (GITHUB_APP_ID, GITHUB_PRIVATE_KEY, GITHUB_INSTALLATION_ID, ADMIN_TOKEN)
+- Deploy Worker with `wrangler deploy`
+- Run safe test procedure (see docs/GITHUB-APP.md)
+- Verify end-to-end flow: Android → Worker → GitHub → pending/
+
+## Known Issues
+- None
