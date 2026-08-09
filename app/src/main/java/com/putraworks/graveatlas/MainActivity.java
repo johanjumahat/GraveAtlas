@@ -787,6 +787,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         int id = item.getItemId();
+        if (id == android.R.id.home) { finish(); return true; }
         if (id == R.id.action_api_key) { showApiKeyDialog(); return true; }
         if (id == R.id.action_clear_chat) {
             adapter.clear();

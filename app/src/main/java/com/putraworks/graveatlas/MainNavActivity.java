@@ -38,6 +38,8 @@ import com.putraworks.graveatlas.ui.settings.SettingsFragment;
 public class MainNavActivity extends AppCompatActivity {
 
     private BottomNavigationView bottomNav;
+    private boolean suppressNavListener = false;
+    private Fragment currentFragment;
 
     private static final String PREFS_NAME = "graveatlas_settings";
     private static final String KEY_API_URL = "api_url";
@@ -60,6 +62,7 @@ public class MainNavActivity extends AppCompatActivity {
         }
 
         bottomNav.setOnItemSelectedListener(item -> {
+            if (suppressNavListener) return true;
             int id = item.getItemId();
             if (id == R.id.nav_home) {
                 loadFragment(new HomeFragment());
@@ -84,46 +87,57 @@ public class MainNavActivity extends AppCompatActivity {
         dialog.setContentView(sheetView);
 
         sheetView.findViewById(R.id.moreAdd).setOnClickListener(v -> {
-            loadFragment(new AddGraveFragment());
-            bottomNav.setSelectedItemId(R.id.nav_home);
             dialog.dismiss();
+            loadFragment(new AddGraveFragment());
+            selectHomeTabSilently();
         });
 
         sheetView.findViewById(R.id.moreMine).setOnClickListener(v -> {
-            loadFragment(new ContributeFragment());
-            bottomNav.setSelectedItemId(R.id.nav_home);
             dialog.dismiss();
+            loadFragment(new ContributeFragment());
+            selectHomeTabSilently();
         });
 
         sheetView.findViewById(R.id.moreCemetery).setOnClickListener(v -> {
-            loadFragment(new CemeteryFragment());
-            bottomNav.setSelectedItemId(R.id.nav_home);
             dialog.dismiss();
+            loadFragment(new CemeteryFragment());
+            selectHomeTabSilently();
         });
 
         sheetView.findViewById(R.id.moreCompass).setOnClickListener(v -> {
-            startActivity(new Intent(this, CompassActivity.class));
             dialog.dismiss();
+            startActivity(new Intent(this, CompassActivity.class));
         });
 
         sheetView.findViewById(R.id.moreChat).setOnClickListener(v -> {
-            startActivity(new Intent(this, MainActivity.class));
             dialog.dismiss();
+            startActivity(new Intent(this, MainActivity.class));
         });
 
         sheetView.findViewById(R.id.moreSettings).setOnClickListener(v -> {
-            loadFragment(new SettingsFragment());
-            bottomNav.setSelectedItemId(R.id.nav_home);
             dialog.dismiss();
+            loadFragment(new SettingsFragment());
+            selectHomeTabSilently();
         });
 
         sheetView.findViewById(R.id.moreAbout).setOnClickListener(v -> {
-            loadFragment(new AboutFragment());
-            bottomNav.setSelectedItemId(R.id.nav_home);
             dialog.dismiss();
+            loadFragment(new AboutFragment());
+            selectHomeTabSilently();
         });
 
         dialog.show();
+    }
+
+    /**
+     * Selects the Home tab in the bottom nav without triggering the
+     * OnItemSelectedListener (which would overwrite the fragment we
+     * just loaded with a fresh HomeFragment).
+     */
+    private void selectHomeTabSilently() {
+        suppressNavListener = true;
+        bottomNav.setSelectedItemId(R.id.nav_home);
+        suppressNavListener = false;
     }
 
     private void loadSavedApiUrl() {
@@ -135,6 +149,7 @@ public class MainNavActivity extends AppCompatActivity {
     }
 
     public void loadFragment(Fragment fragment) {
+        currentFragment = fragment;
         FragmentManager fm = getSupportFragmentManager();
         FragmentTransaction tx = fm.beginTransaction();
         tx.replace(R.id.fragment_container, fragment);
@@ -143,11 +158,25 @@ public class MainNavActivity extends AppCompatActivity {
 
     public void navigateToSettings() {
         loadFragment(new SettingsFragment());
-        bottomNav.setSelectedItemId(R.id.nav_home);
+        selectHomeTabSilently();
     }
 
     public void navigateToAbout() {
         loadFragment(new AboutFragment());
-        bottomNav.setSelectedItemId(R.id.nav_home);
+        selectHomeTabSilently();
+    }
+
+    /**
+     * Back button: if not on Home, go to Home. If on Home, exit app.
+     * This prevents the app from closing immediately when on a sub-page.
+     */
+    @Override
+    public void onBackPressed() {
+        if (currentFragment instanceof HomeFragment) {
+            super.onBackPressed();
+        } else {
+            loadFragment(new HomeFragment());
+            selectHomeTabSilently();
+        }
     }
 }
