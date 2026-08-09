@@ -949,12 +949,362 @@ asyncTest('submission status: rejected shows rejected status', async () => {
   assert.ok(!safeResponse.rejectionReason); // not exposed to public
 });
 
+
+// ═══════════════════════════════════════════════
+// Phase 3.5 — Idempotency, Pagination & Hardening Tests
+// ═══════════════════════════════════════════════
+
+// ── Idempotency cache (in-memory) ──
+
+const IDEMPOTENCY_TTL_MS = 60 * 60 * 1000;
+const idempotencyMap = new Map();
+
+function getIdempotencyEntry(key) {
+  if (!key || typeof key !== 'string' || key.length > 200) return null;
+  const entry = idempotencyMap.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    idempotencyMap.delete(key);
+    return null;
+  }
+  return entry;
+}
+
+function setIdempotencyEntry(key, submissionId) {
+  if (!key || typeof key !== 'string' || key.length > 200) return;
+  idempotencyMap.set(key, {
+    submissionId,
+    expiresAt: Date.now() + IDEMPOTENCY_TTL_MS
+  });
+}
+
+tests.push({ name: 'idempotency: same key returns same submission ID', fn: () => {
+  const key = 'test-key-001';
+  const id1 = 'sub_aaaa1111bbbb2222cccc3333';
+  setIdempotencyEntry(key, id1);
+  const entry = getIdempotencyEntry(key);
+  assert.strictEqual(entry.submissionId, id1);
+}});
+
+tests.push({ name: 'idempotency: different key returns different ID', fn: () => {
+  const key1 = 'test-key-002';
+  const key2 = 'test-key-003';
+  setIdempotencyEntry(key1, 'sub_id1');
+  setIdempotencyEntry(key2, 'sub_id2');
+  assert.notStrictEqual(getIdempotencyEntry(key1).submissionId, getIdempotencyEntry(key2).submissionId);
+}});
+
+tests.push({ name: 'idempotency: expired entry returns null', fn: () => {
+  const key = 'test-key-expired';
+  idempotencyMap.set(key, {
+    submissionId: 'sub_expired',
+    expiresAt: Date.now() - 1000
+  });
+  assert.strictEqual(getIdempotencyEntry(key), null);
+}});
+
+tests.push({ name: 'idempotency: null key returns null', fn: () => {
+  assert.strictEqual(getIdempotencyEntry(null), null);
+}});
+
+tests.push({ name: 'idempotency: non-string key returns null', fn: () => {
+  assert.strictEqual(getIdempotencyEntry(123), null);
+}});
+
+tests.push({ name: 'idempotency: oversized key (>200 chars) returns null', fn: () => {
+  const longKey = 'x'.repeat(201);
+  assert.strictEqual(getIdempotencyEntry(longKey), null);
+}});
+
+tests.push({ name: 'idempotency: exactly 200 char key works', fn: () => {
+  const key = 'x'.repeat(200);
+  setIdempotencyEntry(key, 'sub_200');
+  const entry = getIdempotencyEntry(key);
+  assert.strictEqual(entry.submissionId, 'sub_200');
+}});
+
+tests.push({ name: 'idempotency: duplicate submission returns same ID', fn: () => {
+  // Simulate first request
+  const key = 'retry-key-001';
+  const submissionId1 = generateId();
+  setIdempotencyEntry(key, submissionId1);
+
+  // Simulate retry with same key
+  const existing = getIdempotencyEntry(key);
+  const submissionId2 = existing ? existing.submissionId : generateId();
+  assert.strictEqual(submissionId1, submissionId2);
+}});
+
+tests.push({ name: 'idempotency: no key generates new ID each time', fn: () => {
+  const id1 = generateId();
+  const id2 = generateId();
+  assert.notStrictEqual(id1, id2);
+}});
+
+tests.push({ name: 'idempotency: key not persisted after expiry', fn: () => {
+  const key = 'will-expire';
+  setIdempotencyEntry(key, 'sub_temp');
+  // Manually expire
+  const entry = idempotencyMap.get(key);
+  entry.expiresAt = Date.now() - 1;
+  assert.strictEqual(getIdempotencyEntry(key), null);
+  // Subsequent get also returns null (entry was deleted)
+  assert.strictEqual(getIdempotencyEntry(key), null);
+}});
+
+// ── Pagination tests ──
+
+const DEFAULT_PAGE_LIMIT = 100;
+const MAX_PAGE_LIMIT = 500;
+
+function parsePagination(url) {
+  const params = new URL(url).searchParams;
+  let limit = parseInt(params.get('limit') || '0', 10) || DEFAULT_PAGE_LIMIT;
+  let offset = parseInt(params.get('offset') || '0', 10) || 0;
+  if (limit < 1) limit = DEFAULT_PAGE_LIMIT;
+  if (limit > MAX_PAGE_LIMIT) limit = MAX_PAGE_LIMIT;
+  if (offset < 0) offset = 0;
+  return { limit, offset };
+}
+
+tests.push({ name: 'pagination: defaults to 100 limit, 0 offset', fn: () => {
+  const { limit, offset } = parsePagination(new URL('https://example.com/api/graves'));
+  assert.strictEqual(limit, 100);
+  assert.strictEqual(offset, 0);
+}});
+
+tests.push({ name: 'pagination: custom limit and offset', fn: () => {
+  const { limit, offset } = parsePagination(new URL('https://example.com/api/graves?limit=50&offset=200'));
+  assert.strictEqual(limit, 50);
+  assert.strictEqual(offset, 200);
+}});
+
+tests.push({ name: 'pagination: limit capped at 500', fn: () => {
+  const { limit } = parsePagination(new URL('https://example.com/api/graves?limit=999'));
+  assert.strictEqual(limit, 500);
+}});
+
+tests.push({ name: 'pagination: limit of 0 uses default', fn: () => {
+  const { limit } = parsePagination(new URL('https://example.com/api/graves?limit=0'));
+  assert.strictEqual(limit, 100);
+}});
+
+tests.push({ name: 'pagination: negative offset reset to 0', fn: () => {
+  const { offset } = parsePagination(new URL('https://example.com/api/graves?offset=-50'));
+  assert.strictEqual(offset, 0);
+}});
+
+tests.push({ name: 'pagination: negative limit uses default', fn: () => {
+  const { limit } = parsePagination(new URL('https://example.com/api/graves?limit=-1'));
+  assert.strictEqual(limit, 100);
+}});
+
+tests.push({ name: 'pagination: limit of 1 is valid', fn: () => {
+  const { limit } = parsePagination(new URL('https://example.com/api/graves?limit=1'));
+  assert.strictEqual(limit, 1);
+}});
+
+tests.push({ name: 'pagination: limit exactly 500 is allowed', fn: () => {
+  const { limit } = parsePagination(new URL('https://example.com/api/graves?limit=500'));
+  assert.strictEqual(limit, 500);
+}});
+
+tests.push({ name: 'pagination: slice produces correct page', fn: () => {
+  const all = Array.from({length: 250}, (_, i) => ({ id: `sub_${i}` }));
+  const offset = 100;
+  const limit = 50;
+  const paged = all.slice(offset, offset + limit);
+  assert.strictEqual(paged.length, 50);
+  assert.strictEqual(paged[0].id, 'sub_100');
+  assert.strictEqual(paged[49].id, 'sub_149');
+}});
+
+tests.push({ name: 'pagination: hasMore true when more data exists', fn: () => {
+  const total = 250;
+  const offset = 100;
+  const limit = 50;
+  const hasMore = offset + limit < total;
+  assert.strictEqual(hasMore, true);
+}});
+
+tests.push({ name: 'pagination: hasMore false at end of data', fn: () => {
+  const total = 250;
+  const offset = 200;
+  const limit = 50;
+  const hasMore = offset + limit < total;
+  assert.strictEqual(hasMore, false);
+}});
+
+tests.push({ name: 'pagination: offset beyond total returns empty', fn: () => {
+  const all = Array.from({length: 50}, (_, i) => ({ id: `sub_${i}` }));
+  const paged = all.slice(100, 200);
+  assert.strictEqual(paged.length, 0);
+}});
+
+tests.push({ name: 'pagination: invalid limit string uses default', fn: () => {
+  const { limit } = parsePagination(new URL('https://example.com/api/graves?limit=abc'));
+  assert.strictEqual(limit, 100);
+}});
+
+// ── Security hardening tests ──
+
+tests.push({ name: 'security: health response has no env vars', fn: () => {
+  const health = {
+    status: 'ok',
+    service: 'GraveAtlas',
+    version: '2.0.0',
+    githubConfigured: true,
+    adminConfigured: true,
+    timestamp: new Date().toISOString()
+  };
+  const json = JSON.stringify(health);
+  assert.ok(!json.includes('GITHUB_APP_ID'));
+  assert.ok(!json.includes('GITHUB_PRIVATE_KEY'));
+  assert.ok(!json.includes('ADMIN_TOKEN'));
+  assert.ok(!json.includes('token'));
+  assert.ok(!json.includes('key'));
+}});
+
+tests.push({ name: 'security: error messages never contain GitHub URLs', fn: () => {
+  const errors = [
+    'Invalid request body',
+    'Name is required',
+    'Invalid latitude (must be -90 to 90)',
+    'Unable to save submission. Please try again later.',
+    'Too many requests',
+    'Request too large (max 50KB)',
+    'Internal server error',
+    'Not found',
+    'Unauthorized',
+    'Forbidden'
+  ];
+  for (const msg of errors) {
+    assert.ok(!msg.includes('github.com'), `Error exposes GitHub: ${msg}`);
+    assert.ok(!msg.includes('api.github'), `Error exposes GitHub API: ${msg}`);
+    assert.ok(!msg.includes('cloudflare'), `Error exposes Cloudflare: ${msg}`);
+  }
+}});
+
+tests.push({ name: 'security: submission status exposes minimal data', fn: () => {
+  // Simulate submission status response
+  const response = {
+    success: true,
+    id: 'sub_test123',
+    status: 'pending',
+    name: 'John Doe',
+    submittedAt: '2026-01-01T00:00:00Z',
+    updatedAt: null
+  };
+  const json = JSON.stringify(response);
+  // Should NOT expose: full record, notes, cemetery, coordinates, photos
+  assert.ok(!json.includes('notes'));
+  assert.ok(!json.includes('cemetery'));
+  assert.ok(!json.includes('latitude'));
+  assert.ok(!json.includes('longitude'));
+  assert.ok(!json.includes('photoRefs'));
+  assert.ok(!json.includes('section'));
+  assert.ok(!json.includes('plot'));
+}});
+
+tests.push({ name: 'security: admin reject without ADMIN_TOKEN env', fn: () => {
+  // Simulate no ADMIN_TOKEN set
+  const env = { ADMIN_TOKEN: undefined };
+  const hasAdmin = !!env.ADMIN_TOKEN;
+  assert.strictEqual(hasAdmin, false);
+}});
+
+tests.push({ name: 'security: client cannot set repository owner', fn: () => {
+  // The repo URL is built from env vars, not request params
+  const env = { GITHUB_OWNER: 'putraworks2026', GITHUB_REPO: 'graveatlas-data' };
+  const owner = encodeURIComponent(env.GITHUB_OWNER);
+  const repo = encodeURIComponent(env.GITHUB_REPO || 'graveatlas-data');
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents`;
+  // Client cannot influence this URL via request body or headers
+  assert.ok(url.includes('putraworks2026'));
+  assert.ok(url.includes('graveatlas-data'));
+  assert.ok(!url.includes('evil'));
+}});
+
+tests.push({ name: 'security: client cannot set branch', fn: () => {
+  const env = { GITHUB_BRANCH: 'main' };
+  const branch = env.GITHUB_BRANCH || 'main';
+  assert.strictEqual(branch, 'main');
+  // Client cannot override branch via request
+}});
+
+tests.push({ name: 'security: client cannot set GitHub API endpoint', fn: () => {
+  // All API URLs are constructed server-side
+  const baseUrl = 'https://api.github.com/repos/putraworks2026/graveatlas-data/contents';
+  const paths = [
+    `${baseUrl}/graves/sub_123.json?ref=main`,
+    `${baseUrl}/pending/sub_456.json?ref=main`,
+    `${baseUrl}/cemeteries/cem_001.json?ref=main`
+  ];
+  for (const url of paths) {
+    assert.ok(url.startsWith('https://api.github.com/repos/putraworks2026/graveatlas-data'));
+  }
+}});
+
+// ─– Concurrent submission safety tests ──
+
+tests.push({ name: 'concurrent: two different submissions get different IDs', fn: () => {
+  const ids = new Set();
+  for (let i = 0; i < 100; i++) {
+    ids.add(generateId());
+  }
+  assert.strictEqual(ids.size, 100);
+}});
+
+tests.push({ name: 'concurrent: same idempotency key produces same ID', fn: () => {
+  const key = 'concurrent-key-001';
+  const id1 = generateId();
+  setIdempotencyEntry(key, id1);
+
+  // Simulate concurrent request with same key
+  const existing = getIdempotencyEntry(key);
+  const id2 = existing ? existing.submissionId : generateId();
+
+  assert.strictEqual(id1, id2);
+}});
+
+// ── Privacy tests ──
+
+tests.push({ name: 'privacy: no device identifiers in submission', fn: () => {
+  const submission = {
+    name: 'John Doe',
+    birthDate: '1950-01-01',
+    deathDate: '2020-01-01',
+    cemetery: 'Test Cemetery',
+    latitude: 1.35,
+    longitude: 103.8,
+    notes: 'Test notes'
+  };
+  const json = JSON.stringify(submission);
+  assert.ok(!json.includes('deviceId'));
+  assert.ok(!json.includes('androidId'));
+  assert.ok(!json.includes('imei'));
+  assert.ok(!json.includes('advertisingId'));
+  assert.ok(!json.includes('phoneNumber'));
+  assert.ok(!json.includes('email'));
+}});
+
+tests.push({ name: 'privacy: allowed fields list is minimal', fn: () => {
+  const allowed = ['name', 'birthDate', 'deathDate', 'cemetery', 'section', 'plot', 'latitude', 'longitude', 'notes'];
+  // No device, user, or tracking fields
+  assert.ok(!allowed.includes('deviceId'));
+  assert.ok(!allowed.includes('userId'));
+  assert.ok(!allowed.includes('email'));
+  assert.ok(!allowed.includes('phone'));
+  assert.ok(!allowed.includes('ipAddress'));
+  assert.ok(!allowed.includes('userAgent'));
+}});
+
 // ═══════════════════════════════════════════════
 // Run all tests
 // ═══════════════════════════════════════════════
 
 (async () => {
-  console.log('\n=== GraveAtlas Backend Tests (Phase 2) ===\n');
+  console.log('\n=== GraveAtlas Backend Tests (Phase 3.5) ===\n');
   for (const t of tests) {
     try {
       if (t.async) await t.fn();

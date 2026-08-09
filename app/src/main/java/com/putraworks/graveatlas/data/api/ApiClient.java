@@ -11,6 +11,7 @@ import org.json.JSONObject;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.Call;
@@ -98,8 +99,12 @@ public class ApiClient {
     // ── Graves ──
 
     public void getGraves(final ApiCallback<List<GraveRecord>> callback) {
+        getGraves(0, 100, callback);
+    }
+
+    public void getGraves(int offset, int limit, final ApiCallback<List<GraveRecord>> callback) {
         Request request = new Request.Builder()
-                .url(baseUrl + "/api/graves")
+                .url(baseUrl + "/api/graves?offset=" + offset + "&limit=" + limit)
                 .get()
                 .build();
 
@@ -167,8 +172,12 @@ public class ApiClient {
     // ── Cemeteries ──
 
     public void getCemeteries(final ApiCallback<List<CemeteryRecord>> callback) {
+        getCemeteries(0, 100, callback);
+    }
+
+    public void getCemeteries(int offset, int limit, final ApiCallback<List<CemeteryRecord>> callback) {
         Request request = new Request.Builder()
-                .url(baseUrl + "/api/cemeteries")
+                .url(baseUrl + "/api/cemeteries?offset=" + offset + "&limit=" + limit)
                 .get()
                 .build();
 
@@ -235,6 +244,10 @@ public class ApiClient {
     // ── Submission ──
 
     public void submitGrave(GraveSubmission submission, final ApiCallback<SubmissionResponse> callback) {
+        submitGraveWithKey(submission, UUID.randomUUID().toString(), callback);
+    }
+
+    public void submitGraveWithKey(GraveSubmission submission, String idempotencyKey, final ApiCallback<SubmissionResponse> callback) {
         try {
             JSONObject json = new JSONObject();
             if (submission.name != null) json.put("name", submission.name);
@@ -252,6 +265,7 @@ public class ApiClient {
             RequestBody body = RequestBody.create(json.toString(), JSON);
             Request request = new Request.Builder()
                     .url(baseUrl + "/api/graves")
+                    .header("Idempotency-Key", idempotencyKey)
                     .post(body)
                     .build();
 

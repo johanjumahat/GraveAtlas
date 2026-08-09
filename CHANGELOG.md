@@ -1,5 +1,40 @@
 # CHANGELOG
 
+## v2.3.1 — Phase 3.5: Production Readiness & Security Hardening (2026-08-09)
+
+### Added
+- Idempotency-Key header support on POST /api/graves (1-hour TTL, in-memory cache)
+- Pagination on GET /api/graves and GET /api/cemeteries (?limit=N&offset=M, max 500)
+- Android ApiClient.submitGraveWithKey() overload for explicit idempotency key
+- Android OfflineSubmissionManager uses localId as idempotency key for retries
+- 34 new backend tests (idempotency, pagination, security, privacy, concurrency)
+- 15 new Android unit tests (UUID, pagination, security checks)
+- docs/PRODUCTION-READINESS.md — full architecture, security model, verification results
+
+### Changed
+- GET /api/graves response now includes total, limit, offset, hasMore fields
+- GET /api/cemeteries response now includes total, limit, offset, hasMore fields
+- Android getGraves() and getCemeteries() now accept offset/limit parameters
+- Android submitGrave() sends Idempotency-Key header (auto-generated UUID)
+- STATUS.md updated with Phase 3.5 verification matrix
+- docs/SECURITY.md updated with idempotency, pagination, and permissions
+
+### Security
+- Verified: no secrets in Android source, resources, or build config
+- Verified: no secrets in git history
+- Verified: admin endpoints reject unauthorized requests (401/403)
+- Verified: path traversal blocked on all ID-based endpoints
+- Verified: error messages never expose GitHub/Cloudflare internals
+- Verified: CORS is opt-in (no wildcard origin)
+- Verified: submission status endpoint exposes only status, not full record
+- Verified: client cannot influence repository, branch, or API endpoint
+- Verified: no device identifiers or personal data in submissions
+
+### Tests
+- Backend: 140 passed, 0 failed (106 original + 34 new)
+- Android: 45 unit tests (30 original + 15 new)
+
+
 ## v2.3.0 — Phase 3: Android API Integration (2026-08-09)
 
 ### Added

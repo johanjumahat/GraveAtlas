@@ -27,6 +27,9 @@ const MAX_REPORT_LENGTH = 5000;
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
 const RATE_LIMIT_MAX_REQUESTS = 10; // per IP per window
 const ALLOWED_FIELDS = ['name', 'birthDate', 'deathDate', 'cemetery', 'section', 'plot', 'latitude', 'longitude', 'notes'];
+const DEFAULT_PAGE_LIMIT = 100;
+const MAX_PAGE_LIMIT = 500;
+const IDEMPOTENCY_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 // ── In-memory rate limiting (per Worker isolate) ──
 
@@ -57,6 +60,36 @@ function cleanupRateLimit() {
       rateLimitMap.delete(ip);
     }
   }
+}
+
+// ── In-memory idempotency cache (per Worker isolate) ──
+// Maps Idempotency-Key → { submissionId, timestamp }
+const idempotencyMap = new Map();
+
+function getIdempotencyEntry(key) {
+  if (!key || typeof key !== 'string' || key.length > 200) return null;
+  const entry = idempotencyMap.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    idempotencyMap.delete(key);
+    return null;
+  }
+  return entry;
+}
+
+function setIdempotencyEntry(key, submissionId) {
+  if (!key || typeof key !== 'string' || key.length > 200) return;
+  if (idempotencyMap.size > 1000) {
+    // Prevent unbounded growth — clear expired entries
+    const now = Date.now();
+    for (const [k, v] of idempotencyMap) {
+      if (now > v.expiresAt) idempotencyMap.delete(k);
+    }
+  }
+  idempotencyMap.set(key, {
+    submissionId,
+    expiresAt: Date.now() + IDEMPOTENCY_TTL_MS
+  });
 }
 
 export default {
@@ -199,6 +232,17 @@ function getClientIp(request) {
 
 // ── Handlers ──
 
+// ── Pagination parser ──
+function parsePagination(url) {
+  const params = url.searchParams;
+  let limit = parseInt(params.get('limit') || '0', 10) || DEFAULT_PAGE_LIMIT;
+  let offset = parseInt(params.get('offset') || '0', 10) || 0;
+  if (limit < 1) limit = DEFAULT_PAGE_LIMIT;
+  if (limit > MAX_PAGE_LIMIT) limit = MAX_PAGE_LIMIT;
+  if (offset < 0) offset = 0;
+  return { limit, offset };
+}
+
 async function handleHealth(request, env, cors) {
   const hasGithubConfig = !!(env.GITHUB_APP_ID && env.GITHUB_PRIVATE_KEY && env.GITHUB_INSTALLATION_ID);
   const hasAdminToken = !!env.ADMIN_TOKEN;
@@ -214,17 +258,23 @@ async function handleHealth(request, env, cors) {
 }
 
 async function handleGetGraves(request, env, cors) {
+  const { limit, offset } = parsePagination(new URL(request.url));
+
   if (!env.GITHUB_APP_ID) {
     return jsonResponse({
       success: true,
       graves: [],
+      count: 0,
+      limit,
+      offset,
+      hasMore: false,
       message: 'GitHub not configured. Deploy with secrets to enable data access.'
     }, 200, cors);
   }
 
   try {
     const files = await listFiles('graves', env);
-    const graves = [];
+    const allGraves = [];
 
     for (const file of files) {
       if (!file.endsWith('.json')) continue;
@@ -233,18 +283,35 @@ async function handleGetGraves(request, env, cors) {
         try {
           const record = JSON.parse(content);
           if (record.status === 'published') {
-            graves.push(record);
+            allGraves.push(record);
           }
         } catch (e) { /* skip invalid JSON */ }
       }
     }
 
-    return jsonResponse({ success: true, graves, count: graves.length }, 200, cors);
+    // Apply pagination
+    const total = allGraves.length;
+    const paged = allGraves.slice(offset, offset + limit);
+    const hasMore = offset + limit < total;
+
+    return jsonResponse({
+      success: true,
+      graves: paged,
+      count: paged.length,
+      total,
+      limit,
+      offset,
+      hasMore
+    }, 200, cors);
   } catch (error) {
     // GitHub upstream error — return safe message
     return jsonResponse({
       success: true,
       graves: [],
+      count: 0,
+      limit,
+      offset,
+      hasMore: false,
       message: 'Unable to fetch from data repository.'
     }, 200, cors);
   }
@@ -268,6 +335,19 @@ async function handleCreateGrave(request, env, cors) {
   const validation = validateSubmission(body);
   if (!validation.valid) {
     return jsonResponse({ success: false, error: validation.error }, 400, cors);
+  }
+
+  // Check idempotency key — if provided and seen before, return original response
+  const idempotencyKey = request.headers.get('Idempotency-Key');
+  if (idempotencyKey) {
+    const existing = getIdempotencyEntry(idempotencyKey);
+    if (existing) {
+      return jsonResponse({
+        success: true,
+        submissionId: existing.submissionId,
+        status: 'pending'
+      }, 201, cors);
+    }
   }
 
   // Generate submission ID using crypto-secure randomness
@@ -309,6 +389,11 @@ async function handleCreateGrave(request, env, cors) {
         error: 'Unable to save submission. Please try again later.'
       }, 502, cors);
     }
+  }
+
+  // Store idempotency entry for duplicate protection
+  if (idempotencyKey) {
+    setIdempotencyEntry(idempotencyKey, submissionId);
   }
 
   return jsonResponse({
@@ -394,17 +479,23 @@ async function handleReportGrave(id, request, env, cors) {
 // ── Cemetery Handlers ──
 
 async function handleGetCemeteries(request, env, cors) {
+  const { limit, offset } = parsePagination(new URL(request.url));
+
   if (!env.GITHUB_APP_ID) {
     return jsonResponse({
       success: true,
       cemeteries: [],
+      count: 0,
+      limit,
+      offset,
+      hasMore: false,
       message: 'GitHub not configured.'
     }, 200, cors);
   }
 
   try {
     const files = await listFiles('cemeteries', env);
-    const cemeteries = [];
+    const allCemeteries = [];
 
     for (const file of files) {
       if (!file.endsWith('.json')) continue;
@@ -413,17 +504,33 @@ async function handleGetCemeteries(request, env, cors) {
         try {
           const record = JSON.parse(content);
           if (record.status === 'published') {
-            cemeteries.push(record);
+            allCemeteries.push(record);
           }
         } catch (e) { /* skip invalid JSON */ }
       }
     }
 
-    return jsonResponse({ success: true, cemeteries, count: cemeteries.length }, 200, cors);
+    const total = allCemeteries.length;
+    const paged = allCemeteries.slice(offset, offset + limit);
+    const hasMore = offset + limit < total;
+
+    return jsonResponse({
+      success: true,
+      cemeteries: paged,
+      count: paged.length,
+      total,
+      limit,
+      offset,
+      hasMore
+    }, 200, cors);
   } catch (error) {
     return jsonResponse({
       success: true,
       cemeteries: [],
+      count: 0,
+      limit,
+      offset,
+      hasMore: false,
       message: 'Unable to fetch cemeteries.'
     }, 200, cors);
   }

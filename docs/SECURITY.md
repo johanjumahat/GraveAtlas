@@ -29,9 +29,12 @@
 - **Mitigation:** Only allowed directories: `pending/`, `graves/`
 
 ### Duplicate Submissions
+- **Mitigation:** Idempotency-Key header support on POST /api/graves (Phase 3.5)
+- **Mitigation:** In-memory idempotency cache (1-hour TTL, per Worker isolate)
 - **Mitigation:** Duplicate detection in GitHub Actions validation
 - **Mitigation:** Unique ID enforcement in schema validation
 - **Mitigation:** Crypto-secure ID generation prevents ID collisions
+- **Mitigation:** Android OfflineSubmissionManager uses stable localId as idempotency key for retries
 
 ### Invalid GPS Coordinates
 - **Mitigation:** Latitude range check (-90 to 90)
@@ -100,9 +103,12 @@ The app does NOT contain credentials in:
 
 The Android app requests only:
 - `INTERNET` — to communicate with the backend API
-- `ACCESS_FINE_LOCATION` — for GPS when adding graves (optional)
+- `ACCESS_FINE_LOCATION` — for GPS when adding graves (user-triggered, optional)
 - `ACCESS_COARSE_LOCATION` — fallback location
+- `RECORD_AUDIO` — AI Chat feature (existing)
 - `POST_NOTIFICATIONS` — for future notification features
+
+No permissions for: contacts, SMS, call logs, camera, storage, or background location.
 
 ## Secret Management
 
@@ -114,6 +120,13 @@ The Android app requests only:
 | ADMIN_TOKEN | Cloudflare secret | Backend Worker | No |
 | ALLOWED_ORIGIN | Cloudflare secret | Backend Worker | No |
 | API_BASE_URL | Android SharedPreferences | Android App | Not secret |
+
+## Pagination (Phase 3.5)
+
+GET endpoints support `?limit=N&offset=M`:
+- Default limit: 100, Maximum: 500
+- Response includes `total`, `count`, `limit`, `offset`, `hasMore`
+- Prevents unbounded data transfer as dataset grows
 
 ## What NOT to Do
 

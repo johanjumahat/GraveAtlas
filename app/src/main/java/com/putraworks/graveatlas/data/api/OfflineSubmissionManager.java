@@ -148,7 +148,8 @@ public class OfflineSubmissionManager {
         if (submission.plot != null && submission.plot.isEmpty()) submission.plot = null;
         if (submission.notes != null && submission.notes.isEmpty()) submission.notes = null;
 
-        apiClient.submitGrave(submission, new ApiClient.ApiCallback<com.putraworks.graveatlas.data.model.SubmissionResponse>() {
+        String idempotencyKey = item.optString("localId");
+        apiClient.submitGraveWithKey(submission, idempotencyKey, new ApiClient.ApiCallback<com.putraworks.graveatlas.data.model.SubmissionResponse>() {
             @Override
             public void onSuccess(com.putraworks.graveatlas.data.model.SubmissionResponse result) {
                 try {

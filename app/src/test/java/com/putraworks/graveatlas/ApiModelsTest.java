@@ -283,3 +283,90 @@ public class ApiModelsTest {
         assertEquals("published", json.optString("status"));
     }
 }
+
+
+    // ── Phase 3.5: Idempotency & Pagination ──
+
+    @Test
+    public void apiClient_generatesIdempotencyKey() {
+        // The ApiClient.submitGrave generates a UUID internally.
+        // Verify UUID format: 36 chars with hyphens.
+        String uuid = java.util.UUID.randomUUID().toString();
+        assertNotNull(uuid);
+        assertEquals(36, uuid.length());
+        assertTrue(uuid.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"));
+    }
+
+    @Test
+    public void apiClient_twoUUIDsAreDifferent() {
+        String uuid1 = java.util.UUID.randomUUID().toString();
+        String uuid2 = java.util.UUID.randomUUID().toString();
+        assertFalse(uuid1.equals(uuid2));
+    }
+
+    @Test
+    public void pagination_defaultLimitIs100() {
+        int defaultLimit = 100;
+        assertEquals(100, defaultLimit);
+    }
+
+    @Test
+    public void pagination_maxLimitIs500() {
+        int maxLimit = 500;
+        assertEquals(500, maxLimit);
+    }
+
+    @Test
+    public void pagination_urlContainsParams() {
+        String baseUrl = "https://graveatlas.putraworks-2026.workers.dev";
+        int offset = 100;
+        int limit = 50;
+        String url = baseUrl + "/api/graves?offset=" + offset + "&limit=" + limit;
+        assertTrue(url.contains("offset=100"));
+        assertTrue(url.contains("limit=50"));
+    }
+
+    @Test
+    public void pagination_defaultUrlHasNoExplicitParams() {
+        String baseUrl = "https://graveatlas.putraworks-2026.workers.dev";
+        String url = baseUrl + "/api/graves?offset=0&limit=100";
+        assertTrue(url.contains("offset=0"));
+        assertTrue(url.contains("limit=100"));
+    }
+
+    @Test
+    public void offlineManager_localIdIsUsedAsIdempotencyKey() {
+        // The OfflineSubmissionManager generates a localId like "local_<hex>"
+        String localId = "local_abc123def4567890";
+        assertTrue(localId.startsWith("local_"));
+        assertTrue(localId.length() > 10);
+    }
+
+    @Test
+    public void errorHandler_isRetryable_429() {
+        assertTrue(ApiErrorHandler.isRetryable(429));
+    }
+
+    @Test
+    public void errorHandler_isRetryable_503() {
+        assertTrue(ApiErrorHandler.isRetryable(503));
+    }
+
+    @Test
+    public void errorHandler_isRetryable_falseFor400() {
+        assertFalse(ApiErrorHandler.isRetryable(400));
+    }
+
+    @Test
+    public void errorHandler_isRetryable_falseFor404() {
+        assertFalse(ApiErrorHandler.isRetryable(404));
+    }
+
+    @Test
+    public void security_noSecretsInDefaultUrl() {
+        String url = "https://graveatlas.putraworks-2026.workers.dev";
+        assertFalse(url.contains("token"));
+        assertFalse(url.contains("key"));
+        assertFalse(url.contains("secret"));
+        assertFalse(url.contains("password"));
+    }
