@@ -67,7 +67,7 @@
                 android:layout_height="36dp"
                 android:src="@drawable/ic_more_add"
                 android:background="@android:color/transparent"
-                android:tint="@color/gold"
+                app:tint="@color/gold"
                 android:scaleType="centerInside"
                 android:padding="2dp"
                 android:clickable="false" android:focusable="false" />
@@ -99,7 +99,7 @@
                 android:layout_height="36dp"
                 android:src="@drawable/ic_more_mine"
                 android:background="@android:color/transparent"
-                android:tint="@color/gold"
+                app:tint="@color/gold"
                 android:scaleType="centerInside"
                 android:padding="2dp"
                 android:clickable="false" android:focusable="false" />
@@ -131,7 +131,7 @@
                 android:layout_height="36dp"
                 android:src="@drawable/ic_more_cemetery"
                 android:background="@android:color/transparent"
-                android:tint="@color/gold"
+                app:tint="@color/gold"
                 android:scaleType="centerInside"
                 android:padding="2dp"
                 android:clickable="false" android:focusable="false" />
@@ -163,7 +163,7 @@
                 android:layout_height="36dp"
                 android:src="@drawable/ic_more_compass"
                 android:background="@android:color/transparent"
-                android:tint="@color/gold"
+                app:tint="@color/gold"
                 android:scaleType="centerInside"
                 android:padding="2dp"
                 android:clickable="false" android:focusable="false" />
@@ -224,7 +224,7 @@
                 android:layout_height="36dp"
                 android:src="@drawable/ic_more_chat"
                 android:background="@android:color/transparent"
-                android:tint="@color/gold"
+                app:tint="@color/gold"
                 android:scaleType="centerInside"
                 android:padding="2dp"
                 android:clickable="false" android:focusable="false" />
@@ -256,7 +256,7 @@
                 android:layout_height="36dp"
                 android:src="@drawable/ic_more_settings"
                 android:background="@android:color/transparent"
-                android:tint="@color/gold"
+                app:tint="@color/gold"
                 android:scaleType="centerInside"
                 android:padding="2dp"
                 android:clickable="false" android:focusable="false" />
@@ -288,7 +288,7 @@
                 android:layout_height="36dp"
                 android:src="@drawable/ic_more_about"
                 android:background="@android:color/transparent"
-                android:tint="@color/gold"
+                app:tint="@color/gold"
                 android:scaleType="centerInside"
                 android:padding="2dp"
                 android:clickable="false" android:focusable="false" />

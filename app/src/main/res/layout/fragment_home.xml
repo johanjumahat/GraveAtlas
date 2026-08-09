@@ -134,7 +134,7 @@
                     android:layout_width="36dp"
                     android:layout_height="36dp"
                     android:src="@drawable/ic_nav_search"
-                    android:tint="@color/gold"
+                    app:tint="@color/gold"
                     android:scaleType="centerInside"
                     android:clickable="false" android:focusable="false" />
                 <TextView
@@ -165,7 +165,7 @@
                     android:layout_width="36dp"
                     android:layout_height="36dp"
                     android:src="@drawable/ic_nav_map"
-                    android:tint="@color/gold"
+                    app:tint="@color/gold"
                     android:scaleType="centerInside"
                     android:clickable="false" android:focusable="false" />
                 <TextView
@@ -204,7 +204,7 @@
                     android:layout_width="36dp"
                     android:layout_height="36dp"
                     android:src="@drawable/ic_more_add"
-                    android:tint="@color/gold"
+                    app:tint="@color/gold"
                     android:scaleType="centerInside"
                     android:clickable="false" android:focusable="false" />
                 <TextView
@@ -235,7 +235,7 @@
                     android:layout_width="36dp"
                     android:layout_height="36dp"
                     android:src="@drawable/ic_more_chat"
-                    android:tint="@color/gold"
+                    app:tint="@color/gold"
                     android:scaleType="centerInside"
                     android:clickable="false" android:focusable="false" />
                 <TextView
