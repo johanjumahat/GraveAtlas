@@ -1,6 +1,6 @@
 # GraveAtlas API Documentation
 
-Base URL: `https://graveatlas-backend.YOUR-SUBDOMAIN.workers.dev`
+Base URL: `https://graveatlas.putraworks-2026.workers.dev`
 
 ## Public Endpoints
 
@@ -11,7 +11,7 @@ Returns API metadata.
 ```json
 {
   "name": "GraveAtlas API",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "status": "operational"
 }
 ```
@@ -19,13 +19,17 @@ Returns API metadata.
 ---
 
 ### GET /api/health
-Health check endpoint.
+Health check endpoint. Does not expose secrets.
 
 **Response:** `200 OK`
 ```json
 {
-  "status": "healthy",
-  "timestamp": "2024-01-01T00:00:00.000Z"
+  "status": "ok",
+  "service": "GraveAtlas",
+  "version": "2.0.0",
+  "githubConfigured": true,
+  "adminConfigured": true,
+  "timestamp": "2026-01-01T00:00:00.000Z"
 }
 ```
 
@@ -40,7 +44,7 @@ List all published graves.
   "success": true,
   "graves": [
     {
-      "id": "abc12345",
+      "id": "sub_abc123",
       "name": "John Doe",
       "birthDate": "1950-01-01",
       "deathDate": "2020-06-15",
@@ -49,21 +53,22 @@ List all published graves.
       "plot": "123",
       "latitude": 1.3521,
       "longitude": 103.8198,
-      "photoRefs": ["photos/abc12345_1.jpg"],
+      "photoRefs": null,
       "notes": "Additional info",
       "source": "user_submission",
       "status": "published",
-      "submittedAt": "2024-01-01T00:00:00Z",
-      "updatedAt": "2024-01-02T00:00:00Z"
+      "submittedAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-02T00:00:00Z"
     }
-  ]
+  ],
+  "count": 1
 }
 ```
 
 ---
 
 ### POST /api/graves
-Submit a new grave record. Submissions enter "pending" state — NOT immediately public.
+Submit a new grave record. Submissions enter "pending" state — NOT immediately public. Rate-limited: 10 requests/minute/IP.
 
 **Request:**
 ```json
@@ -84,49 +89,46 @@ Submit a new grave record. Submissions enter "pending" state — NOT immediately
 
 **Optional fields:** `birthDate`, `deathDate`, `cemetery`, `section`, `plot`, `latitude`, `longitude`, `notes`
 
+**Allowed fields only:** Fields not in the above list are rejected.
+
 **Validation rules:**
-- `name`: required, max 500 chars
-- `latitude`: must be -90 to 90
-- `longitude`: must be -180 to 180
-- `birthDate`/`deathDate`: must be YYYY-MM-DD format
+- `name`: required, string, max 500 chars
+- `latitude`: number, -90 to 90
+- `longitude`: number, -180 to 180
+- `birthDate`/`deathDate`: YYYY-MM-DD format
 - Total request size: max 50KB
+- Per-field length: max 2000 chars (except name: 500)
 
 **Response:** `201 Created`
 ```json
 {
   "success": true,
-  "submissionId": "sub_abc12345",
+  "submissionId": "sub_a1b2c3d4e5f6",
   "status": "pending"
 }
 ```
 
 **Error responses:**
 
-`400 Bad Request`
-```json
-{
-  "success": false,
-  "error": "Name is required"
-}
-```
+| Code | Error |
+|------|-------|
+| 400 | Invalid JSON body |
+| 400 | Name is required |
+| 400 | Invalid latitude (must be -90 to 90) |
+| 400 | Invalid longitude (must be -180 to 180) |
+| 400 | Invalid birthDate format (use YYYY-MM-DD) |
+| 400 | Request too large (max 50KB) |
+| 400 | Invalid request (unexpected field) |
+| 413 | Request too large (max 50KB) |
+| 429 | Too many requests |
+| 502 | Unable to save submission (GitHub upstream error) |
 
 ---
 
 ### GET /api/graves/:id
-Get a single published grave by ID.
+Get a single published grave by ID. ID is sanitized to prevent path traversal.
 
-**Response:** `200 OK`
-```json
-{
-  "id": "abc12345",
-  "name": "John Doe",
-  "birthDate": "1950-01-01",
-  "deathDate": "2020-06-15",
-  "cemetery": "Choa Chu Kang Cemetery",
-  "status": "published",
-  "submittedAt": "2024-01-01T00:00:00Z"
-}
-```
+**Response:** `200 OK` — Grave record JSON
 
 `404 Not Found`
 ```json
@@ -139,7 +141,7 @@ Get a single published grave by ID.
 ---
 
 ### POST /api/graves/:id/report
-Report a correction or issue with a grave record.
+Report a correction or issue with a grave record. Rate-limited: 10 requests/minute/IP.
 
 **Request:**
 ```json
@@ -160,38 +162,86 @@ Report a correction or issue with a grave record.
 
 ## Admin Endpoints (Protected)
 
-These endpoints require a Bearer token in the Authorization header. Not exposed publicly in Phase 1.
+All admin endpoints require `Authorization: Bearer <ADMIN_TOKEN>` header.
 
 ### GET /api/admin/submissions
-List pending submissions.
-
-**Headers:** `Authorization: Bearer <ADMIN_TOKEN>`
+List pending submissions (excludes reports).
 
 **Response:** `200 OK`
 ```json
 {
   "success": true,
-  "submissions": []
+  "submissions": [],
+  "count": 0
+}
+```
+
+---
+
+### GET /api/admin/reports
+List pending correction reports.
+
+**Response:** `200 OK`
+```json
+{
+  "success": true,
+  "reports": [],
+  "count": 0
+}
+```
+
+---
+
+### GET /api/admin/status
+System status and data counts.
+
+**Response:** `200 OK`
+```json
+{
+  "success": true,
+  "status": {
+    "githubConfigured": true,
+    "adminConfigured": true,
+    "pendingSubmissions": 3,
+    "publishedGraves": 150,
+    "pendingReports": 1
+  }
 }
 ```
 
 ---
 
 ### POST /api/admin/submissions/:id/approve
-Approve a pending submission, moving it to published.
+Approve a pending submission. Moves it from `pending/` to `graves/` and sets status to `published`.
 
-**Headers:** `Authorization: Bearer <ADMIN_TOKEN>`
-
-**Response:** `200 OK` (Phase 1: `501 Not Implemented`)
+**Response:** `200 OK`
+```json
+{
+  "success": true,
+  "message": "Submission sub_abc approved and published",
+  "graveId": "sub_abc"
+}
+```
 
 ---
 
 ### POST /api/admin/submissions/:id/reject
-Reject a pending submission.
+Reject a pending submission. Updates the file in `pending/` with status `rejected`.
 
-**Headers:** `Authorization: Bearer <ADMIN_TOKEN>`
+**Request (optional):**
+```json
+{
+  "reason": "Duplicate submission"
+}
+```
 
-**Response:** `200 OK` (Phase 1: `501 Not Implemented`)
+**Response:** `200 OK`
+```json
+{
+  "success": true,
+  "message": "Submission sub_abc rejected"
+}
+```
 
 ---
 
@@ -205,5 +255,10 @@ Reject a pending submission.
 | 401 | Unauthorized (missing auth header) |
 | 403 | Forbidden (invalid admin token) |
 | 404 | Not found |
+| 413 | Request too large |
+| 429 | Too many requests (rate limited) |
 | 500 | Internal server error |
-| 501 | Not yet implemented |
+| 502 | Upstream GitHub service unavailable |
+| 503 | GitHub not configured |
+
+**No error response exposes:** GitHub tokens, private keys, ADMIN_TOKEN, internal paths, stack traces, or environment details.

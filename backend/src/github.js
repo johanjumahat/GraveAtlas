@@ -2,7 +2,7 @@
  * GraveAtlas GitHub Integration
  *
  * Handles GitHub App authentication (JWT → installation token)
- * and read/write operations to the graveatlas-data repository.
+ * and read/write/delete operations to the graveatlas-data repository.
  *
  * Secrets are loaded from Cloudflare Worker environment — never hardcoded.
  */
@@ -12,7 +12,6 @@
  * Used to authenticate as the GitHub App.
  */
 async function generateJWT(appId, privateKey) {
-  // RSA sign the JWT using Web Crypto API (available in Cloudflare Workers)
   const encoder = new TextEncoder();
 
   const now = Math.floor(Date.now() / 1000);
@@ -22,7 +21,6 @@ async function generateJWT(appId, privateKey) {
     iss: appId.toString(),
   };
 
-  // Encode header and payload
   const header = { alg: 'RS256', typ: 'JWT' };
   const headerB64 = base64UrlEncode(JSON.stringify(header));
   const payloadB64 = base64UrlEncode(JSON.stringify(payload));
@@ -38,7 +36,6 @@ async function generateJWT(appId, privateKey) {
     ['sign']
   );
 
-  // Sign
   const signature = await crypto.subtle.sign(
     'RSASSA-PKCS1-v1_5',
     key,
@@ -65,7 +62,7 @@ async function getInstallationToken(jwt, installationId) {
   );
 
   if (!resp.ok) {
-    throw new Error(`Failed to get installation token: ${resp.status}`);
+    throw new Error(`GitHub auth failed: ${resp.status}`);
   }
 
   const data = await resp.json();
@@ -87,8 +84,50 @@ async function getToken(env) {
   const token = await getInstallationToken(jwt, env.GITHUB_INSTALLATION_ID);
 
   cachedToken = token;
-  cachedTokenExpiry = Date.now() + 50 * 60 * 1000; // tokens last 1 hour, refresh at 50 min
+  cachedTokenExpiry = Date.now() + 50 * 60 * 1000;
   return token;
+}
+
+/**
+ * Get the repository ref parameter for API calls.
+ */
+function getRefParam(env) {
+  const branch = env.GITHUB_BRANCH || 'main';
+  return `?ref=${encodeURIComponent(branch)}`;
+}
+
+/**
+ * Build the base API URL for the configured repository.
+ */
+function getRepoUrl(env) {
+  const owner = encodeURIComponent(env.GITHUB_OWNER);
+  const repo = encodeURIComponent(env.GITHUB_REPO || 'graveatlas-data');
+  return `https://api.github.com/repos/${owner}/${repo}/contents`;
+}
+
+/**
+ * Sanitize a file path segment to prevent traversal attacks.
+ * Only allows alphanumeric, dash, underscore, and dot.
+ */
+function sanitizePathSegment(segment) {
+  if (typeof segment !== 'string') return '';
+  const cleaned = segment.replace(/[^a-zA-Z0-9._-]/g, '');
+  if (cleaned.includes('..') || cleaned.startsWith('.')) {
+    return '';
+  }
+  return cleaned;
+}
+
+/**
+ * Build a safe file path from a directory and a sanitized ID.
+ */
+function buildSafePath(dir, id) {
+  const safeDir = sanitizePathSegment(dir);
+  const safeId = sanitizePathSegment(id);
+  if (!safeDir || !safeId) {
+    throw new Error('Invalid path');
+  }
+  return `${safeDir}/${safeId}.json`;
 }
 
 /**
@@ -96,9 +135,10 @@ async function getToken(env) {
  */
 async function writeFile(path, content, env, commitMessage) {
   const token = await getToken(env);
-  const url = `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/contents/${path}`;
+  const ref = getRefParam(env);
+  const base = getRepoUrl(env);
+  const url = `${base}/${encodePath(path)}${ref}`;
 
-  // Check if file exists (need SHA to update)
   let sha = null;
   try {
     const resp = await fetch(url, {
@@ -113,6 +153,7 @@ async function writeFile(path, content, env, commitMessage) {
   const body = {
     message: commitMessage || `Write ${path}`,
     content: btoa(content),
+    branch: env.GITHUB_BRANCH || 'main',
   };
   if (sha) body.sha = sha;
 
@@ -127,8 +168,7 @@ async function writeFile(path, content, env, commitMessage) {
   });
 
   if (!resp.ok) {
-    const err = await resp.text();
-    throw new Error(`GitHub API error: ${resp.status} — ${err}`);
+    throw new Error(`GitHub API error: ${resp.status}`);
   }
 
   return resp.json();
@@ -139,7 +179,9 @@ async function writeFile(path, content, env, commitMessage) {
  */
 async function readFile(path, env) {
   const token = await getToken(env);
-  const url = `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/contents/${path}`;
+  const ref = getRefParam(env);
+  const base = getRepoUrl(env);
+  const url = `${base}/${encodePath(path)}${ref}`;
 
   const resp = await fetch(url, {
     headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json' },
@@ -148,7 +190,6 @@ async function readFile(path, env) {
   if (!resp.ok) return null;
 
   const data = await resp.json();
-  // Content is base64 encoded
   return atob(data.content);
 }
 
@@ -157,7 +198,9 @@ async function readFile(path, env) {
  */
 async function listFiles(dirPath, env) {
   const token = await getToken(env);
-  const url = `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/contents/${dirPath}`;
+  const ref = getRefParam(env);
+  const base = getRepoUrl(env);
+  const url = `${base}/${encodePath(dirPath)}${ref}`;
 
   const resp = await fetch(url, {
     headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json' },
@@ -171,35 +214,61 @@ async function listFiles(dirPath, env) {
 }
 
 /**
- * Move a file from one location to another (delete old, write new).
+ * Delete a file from the GitHub repository.
  */
-async function moveFile(oldPath, newPath, env, commitMessage) {
-  const content = await readFile(oldPath, env);
-  if (!content) throw new Error(`Source file not found: ${oldPath}`);
-
-  await writeFile(newPath, content, env, commitMessage);
-
-  // Delete old file
+async function deleteFile(path, env, commitMessage) {
   const token = await getToken(env);
-  const url = `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/contents/${oldPath}`;
+  const ref = getRefParam(env);
+  const base = getRepoUrl(env);
+  const url = `${base}/${encodePath(path)}${ref}`;
+
   const getResp = await fetch(url, {
     headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json' },
   });
-  if (getResp.ok) {
-    const data = await getResp.json();
-    await fetch(url, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `token ${token}`,
-        'Accept': 'application/vnd.github+json',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ message: `Delete ${oldPath}`, sha: data.sha }),
-    });
+
+  if (!getResp.ok) {
+    throw new Error(`File not found for deletion: ${getResp.status}`);
   }
+
+  const data = await getResp.json();
+
+  const deleteResp = await fetch(url, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `token ${token}`,
+      'Accept': 'application/vnd.github+json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      message: commitMessage || `Delete ${path}`,
+      sha: data.sha,
+      branch: env.GITHUB_BRANCH || 'main',
+    }),
+  });
+
+  if (!deleteResp.ok) {
+    throw new Error(`GitHub delete failed: ${deleteResp.status}`);
+  }
+
+  return true;
+}
+
+/**
+ * Move a file from one location to another (write new, delete old).
+ */
+async function moveFile(oldPath, newPath, env, commitMessage) {
+  const content = await readFile(oldPath, env);
+  if (!content) throw new Error('Source file not found');
+
+  await writeFile(newPath, content, env, commitMessage || `Move ${oldPath}`);
+  await deleteFile(oldPath, env, `Remove ${oldPath} (moved)`);
 }
 
 // ── Utility functions ──
+
+function encodePath(path) {
+  return path.split('/').map(encodeURIComponent).join('/');
+}
 
 function base64UrlEncode(str) {
   return btoa(str)
@@ -221,9 +290,7 @@ function base64UrlEncodeBytes(bytes) {
 
 /**
  * Convert a PEM private key to DER bytes.
- * Handles both PKCS#1 ("BEGIN RSA PRIVATE KEY") and PKCS#8 ("BEGIN PRIVATE KEY") formats.
- * GitHub App private keys are typically PKCS#1; some tools generate PKCS#8.
- * The Web Crypto API requires PKCS#8 for importKey, so PKCS#1 keys are wrapped.
+ * Handles both PKCS#1 and PKCS#8 formats.
  */
 function pemToDer(pem) {
   const isPkcs1 = pem.includes('-----BEGIN RSA PRIVATE KEY-----');
@@ -240,8 +307,6 @@ function pemToDer(pem) {
   }
 
   if (isPkcs1) {
-    // Wrap PKCS#1 RSAPrivateKey in PKCS#8 PrivateKeyInfo structure
-    // so Web Crypto API's importKey('pkcs8', ...) can parse it.
     return wrapPkcs1InPkcs8(bytes);
   }
 
@@ -250,25 +315,16 @@ function pemToDer(pem) {
 
 /**
  * Wrap a PKCS#1 RSAPrivateKey DER in a PKCS#8 PrivateKeyInfo DER.
- *
- * PrivateKeyInfo ::= SEQUENCE {
- *   version INTEGER (0),
- *   privateKeyAlgorithm AlgorithmIdentifier { rsaEncryption (1.2.840.113549.1.1.1), NULL },
- *   privateKey OCTET STRING { RSAPrivateKey }
- * }
  */
 function wrapPkcs1InPkcs8(pkcs1Key) {
-  // AlgorithmIdentifier for RSA: SEQUENCE { OID 1.2.840.113549.1.1.1, NULL }
   const algId = new Uint8Array([
     0x30, 0x0d,
     0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01,
     0x05, 0x00
   ]);
 
-  // version: INTEGER 0
   const version = new Uint8Array([0x02, 0x01, 0x00]);
 
-  // OCTET STRING header for the inner PKCS#1 key
   const keyLen = pkcs1Key.length;
   let octetHeader;
   if (keyLen < 0x80) {
@@ -279,10 +335,8 @@ function wrapPkcs1InPkcs8(pkcs1Key) {
     octetHeader = new Uint8Array([0x04, 0x82, (keyLen >> 8) & 0xff, keyLen & 0xff]);
   }
 
-  // Inner content: version + algId + octetHeader + key
   const innerLen = version.length + algId.length + octetHeader.length + keyLen;
 
-  // Outer SEQUENCE header
   let seqHeader;
   if (innerLen < 0x80) {
     seqHeader = new Uint8Array([0x30, innerLen]);
@@ -292,7 +346,6 @@ function wrapPkcs1InPkcs8(pkcs1Key) {
     seqHeader = new Uint8Array([0x30, 0x82, (innerLen >> 8) & 0xff, innerLen & 0xff]);
   }
 
-  // Assemble
   const result = new Uint8Array(seqHeader.length + innerLen);
   let offset = 0;
   result.set(seqHeader, offset); offset += seqHeader.length;
@@ -312,5 +365,8 @@ export {
   writeFile,
   readFile,
   listFiles,
+  deleteFile,
   moveFile,
+  sanitizePathSegment,
+  buildSafePath,
 };

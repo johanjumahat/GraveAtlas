@@ -9,11 +9,55 @@
  *   - GitHub App authentication (not personal token)
  *   - Submissions enter "pending" state — never auto-published
  *   - Rate limiting, input validation, duplicate detection
+ *   - Constant-time admin token comparison
+ *   - Path sanitization (no traversal)
+ *   - Crypto-secure ID generation
  *
  * Phase 2: Full GitHub integration with moderation workflow.
  */
 
-import { getToken, writeFile, readFile, listFiles, moveFile } from './github.js';
+import { getToken, writeFile, readFile, listFiles, deleteFile, sanitizePathSegment } from './github.js';
+
+// ── Constants ──
+
+const MAX_BODY_SIZE = 50 * 1024; // 50 KB
+const MAX_FIELD_LENGTH = 2000;
+const MAX_NAME_LENGTH = 500;
+const MAX_REPORT_LENGTH = 5000;
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 10; // per IP per window
+const ALLOWED_FIELDS = ['name', 'birthDate', 'deathDate', 'cemetery', 'section', 'plot', 'latitude', 'longitude', 'notes'];
+
+// ── In-memory rate limiting (per Worker isolate) ──
+
+const rateLimitMap = new Map();
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - 1 };
+  }
+
+  if (entry.count >= RATE_LIMIT_MAX_REQUESTS) {
+    return { allowed: false, remaining: 0 };
+  }
+
+  entry.count++;
+  return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - entry.count };
+}
+
+// Cleanup old entries periodically
+function cleanupRateLimit() {
+  const now = Date.now();
+  for (const [ip, entry] of rateLimitMap) {
+    if (now > entry.resetAt) {
+      rateLimitMap.delete(ip);
+    }
+  }
+}
 
 export default {
   async fetch(request, env, ctx) {
@@ -26,16 +70,15 @@ async function handleRequest(request, env, ctx) {
   const path = url.pathname;
   const method = request.method;
 
-  // CORS headers
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  };
+  // Build CORS headers — configurable via ALLOWED_ORIGIN
+  const corsHeaders = buildCorsHeaders(env);
 
   if (method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
+
+  // Periodic cleanup
+  cleanupRateLimit();
 
   try {
     // ── Public routes ──
@@ -53,17 +96,29 @@ async function handleRequest(request, env, ctx) {
     }
 
     if (path === '/api/graves' && method === 'POST') {
+      // Rate limit submission endpoint
+      const ip = getClientIp(request);
+      const rl = checkRateLimit(ip);
+      if (!rl.allowed) {
+        return jsonResponse({ success: false, error: 'Too many requests' }, 429, corsHeaders);
+      }
       return await handleCreateGrave(request, env, corsHeaders);
     }
 
     if (path.startsWith('/api/graves/') && method === 'GET') {
       const id = path.split('/').pop();
       if (id === 'graves' || !id) return notFound(corsHeaders);
-      return await handleGetGrave(id, env, corsHeaders);
+      return await handleGetGrave(id, request, env, corsHeaders);
     }
 
     if (path.match(/^\/api\/graves\/[^/]+\/report$/) && method === 'POST') {
       const id = path.split('/')[3];
+      // Rate limit report endpoint
+      const ip = getClientIp(request);
+      const rl = checkRateLimit(ip);
+      if (!rl.allowed) {
+        return jsonResponse({ success: false, error: 'Too many requests' }, 429, corsHeaders);
+      }
       return await handleReportGrave(id, request, env, corsHeaders);
     }
 
@@ -71,6 +126,14 @@ async function handleRequest(request, env, ctx) {
 
     if (path === '/api/admin/submissions' && method === 'GET') {
       return await requireAdmin(request, env, corsHeaders, () => handleListSubmissions(env, corsHeaders));
+    }
+
+    if (path === '/api/admin/reports' && method === 'GET') {
+      return await requireAdmin(request, env, corsHeaders, () => handleListReports(env, corsHeaders));
+    }
+
+    if (path === '/api/admin/status' && method === 'GET') {
+      return await requireAdmin(request, env, corsHeaders, () => handleAdminStatus(env, corsHeaders));
     }
 
     if (path.match(/^\/api\/admin\/submissions\/[^/]+\/approve$/) && method === 'POST') {
@@ -85,25 +148,52 @@ async function handleRequest(request, env, ctx) {
 
     return notFound(corsHeaders);
   } catch (error) {
-    // Never leak error details or secrets
     return jsonResponse({ success: false, error: 'Internal server error' }, 500, corsHeaders);
   }
+}
+
+// ── CORS ──
+
+function buildCorsHeaders(env) {
+  const headers = {
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  };
+
+  // Only set Allow-Origin if explicitly configured (e.g., for a web admin UI).
+  // Android native clients do not need CORS.
+  if (env.ALLOWED_ORIGIN) {
+    headers['Access-Control-Allow-Origin'] = env.ALLOWED_ORIGIN;
+  }
+
+  return headers;
+}
+
+// ── Client IP ──
+
+function getClientIp(request) {
+  return request.headers.get('CF-Connecting-IP') ||
+         request.headers.get('X-Real-IP') ||
+         'unknown';
 }
 
 // ── Handlers ──
 
 async function handleHealth(request, env, cors) {
   const hasGithubConfig = !!(env.GITHUB_APP_ID && env.GITHUB_PRIVATE_KEY && env.GITHUB_INSTALLATION_ID);
+  const hasAdminToken = !!env.ADMIN_TOKEN;
+
   return jsonResponse({
-    status: 'healthy',
+    status: 'ok',
+    service: 'GraveAtlas',
     version: '2.0.0',
     githubConfigured: hasGithubConfig,
+    adminConfigured: hasAdminToken,
     timestamp: new Date().toISOString()
   }, 200, cors);
 }
 
 async function handleGetGraves(request, env, cors) {
-  // If GitHub is not configured, return empty
   if (!env.GITHUB_APP_ID) {
     return jsonResponse({
       success: true,
@@ -129,17 +219,24 @@ async function handleGetGraves(request, env, cors) {
       }
     }
 
-    return jsonResponse({ success: true, graves: graves, count: graves.length }, 200, cors);
+    return jsonResponse({ success: true, graves, count: graves.length }, 200, cors);
   } catch (error) {
+    // GitHub upstream error — return safe message
     return jsonResponse({
       success: true,
       graves: [],
-      message: 'Unable to fetch from GitHub repository.'
+      message: 'Unable to fetch from data repository.'
     }, 200, cors);
   }
 }
 
 async function handleCreateGrave(request, env, cors) {
+  // Check Content-Length to reject oversized payloads early
+  const contentLength = parseInt(request.headers.get('Content-Length') || '0', 10);
+  if (contentLength > MAX_BODY_SIZE) {
+    return jsonResponse({ success: false, error: 'Request too large (max 50KB)' }, 413, cors);
+  }
+
   let body;
   try {
     body = await request.json();
@@ -153,7 +250,7 @@ async function handleCreateGrave(request, env, cors) {
     return jsonResponse({ success: false, error: validation.error }, 400, cors);
   }
 
-  // Generate submission ID
+  // Generate submission ID using crypto-secure randomness
   const submissionId = generateId();
   const now = new Date().toISOString();
 
@@ -186,10 +283,11 @@ async function handleCreateGrave(request, env, cors) {
         `submission: ${body.name} (pending review)`
       );
     } catch (error) {
+      // GitHub upstream error
       return jsonResponse({
         success: false,
         error: 'Unable to save submission. Please try again later.'
-      }, 503, cors);
+      }, 502, cors);
     }
   }
 
@@ -200,13 +298,19 @@ async function handleCreateGrave(request, env, cors) {
   }, 201, cors);
 }
 
-async function handleGetGrave(id, env, cors) {
+async function handleGetGrave(id, request, env, cors) {
+  // Sanitize ID to prevent path traversal
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid grave ID' }, 400, cors);
+  }
+
   if (!env.GITHUB_APP_ID) {
     return jsonResponse({ success: false, error: 'Grave not found' }, 404, cors);
   }
 
   try {
-    const content = await readFile(`graves/${id}.json`, env);
+    const content = await readFile(`graves/${safeId}.json`, env);
     if (!content) {
       return jsonResponse({ success: false, error: 'Grave not found' }, 404, cors);
     }
@@ -219,6 +323,12 @@ async function handleGetGrave(id, env, cors) {
 }
 
 async function handleReportGrave(id, request, env, cors) {
+  // Sanitize ID
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid grave ID' }, 400, cors);
+  }
+
   let body;
   try {
     body = await request.json();
@@ -226,32 +336,32 @@ async function handleReportGrave(id, request, env, cors) {
     return jsonResponse({ success: false, error: 'Invalid JSON body' }, 400, cors);
   }
 
-  if (!body.report || body.report.length === 0) {
+  if (!body.report || typeof body.report !== 'string' || body.report.trim().length === 0) {
     return jsonResponse({ success: false, error: 'Report text required' }, 400, cors);
   }
 
-  if (body.report.length > 5000) {
+  if (body.report.length > MAX_REPORT_LENGTH) {
     return jsonResponse({ success: false, error: 'Report too long (max 5000 chars)' }, 400, cors);
   }
 
-  // Write report as a file in pending/ with reported status
   if (env.GITHUB_APP_ID) {
     try {
+      const reportId = generateId();
       const reportRecord = {
-        id: generateId(),
-        graveId: id,
+        id: reportId,
+        graveId: safeId,
         report: body.report,
         status: 'reported',
         submittedAt: new Date().toISOString()
       };
       await writeFile(
-        `pending/report_${reportRecord.id}.json`,
+        `pending/report_${reportId}.json`,
         JSON.stringify(reportRecord, null, 2),
         env,
-        `report: correction for ${id}`
+        `report: correction for ${safeId}`
       );
     } catch (error) {
-      // Still return success — don't expose internal errors
+      // Don't expose internal errors — still return success
     }
   }
 
@@ -278,6 +388,9 @@ async function handleListSubmissions(env, cors) {
 
     for (const file of files) {
       if (!file.endsWith('.json')) continue;
+      // Skip report files — those are listed via /api/admin/reports
+      if (file.startsWith('report_')) continue;
+
       const content = await readFile(`pending/${file}`, env);
       if (content) {
         try {
@@ -287,25 +400,100 @@ async function handleListSubmissions(env, cors) {
       }
     }
 
-    return jsonResponse({ success: true, submissions: submissions, count: submissions.length }, 200, cors);
+    return jsonResponse({ success: true, submissions, count: submissions.length }, 200, cors);
   } catch (error) {
     return jsonResponse({ success: true, submissions: [], message: 'Unable to fetch submissions.' }, 200, cors);
   }
 }
 
+async function handleListReports(env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      reports: [],
+      message: 'GitHub not configured.'
+    }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('pending', env);
+    const reports = [];
+
+    for (const file of files) {
+      if (!file.endsWith('.json') || !file.startsWith('report_')) continue;
+
+      const content = await readFile(`pending/${file}`, env);
+      if (content) {
+        try {
+          const record = JSON.parse(content);
+          if (record.status === 'reported') {
+            reports.push(record);
+          }
+        } catch (e) { /* skip */ }
+      }
+    }
+
+    return jsonResponse({ success: true, reports, count: reports.length }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: true, reports: [], message: 'Unable to fetch reports.' }, 200, cors);
+  }
+}
+
+async function handleAdminStatus(env, cors) {
+  const hasGithubConfig = !!(env.GITHUB_APP_ID && env.GITHUB_PRIVATE_KEY && env.GITHUB_INSTALLATION_ID);
+  const hasAdminToken = !!env.ADMIN_TOKEN;
+
+  let pendingCount = 0;
+  let publishedCount = 0;
+  let reportCount = 0;
+
+  if (env.GITHUB_APP_ID) {
+    try {
+      const pendingFiles = await listFiles('pending', env);
+      pendingCount = pendingFiles.filter(f => f.endsWith('.json') && !f.startsWith('report_')).length;
+      reportCount = pendingFiles.filter(f => f.startsWith('report_')).length;
+
+      const graveFiles = await listFiles('graves', env);
+      publishedCount = graveFiles.filter(f => f.endsWith('.json')).length;
+    } catch (e) { /* ignore */ }
+  }
+
+  return jsonResponse({
+    success: true,
+    status: {
+      githubConfigured: hasGithubConfig,
+      adminConfigured: hasAdminToken,
+      pendingSubmissions: pendingCount,
+      publishedGraves: publishedCount,
+      pendingReports: reportCount
+    }
+  }, 200, cors);
+}
+
 async function handleApproveSubmission(id, env, cors) {
+  // Sanitize ID
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid submission ID' }, 400, cors);
+  }
+
   if (!env.GITHUB_APP_ID) {
     return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
   }
 
   try {
     // Read the pending submission
-    const content = await readFile(`pending/${id}.json`, env);
+    const content = await readFile(`pending/${safeId}.json`, env);
     if (!content) {
       return jsonResponse({ success: false, error: 'Submission not found' }, 404, cors);
     }
 
     const record = JSON.parse(content);
+
+    // Don't approve reports
+    if (record.status === 'reported') {
+      return jsonResponse({ success: false, error: 'Cannot approve a report as a grave submission' }, 400, cors);
+    }
 
     // Update status to published
     record.status = 'published';
@@ -319,33 +507,16 @@ async function handleApproveSubmission(id, env, cors) {
       `approve: ${record.name} published`
     );
 
-    // Remove from pending/
+    // Delete from pending/
     try {
-      await moveFile(`pending/${id}.json`, `pending/${id}.json`, env, '');
-    } catch (e) { /* already handled */ }
-
-    // Delete from pending (the move creates a copy, we need to delete original)
-    const token = await import('./github.js').then(m => m.getToken(env));
-    const url = `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/contents/pending/${id}.json`;
-    const getResp = await fetch(url, {
-      headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json' },
-    });
-    if (getResp.ok) {
-      const data = await getResp.json();
-      await fetch(url, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `token ${token}`,
-          'Accept': 'application/vnd.github+json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ message: `Remove approved submission ${id} from pending`, sha: data.sha }),
-      });
+      await deleteFile(`pending/${safeId}.json`, env, `Remove approved submission ${safeId} from pending`);
+    } catch (e) {
+      // Non-fatal — submission is already published
     }
 
     return jsonResponse({
       success: true,
-      message: `Submission ${id} approved and published`,
+      message: `Submission ${safeId} approved and published`,
       graveId: record.id
     }, 200, cors);
   } catch (error) {
@@ -354,6 +525,12 @@ async function handleApproveSubmission(id, env, cors) {
 }
 
 async function handleRejectSubmission(id, request, env, cors) {
+  // Sanitize ID
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid submission ID' }, 400, cors);
+  }
+
   let body = {};
   try { body = await request.json(); } catch (e) {}
 
@@ -362,7 +539,7 @@ async function handleRejectSubmission(id, request, env, cors) {
   }
 
   try {
-    const content = await readFile(`pending/${id}.json`, env);
+    const content = await readFile(`pending/${safeId}.json`, env);
     if (!content) {
       return jsonResponse({ success: false, error: 'Submission not found' }, 404, cors);
     }
@@ -370,19 +547,21 @@ async function handleRejectSubmission(id, request, env, cors) {
     const record = JSON.parse(content);
     record.status = 'rejected';
     record.updatedAt = new Date().toISOString();
-    record.rejectionReason = body.reason || null;
+    if (body.reason && typeof body.reason === 'string' && body.reason.length <= MAX_FIELD_LENGTH) {
+      record.rejectionReason = body.reason;
+    }
 
     // Update the file in pending/ with rejected status
     await writeFile(
-      `pending/${id}.json`,
+      `pending/${safeId}.json`,
       JSON.stringify(record, null, 2),
       env,
-      `reject: submission ${id} rejected${body.reason ? ` — ${body.reason}` : ''}`
+      `reject: submission ${safeId} rejected`
     );
 
     return jsonResponse({
       success: true,
-      message: `Submission ${id} rejected`
+      message: `Submission ${safeId} rejected`
     }, 200, cors);
   } catch (error) {
     return jsonResponse({ success: false, error: 'Failed to reject submission' }, 500, cors);
@@ -394,11 +573,15 @@ async function handleRejectSubmission(id, request, env, cors) {
 function validateSubmission(body) {
   if (!body) return { valid: false, error: 'Empty request body' };
 
+  if (typeof body !== 'object' || Array.isArray(body)) {
+    return { valid: false, error: 'Invalid request body' };
+  }
+
   if (!body.name || typeof body.name !== 'string' || body.name.trim().length === 0) {
     return { valid: false, error: 'Name is required' };
   }
 
-  if (body.name.length > 500) {
+  if (body.name.length > MAX_NAME_LENGTH) {
     return { valid: false, error: 'Name too long (max 500 chars)' };
   }
 
@@ -422,17 +605,23 @@ function validateSubmission(body) {
   }
 
   const totalStr = JSON.stringify(body);
-  if (totalStr.length > 50000) {
+  if (totalStr.length > MAX_BODY_SIZE) {
     return { valid: false, error: 'Request too large (max 50KB)' };
   }
 
   const stringFields = ['name', 'birthDate', 'deathDate', 'cemetery', 'section', 'plot', 'notes'];
   for (const field of stringFields) {
     if (body[field] && typeof body[field] === 'string') {
-      if (body[field].length > 2000) {
-        return { valid: false, error: `${field} too long (max 2000 chars)` };
+      if (body[field].length > MAX_FIELD_LENGTH) {
+        return { valid: false, error: `${field} too long (max ${MAX_FIELD_LENGTH} chars)` };
       }
     }
+  }
+
+  // Reject unexpected fields to prevent injection of arbitrary data
+  const unexpectedFields = Object.keys(body).filter(k => !ALLOWED_FIELDS.includes(k));
+  if (unexpectedFields.length > 0) {
+    return { valid: false, error: 'Invalid request' };
   }
 
   return { valid: true };
@@ -447,12 +636,19 @@ function isValidDate(str) {
 }
 
 function generateId() {
-  return 'sub_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 8);
+  const bytes = new Uint8Array(12);
+  crypto.getRandomValues(bytes);
+  const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  return `sub_${hex}`;
 }
 
 // ── Admin auth ──
 
 async function requireAdmin(request, env, cors, handler) {
+  if (!env.ADMIN_TOKEN) {
+    return jsonResponse({ success: false, error: 'Unauthorized' }, 401, cors);
+  }
+
   const auth = request.headers.get('Authorization');
   if (!auth || !auth.startsWith('Bearer ')) {
     return jsonResponse({ success: false, error: 'Unauthorized' }, 401, cors);
@@ -460,11 +656,27 @@ async function requireAdmin(request, env, cors, handler) {
 
   const token = auth.substring(7);
 
-  if (env.ADMIN_TOKEN && token === env.ADMIN_TOKEN) {
+  // Constant-time comparison to prevent timing attacks
+  if (safeTokenCompare(token, env.ADMIN_TOKEN)) {
     return await handler();
   }
 
   return jsonResponse({ success: false, error: 'Forbidden' }, 403, cors);
+}
+
+/**
+ * Constant-time string comparison to prevent timing attacks.
+ * Compares two strings of equal length without short-circuiting.
+ */
+function safeTokenCompare(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  if (a.length !== b.length) return false;
+
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
 }
 
 // ── Utils ──

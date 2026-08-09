@@ -1,17 +1,18 @@
-name = "graveatlas-backend"
+name = "graveatlas"
 main = "src/index.js"
 compatibility_date = "2024-01-01"
 
-# Environment variables — DO NOT put real secrets here.
-# Set real values via: wrangler secret put SECRET_NAME
+# Environment variables — non-secret values only.
+# Set real secrets via: wrangler secret put SECRET_NAME
 
 [vars]
-# Example/placeholder values only — real secrets set via wrangler secret
-# GITHUB_APP_ID = "YOUR_APP_ID"
-# GITHUB_INSTALLATION_ID = "YOUR_INSTALLATION_ID"
-# GITHUB_OWNER = "YOUR_GITHUB_USERNAME"
-# GITHUB_REPO = "graveatlas-data"
-# GITHUB_BRANCH = "main"
-# ADMIN_TOKEN = "YOUR_ADMIN_TOKEN"
+GITHUB_OWNER = "putraworks2026"
+GITHUB_REPO = "graveatlas-data"
+GITHUB_BRANCH = "main"
 
-# GITHUB_PRIVATE_KEY must be set via: wrangler secret put GITHUB_PRIVATE_KEY
+# Secrets — DO NOT put real values here. Set via wrangler secret put.
+# GITHUB_APP_ID — numeric App ID
+# GITHUB_PRIVATE_KEY — PEM private key
+# GITHUB_INSTALLATION_ID — numeric installation ID
+# ADMIN_TOKEN — admin authentication token
+# ALLOWED_ORIGIN — optional, for web admin UI CORS (e.g., https://admin.example.com)

@@ -39,7 +39,7 @@ public class ApiClient {
                 .readTimeout(TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)
                 .writeTimeout(TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)
                 .build();
-        this.baseUrl = configuredUrl != null ? configuredUrl : "https://graveatla-worker.your-subdomain.workers.dev";
+        this.baseUrl = configuredUrl != null ? configuredUrl : "https://graveatlas.putraworks-2026.workers.dev";
     }
 
     public static void setBaseUrl(String url) {
