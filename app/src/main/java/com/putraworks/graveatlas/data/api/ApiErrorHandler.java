@@ -1,5 +1,7 @@
 package com.putraworks.graveatlas.data.api;
 
+import java.io.IOException;
+
 /**
  * Maps HTTP status codes and network errors to user-friendly messages.
  * Never exposes internal server details, GitHub errors, or stack traces.
@@ -51,6 +53,21 @@ public class ApiErrorHandler {
             return "You appear to be offline. Your data has been saved and will sync when you're connected.";
         }
         return "Network error. Please check your connection and try again.";
+    }
+
+
+    /**
+     * Convenience wrapper for IOException — extracts the message and delegates to getNetworkMessage.
+     */
+    public static String getMessageForException(IOException e) {
+        return getNetworkMessage(e.getMessage());
+    }
+
+    /**
+     * Convenience wrapper for HTTP status codes — delegates to getHttpMessage.
+     */
+    public static String getMessageForCode(int code) {
+        return getHttpMessage(code);
     }
 
     /**
