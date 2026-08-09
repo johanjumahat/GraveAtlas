@@ -1,0 +1,202 @@
+name: Android Release APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - 'gradle/**'
+      - 'gradle.properties'
+      - 'version.properties'
+      - '.github/workflows/android-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build & Release APK
+    runs-on: ubuntu-latest
+    steps:
+      # ── 1. Checkout ──
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── 2. Set up JDK 17 (matches project's sourceCompatibility/targetCompatibility) ──
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      # ── 3. Set up Android SDK ──
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      # ── 4. Read version ──
+      - name: Read version
+        id: version
+        run: |
+          VERSION_NAME=$(grep 'versionName=' version.properties | cut -d'=' -f2)
+          echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "VERSION_CODE=${{ github.run_number }}" >> $GITHUB_OUTPUT
+          echo "APK_NAME=GraveAtlas-v${VERSION_NAME}-release.apk" >> $GITHUB_OUTPUT
+          echo "Using versionName=$VERSION_NAME versionCode=${{ github.run_number }}"
+
+      # ── 5. Set up signing ──
+      - name: Set up signing
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > $HOME/release.keystore
+            echo "SIGNING_KEYSTORE=$HOME/release.keystore" >> $GITHUB_ENV
+            echo "SIGNING_STORE_PASS=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
+            echo "SIGNING_KEY_ALIAS=$KEY_ALIAS" >> $GITHUB_ENV
+            echo "SIGNING_KEY_PASS=$KEY_PASSWORD" >> $GITHUB_ENV
+            echo "SIGNED=true" >> $GITHUB_ENV
+            echo "::notice::Release signing configured from secrets."
+          else
+            echo "::warning::KEYSTORE_BASE64 secret not found. Using debug signing for this build."
+            keytool -genkeypair -v \
+              -keystore $HOME/debug.keystore \
+              -alias debug-key \
+              -keypass android \
+              -storepass android \
+              -keyalg RSA -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Debug,O=Debug,C=US"
+            echo "SIGNING_KEYSTORE=$HOME/debug.keystore" >> $GITHUB_ENV
+            echo "SIGNING_STORE_PASS=android" >> $GITHUB_ENV
+            echo "SIGNING_KEY_ALIAS=debug-key" >> $GITHUB_ENV
+            echo "SIGNING_KEY_PASS=android" >> $GITHUB_ENV
+            echo "SIGNED=false" >> $GITHUB_ENV
+          fi
+
+      # ── 6. Validate project ──
+      - name: Validate project
+        run: ./gradlew tasks --no-daemon --quiet
+
+      # ── 7. Run unit tests ──
+      - name: Run unit tests
+        run: ./gradlew test --no-daemon
+
+      # ── 8. Run Android lint ──
+      - name: Run Android lint
+        run: ./gradlew lintRelease --no-daemon
+
+      # ── 9. Build release APK ──
+      - name: Build release APK
+        run: |
+          ./gradlew assembleRelease \
+            --no-daemon \
+            -PversionCode=${{ steps.version.outputs.VERSION_CODE }} \
+            -PversionName=${{ steps.version.outputs.VERSION_NAME }} \
+            -PsigningKeystoreFile="$SIGNING_KEYSTORE" \
+            -PsigningKeystorePassword="$SIGNING_STORE_PASS" \
+            -PsigningKeyAlias="$SIGNING_KEY_ALIAS" \
+            -PsigningKeyPassword="$SIGNING_KEY_PASS"
+
+      # ── 10. Verify APK ──
+      - name: Verify APK exists and is valid
+        id: apk
+        run: |
+          set -e
+          APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" -type f | head -1)
+          if [ -z "$APK_PATH" ]; then
+            echo "::error::No APK file found in build output!"
+            exit 1
+          fi
+          APK_SIZE=$(stat -c%s "$APK_PATH")
+          if [ "$APK_SIZE" -lt 1000 ]; then
+            echo "::error::APK file is too small ($APK_SIZE bytes) — build may have failed!"
+            exit 1
+          fi
+          MAGIC=$(xxd -l 4 "$APK_PATH" | awk '{print $2 $3}')
+          if [ "$MAGIC" != "504b0304" ]; then
+            echo "::error::File is not a valid APK (bad magic bytes: $MAGIC)"
+            exit 1
+          fi
+          echo "::notice::APK verified: $APK_PATH ($APK_SIZE bytes)"
+          echo "APK_PATH=$APK_PATH" >> $GITHUB_OUTPUT
+
+      # ── 11. Rename APK ──
+      - name: Rename APK
+        run: |
+          cp "${{ steps.apk.outputs.APK_PATH }}" "${{ steps.version.outputs.APK_NAME }}"
+          echo "Final APK: ${{ steps.version.outputs.APK_NAME }}"
+
+      # ── 12. Generate SHA-256 checksum ──
+      - name: Generate SHA-256 checksum
+        run: |
+          sha256sum "${{ steps.version.outputs.APK_NAME }}" > SHA256SUMS.txt
+          echo "Checksum generated:"
+          cat SHA256SUMS.txt
+
+      # ── 13. Upload APK as Actions artifact ──
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.version.outputs.APK_NAME }}
+          path: |
+            ${{ steps.version.outputs.APK_NAME }}
+            SHA256SUMS.txt
+          retention-days: 30
+
+      # ── 14. Create GitHub Release ──
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v${{ steps.version.outputs.VERSION_NAME }}-b${{ github.run_number }}"
+          TITLE="GraveAtlas v${{ steps.version.outputs.VERSION_NAME }} (Build ${{ github.run_number }})"
+          # Delete existing release if re-run
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          # Create new release with auto-generated notes
+          gh release create "$TAG" \
+            --title "$TITLE" \
+            --generate-notes \
+            "${{ steps.version.outputs.APK_NAME }}" \
+            SHA256SUMS.txt
+          # If debug-signed, append warning to release notes
+          if [ "${{ env.SIGNED }}" = "false" ]; then
+            gh release edit "$TAG" \
+              --notes "$(gh release view "$TAG" --json body -q .body)
+
+          ⚠️ **DEBUG-SIGNED BUILD** — Configure GitHub Actions secrets (KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD) for production release signing."
+          fi
+          echo "::notice::Release created: https://github.com/${{ github.repository }}/releases/tag/$TAG"
+
+      # ── 15. Bump version for next build ──
+      - name: Bump version
+        run: |
+          VERSION_NAME="${{ steps.version.outputs.VERSION_NAME }}"
+          MAJOR=$(echo "$VERSION_NAME" | cut -d'.' -f1)
+          MINOR=$(echo "$VERSION_NAME" | cut -d'.' -f2)
+          PATCH=$(echo "$VERSION_NAME" | cut -d'.' -f3)
+          NEW_PATCH=$((PATCH + 1))
+          NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+          echo "versionName=$NEW_VERSION" > version.properties
+          echo "versionCode=${{ github.run_number }}" >> version.properties
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add version.properties
+          git commit -m "chore: bump version to $NEW_VERSION [skip ci]"
+          git pull --rebase origin main 2>/dev/null || true
+          git push 2>/dev/null || echo "::warning::Could not push version bump (remote moved forward). Will retry next build."
