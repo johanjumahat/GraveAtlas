@@ -153,6 +153,7 @@ jobs:
       # ── 13. Upload APK as Actions artifact ──
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: ${{ steps.version.outputs.APK_NAME }}
           path: |
