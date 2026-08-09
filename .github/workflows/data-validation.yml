@@ -1,0 +1,83 @@
+name: Data Validation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'graves/**'
+      - 'cemeteries/**'
+      - 'pending/**'
+      - 'schema/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'graves/**'
+      - 'cemeteries/**'
+      - 'pending/**'
+      - 'schema/**'
+
+jobs:
+  validate:
+    name: Validate Data
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate grave records
+        run: |
+          echo "Checking all JSON files in graves/ and pending/..."
+          ERROR=0
+          for f in $(find graves/ pending/ -name '*.json' 2>/dev/null); do
+            if ! python3 -c "
+          import json, sys
+          try:
+              d = json.load(open('$f'))
+              if 'id' not in d:
+                  print('ERROR: $f missing id')
+                  sys.exit(1)
+              if 'name' not in d or not d['name']:
+                  print('ERROR: $f missing name')
+                  sys.exit(1)
+              if 'status' not in d:
+                  print('ERROR: $f missing status')
+                  sys.exit(1)
+              if 'submittedAt' not in d:
+                  print('ERROR: $f missing submittedAt')
+                  sys.exit(1)
+              lat = d.get('latitude')
+              lon = d.get('longitude')
+              if lat is not None and (lat < -90 or lat > 90):
+                  print(f'ERROR: $f invalid latitude {lat}')
+                  sys.exit(1)
+              if lon is not None and (lon < -180 or lon > 180):
+                  print(f'ERROR: $f invalid longitude {lon}')
+                  sys.exit(1)
+              print(f'OK: $f')
+          except json.JSONDecodeError as e:
+              print(f'ERROR: $f invalid JSON: {e}')
+              sys.exit(1)
+          "; then
+                ERROR=1
+            fi
+          done
+
+          # Duplicate detection
+          echo "Checking for duplicates..."
+          python3 -c "
+          import json, glob, sys
+          ids = {}
+          for f in glob.glob('graves/*.json') + glob.glob('pending/*.json'):
+              d = json.load(open(f))
+              gid = d.get('id')
+              if gid in ids:
+                  print(f'DUPLICATE: id {gid} in {f} and {ids[gid]}')
+                  sys.exit(1)
+              ids[gid] = f
+          print(f'No duplicates found ({len(ids)} records)')
+          "
+
+          if [ $ERROR -eq 1 ]; then
+            echo "Validation FAILED"
+            exit 1
+          fi
+          echo "All records valid"

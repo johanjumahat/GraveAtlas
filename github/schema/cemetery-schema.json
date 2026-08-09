@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Cemetery Record",
+  "description": "A cemetery location in the GraveAtlas database",
+  "type": "object",
+  "required": ["id", "name", "status", "submittedAt"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]{8,64}$"
+    },
+    "name": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "Cemetery name"
+    },
+    "address": {
+      "type": ["string", "null"],
+      "maxLength": 2000
+    },
+    "latitude": {
+      "type": ["number", "null"],
+      "minimum": -90,
+      "maximum": 90
+    },
+    "longitude": {
+      "type": ["number", "null"],
+      "minimum": -180,
+      "maximum": 180
+    },
+    "description": {
+      "type": ["string", "null"],
+      "maxLength": 5000
+    },
+    "status": {
+      "type": "string",
+      "enum": ["published", "pending", "rejected"]
+    },
+    "submittedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    }
+  },
+  "additionalProperties": false
+}
