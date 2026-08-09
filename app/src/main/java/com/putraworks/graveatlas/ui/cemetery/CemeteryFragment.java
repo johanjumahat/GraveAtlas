@@ -1,5 +1,7 @@
-package com.putraworks.graveatlas.ui.search;
+package com.putraworks.graveatlas.ui.cemetery;
 
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -18,25 +20,19 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
-import com.putraworks.graveatlas.MainNavActivity;
 import com.putraworks.graveatlas.data.api.ApiClient;
 import com.putraworks.graveatlas.data.api.ApiErrorHandler;
 import com.putraworks.graveatlas.data.api.LocalCache;
-import com.putraworks.graveatlas.data.model.GraveRecord;
-import com.putraworks.graveatlas.ui.gravedetail.GraveDetailFragment;
-
-import org.json.JSONArray;
-import org.json.JSONObject;
+import com.putraworks.graveatlas.data.model.CemeteryRecord;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Search screen — search graves by name or cemetery.
- * Uses debouncing (400ms) to avoid excessive API calls.
- * Falls back to local cache when offline.
+ * Cemetery discovery screen — browse and search cemeteries.
+ * Shows cemetery name, address, coordinates, and allows opening in maps.
  */
-public class SearchFragment extends Fragment implements ApiClient.ApiCallback<List<GraveRecord>> {
+public class CemeteryFragment extends Fragment implements ApiClient.ApiCallback<List<CemeteryRecord>> {
 
     private static final int DEBOUNCE_MS = 400;
 
@@ -47,10 +43,9 @@ public class SearchFragment extends Fragment implements ApiClient.ApiCallback<Li
     private Button retryBtn;
     private ApiClient apiClient;
     private LocalCache cache;
-    private List<GraveRecord> allGraves = new ArrayList<>();
+    private List<CemeteryRecord> allCemeteries = new ArrayList<>();
     private Handler debounceHandler = new Handler(Looper.getMainLooper());
     private Runnable debounceRunnable;
-    private boolean isLoading = false;
 
     @Nullable
     @Override
@@ -62,67 +57,56 @@ public class SearchFragment extends Fragment implements ApiClient.ApiCallback<Li
         apiClient = new ApiClient();
         cache = new LocalCache(getContext());
 
-        // Title
         TextView title = new TextView(getContext());
-        title.setText("Search Graves");
+        title.setText("Cemeteries");
         title.setTextSize(20);
         title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         title.setPadding(0, 0, 0, 16);
         layout.addView(title);
 
-        // Search bar
         searchInput = new EditText(getContext());
-        searchInput.setHint("Search by name or cemetery...");
+        searchInput.setHint("Search cemetery name...");
         searchInput.setPadding(24, 24, 24, 24);
-        searchInput.setContentDescription("Search input field");
         searchInput.setSingleLine(true);
+        searchInput.setContentDescription("Cemetery search field");
         layout.addView(searchInput);
 
-        // Status
         statusText = new TextView(getContext());
         statusText.setPadding(0, 16, 0, 16);
         statusText.setTextSize(13);
-        statusText.setContentDescription("Search status");
         layout.addView(statusText);
 
-        // Progress
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.GONE);
         layout.addView(progressBar);
 
-        // Retry button
         retryBtn = new Button(getContext());
         retryBtn.setText("Retry");
         retryBtn.setAllCaps(false);
         retryBtn.setVisibility(View.GONE);
-        retryBtn.setOnClickListener(v -> loadGraves());
+        retryBtn.setOnClickListener(v -> loadCemeteries());
         layout.addView(retryBtn);
 
-        // Results container
         resultsContainer = new LinearLayout(getContext());
         resultsContainer.setOrientation(LinearLayout.VERTICAL);
         layout.addView(resultsContainer);
 
-        // Load from cache first, then fetch from API
-        List<GraveRecord> cached = cache.getCachedGraves();
+        // Load from cache first
+        List<CemeteryRecord> cached = cache.getCachedCemeteries();
         if (!cached.isEmpty()) {
-            allGraves = cached;
-            statusText.setText(cached.size() + " graves (cached)");
+            allCemeteries = cached;
+            statusText.setText(cached.size() + " cemeteries (cached)");
             displayResults(cached);
         }
 
-        // Fetch fresh data
-        loadGraves();
+        loadCemeteries();
 
-        // Search filter with debounce
         searchInput.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
-                if (debounceRunnable != null) {
-                    debounceHandler.removeCallbacks(debounceRunnable);
-                }
+                if (debounceRunnable != null) debounceHandler.removeCallbacks(debounceRunnable);
                 debounceRunnable = () -> filterResults(s.toString());
                 debounceHandler.postDelayed(debounceRunnable, DEBOUNCE_MS);
             }
@@ -133,94 +117,86 @@ public class SearchFragment extends Fragment implements ApiClient.ApiCallback<Li
         return layout;
     }
 
-    private void loadGraves() {
-        if (isLoading) return;
-        isLoading = true;
+    private void loadCemeteries() {
         progressBar.setVisibility(View.VISIBLE);
-        statusText.setText("Loading graves...");
+        statusText.setText("Loading cemeteries...");
         retryBtn.setVisibility(View.GONE);
         resultsContainer.removeAllViews();
-        apiClient.getGraves(this);
+        apiClient.getCemeteries(this);
     }
 
     private void filterResults(String query) {
         resultsContainer.removeAllViews();
         if (query.isEmpty()) {
-            displayResults(allGraves);
-            statusText.setText(allGraves.size() + " graves found");
+            displayResults(allCemeteries);
+            statusText.setText(allCemeteries.size() + " cemeteries");
             return;
         }
         String q = query.toLowerCase();
-        List<GraveRecord> filtered = new ArrayList<>();
-        for (GraveRecord g : allGraves) {
-            if (g.name != null && g.name.toLowerCase().contains(q)) {
-                filtered.add(g);
-            } else if (g.cemetery != null && g.cemetery.toLowerCase().contains(q)) {
-                filtered.add(g);
-            }
+        List<CemeteryRecord> filtered = new ArrayList<>();
+        for (CemeteryRecord c : allCemeteries) {
+            if (c.name != null && c.name.toLowerCase().contains(q)) filtered.add(c);
+            else if (c.address != null && c.address.toLowerCase().contains(q)) filtered.add(c);
         }
         statusText.setText(filtered.size() + " results for \"" + query + "\"");
         displayResults(filtered);
     }
 
-    private void displayResults(List<GraveRecord> graves) {
-        if (graves.isEmpty()) {
+    private void displayResults(List<CemeteryRecord> cemeteries) {
+        if (cemeteries.isEmpty()) {
             TextView empty = new TextView(getContext());
-            empty.setText(allGraves.isEmpty() ? "No graves available yet." : "No graves found");
+            empty.setText(allCemeteries.isEmpty() ? "No cemeteries available yet." : "No cemeteries found");
             empty.setPadding(0, 24, 0, 24);
-            empty.setTextSize(14);
             resultsContainer.addView(empty);
             return;
         }
-        for (GraveRecord g : graves) {
+        for (CemeteryRecord c : cemeteries) {
             TextView card = new TextView(getContext());
             StringBuilder sb = new StringBuilder();
-            sb.append(g.name != null ? g.name : "Unknown");
-            if (g.birthDate != null || g.deathDate != null) {
-                sb.append("\n");
-                if (g.birthDate != null) sb.append(g.birthDate);
-                if (g.birthDate != null && g.deathDate != null) sb.append(" — ");
-                if (g.deathDate != null) sb.append(g.deathDate);
+            sb.append(c.name != null ? c.name : "Unknown Cemetery");
+            if (c.address != null) sb.append("\n📍 ").append(c.address);
+            if (c.hasCoordinates()) {
+                sb.append(String.format("\n%s, %s",
+                        String.format("%.4f", c.latitude),
+                        String.format("%.4f", c.longitude)));
             }
-            if (g.cemetery != null) sb.append("\n📍 ").append(g.cemetery);
+            if (c.description != null) sb.append("\n").append(c.description);
             card.setText(sb.toString());
             card.setPadding(24, 24, 24, 24);
             card.setTextSize(14);
-            card.setContentDescription("Grave record: " + (g.name != null ? g.name : "Unknown"));
+            card.setContentDescription("Cemetery: " + (c.name != null ? c.name : "Unknown"));
+
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT);
             lp.setMargins(0, 0, 0, 12);
             card.setLayoutParams(lp);
 
-            if (g.id != null) {
+            if (c.hasCoordinates()) {
                 card.setOnClickListener(v -> {
-                    GraveDetailFragment fragment = GraveDetailFragment.newInstance(g.id);
-                    if (getActivity() instanceof MainNavActivity) {
-                        ((MainNavActivity) getActivity()).loadFragment(fragment);
-                    }
+                    String geoUri = String.format("geo:%f,%f?q=%f,%f(%s)",
+                            c.latitude, c.longitude,
+                            c.latitude, c.longitude,
+                            c.name != null ? c.name : "Cemetery");
+                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(geoUri));
+                    startActivity(intent);
                 });
             }
-
             resultsContainer.addView(card);
         }
     }
 
     @Override
-    public void onSuccess(List<GraveRecord> result) {
-        allGraves = result;
-        cache.cacheGraves(result);
+    public void onSuccess(List<CemeteryRecord> result) {
+        allCemeteries = result;
+        cache.cacheCemeteries(result);
         if (getActivity() != null) {
             getActivity().runOnUiThread(() -> {
-                isLoading = false;
                 progressBar.setVisibility(View.GONE);
-                statusText.setText(result.size() + " graves found");
-                String currentQuery = searchInput.getText().toString();
-                if (currentQuery.isEmpty()) {
-                    displayResults(result);
-                } else {
-                    filterResults(currentQuery);
-                }
+                statusText.setText(result.size() + " cemeteries");
+                String query = searchInput.getText().toString();
+                if (query.isEmpty()) displayResults(result);
+                else filterResults(query);
             });
         }
     }
@@ -229,12 +205,10 @@ public class SearchFragment extends Fragment implements ApiClient.ApiCallback<Li
     public void onError(String error) {
         if (getActivity() != null) {
             getActivity().runOnUiThread(() -> {
-                isLoading = false;
                 progressBar.setVisibility(View.GONE);
-                boolean isOffline = ApiErrorHandler.isOfflineError(error);
-                if (!allGraves.isEmpty()) {
-                    statusText.setText("Showing cached data (" + allGraves.size() + " graves)");
-                    displayResults(allGraves);
+                if (!allCemeteries.isEmpty()) {
+                    statusText.setText("Showing cached data (" + allCemeteries.size() + " cemeteries)");
+                    displayResults(allCemeteries);
                 } else {
                     statusText.setText(error);
                     retryBtn.setVisibility(View.VISIBLE);

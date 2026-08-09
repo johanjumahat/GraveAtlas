@@ -1,5 +1,7 @@
 package com.putraworks.graveatlas;
 
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -8,6 +10,7 @@ import androidx.fragment.app.FragmentManager;
 import androidx.fragment.app.FragmentTransaction;
 
 import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.putraworks.graveatlas.data.api.ApiClient;
 import com.putraworks.graveatlas.ui.about.AboutFragment;
 import com.putraworks.graveatlas.ui.addgrave.AddGraveFragment;
 import com.putraworks.graveatlas.ui.contribute.ContributeFragment;
@@ -21,25 +24,30 @@ import com.putraworks.graveatlas.ui.settings.SettingsFragment;
  *
  * Tab 1: Home       — overview and quick actions
  * Tab 2: Search    — search graves
- * Tab 3: Map       — map view (placeholder for map SDK)
+ * Tab 3: Map       — map view
  * Tab 4: Add       — submit a new grave
  * Tab 5: Mine      — user contributions
  *
- * Settings and About accessible from Home.
+ * Settings, About, Cemeteries, and Grave Details accessible from Home.
  * Chat and Compass accessible from Home action buttons.
  */
 public class MainNavActivity extends AppCompatActivity {
 
     private BottomNavigationView bottomNav;
 
+    private static final String PREFS_NAME = "graveatlas_settings";
+    private static final String KEY_API_URL = "api_url";
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main_nav);
 
+        // Load saved API URL before any API calls
+        loadSavedApiUrl();
+
         bottomNav = findViewById(R.id.bottom_navigation);
 
-        // Load Home as default
         if (savedInstanceState == null) {
             loadFragment(new HomeFragment());
         }
@@ -66,6 +74,14 @@ public class MainNavActivity extends AppCompatActivity {
         });
     }
 
+    private void loadSavedApiUrl() {
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        String savedUrl = prefs.getString(KEY_API_URL, "");
+        if (!savedUrl.isEmpty()) {
+            ApiClient.setBaseUrl(savedUrl);
+        }
+    }
+
     public void loadFragment(Fragment fragment) {
         FragmentManager fm = getSupportFragmentManager();
         FragmentTransaction tx = fm.beginTransaction();
@@ -73,9 +89,6 @@ public class MainNavActivity extends AppCompatActivity {
         tx.commit();
     }
 
-    /**
-     * Called by HomeFragment to navigate to Settings or About.
-     */
     public void navigateToSettings() {
         loadFragment(new SettingsFragment());
         bottomNav.setSelectedItemId(R.id.nav_home);

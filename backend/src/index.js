@@ -122,6 +122,26 @@ async function handleRequest(request, env, ctx) {
       return await handleReportGrave(id, request, env, corsHeaders);
     }
 
+    // ── Cemetery routes ──
+
+    if (path === '/api/cemeteries' && method === 'GET') {
+      return await handleGetCemeteries(request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/cemeteries/') && method === 'GET') {
+      const id = path.split('/').pop();
+      if (id === 'cemeteries' || !id) return notFound(corsHeaders);
+      return await handleGetCemetery(id, request, env, corsHeaders);
+    }
+
+    // ── Submission status (public, by submission ID) ──
+
+    if (path.startsWith('/api/submissions/') && method === 'GET') {
+      const id = path.split('/').pop();
+      if (id === 'submissions' || !id) return notFound(corsHeaders);
+      return await handleGetSubmissionStatus(id, request, env, corsHeaders);
+    }
+
     // ── Admin routes (auth-protected) ──
 
     if (path === '/api/admin/submissions' && method === 'GET') {
@@ -369,6 +389,118 @@ async function handleReportGrave(id, request, env, cors) {
     success: true,
     message: 'Report received. It will be reviewed by moderators.'
   }, 201, cors);
+}
+
+// ── Cemetery Handlers ──
+
+async function handleGetCemeteries(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      cemeteries: [],
+      message: 'GitHub not configured.'
+    }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('cemeteries', env);
+    const cemeteries = [];
+
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      const content = await readFile(`cemeteries/${file}`, env);
+      if (content) {
+        try {
+          const record = JSON.parse(content);
+          if (record.status === 'published') {
+            cemeteries.push(record);
+          }
+        } catch (e) { /* skip invalid JSON */ }
+      }
+    }
+
+    return jsonResponse({ success: true, cemeteries, count: cemeteries.length }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: true,
+      cemeteries: [],
+      message: 'Unable to fetch cemeteries.'
+    }, 200, cors);
+  }
+}
+
+async function handleGetCemetery(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid cemetery ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'Cemetery not found' }, 404, cors);
+  }
+
+  try {
+    const content = await readFile(`cemeteries/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Cemetery not found' }, 404, cors);
+    }
+
+    const record = JSON.parse(content);
+    if (record.status !== 'published') {
+      return jsonResponse({ success: false, error: 'Cemetery not found' }, 404, cors);
+    }
+
+    return jsonResponse(record, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Cemetery not found' }, 404, cors);
+  }
+}
+
+// ── Submission Status Handler ──
+
+async function handleGetSubmissionStatus(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid submission ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'Submission not found' }, 404, cors);
+  }
+
+  // Check published graves first
+  try {
+    const graveContent = await readFile(`graves/${safeId}.json`, env);
+    if (graveContent) {
+      const record = JSON.parse(graveContent);
+      return jsonResponse({
+        success: true,
+        id: safeId,
+        status: 'published',
+        name: record.name || null,
+        cemetery: record.cemetery || null
+      }, 200, cors);
+    }
+  } catch (e) { /* not in graves */ }
+
+  // Check pending submissions
+  try {
+    const pendingContent = await readFile(`pending/${safeId}.json`, env);
+    if (pendingContent) {
+      const record = JSON.parse(pendingContent);
+      // Only return status, not full record data
+      return jsonResponse({
+        success: true,
+        id: safeId,
+        status: record.status || 'pending',
+        name: record.name || null,
+        submittedAt: record.submittedAt || null,
+        updatedAt: record.updatedAt || null
+      }, 200, cors);
+    }
+  } catch (e) { /* not in pending */ }
+
+  return jsonResponse({ success: false, error: 'Submission not found' }, 404, cors);
 }
 
 // ── Admin Handlers ──

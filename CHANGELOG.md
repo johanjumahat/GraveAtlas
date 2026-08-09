@@ -1,5 +1,41 @@
 # CHANGELOG
 
+## v2.3.0 — Phase 3: Android API Integration (2026-08-09)
+
+### Added
+- CemeteryRecord model — matching backend cemetery schema
+- ApiErrorHandler — maps HTTP codes to user-friendly messages, never exposes secrets
+- OfflineSubmissionManager — stores submissions locally with exponential backoff (30s→600s, max 5 retries)
+- LocalCache — 5-minute TTL cache for graves and cemeteries (SharedPreferences)
+- CemeteryFragment — cemetery discovery with search, geo: intents for maps
+- GraveDetailFragment — full grave record view with open-in-maps button
+- 3 new backend endpoints: GET /api/cemeteries, GET /api/cemeteries/:id, GET /api/submissions/:id
+- 30 Android unit tests (models, error handling, JSON parsing)
+- docs/ANDROID-API.md — complete Android-API integration documentation
+- testImplementation JUnit dependency in build.gradle
+
+### Changed
+- ApiClient: added cemetery methods, submission status, HealthResult type, proper error handling
+- SearchFragment: 400ms debouncing, cache fallback, tap-to-open GraveDetail, retry button
+- MapFragment: API data with geo: intents (no paid map SDK), cache fallback
+- AddGraveFragment: review step before submission, offline submission support
+- ContributeFragment: submission tracking, offline queue management, status checking by ID
+- SettingsFragment: API health check, configurable API URL, cache clearing
+- HomeFragment: data summary from API, Browse Cemeteries button
+- AboutFragment: updated with Phase 3 architecture and privacy info
+- MainNavActivity: loads saved API URL from SharedPreferences on startup
+- version bumped to 1.1.0
+
+### Security
+- Android app contains NO server credentials (GITHUB_APP_ID, PRIVATE_KEY, INSTALLATION_ID, ADMIN_TOKEN)
+- No secrets cached, no tokens in SharedPreferences
+- Submission status endpoint exposes only status, not full pending records
+- Error messages never expose internal details
+
+### Backend Tests
+- 106 passed, 0 failed (added cemetery and submission status tests)
+
+
 ## v2.2.0 — Phase 2 Security Configuration (2026-08-09)
 
 ### Added

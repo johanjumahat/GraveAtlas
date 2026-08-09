@@ -90,4 +90,7 @@ dependencies {
 
     // Fragment
     implementation 'androidx.fragment:fragment:1.6.2'
+
+    // Unit testing
+    testImplementation 'junit:junit:4.13.2'
 }

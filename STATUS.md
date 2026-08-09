@@ -1,75 +1,74 @@
 # GraveAtlas Status
 
 **Last Updated:** 2026-08-09
-**Phase:** 2 — Cloudflare Worker + GitHub App Security Configuration
-**Tests:** 99/99 passing
+**Phase:** 3 — Android API Integration
+**Tests:** 106 backend + 30 Android unit tests
 **Branch:** main
+**Version:** 1.1.0 (build 8)
 
 ## Completed
 
 ### Phase 1 — Architecture & Foundation ✓
-- Project structure (/app, /backend, /github, /docs, /scripts, /tests)
-- Android data models (GraveRecord, GraveSubmission, SubmissionResponse)
-- Android API client with all endpoints
-- Cloudflare Worker backend with all API routes and validation
-- JSON schemas (grave + cemetery)
-- GitHub Actions data validation workflow
-- Documentation set
-- Environment configuration templates
+- Project structure, data models, API client, backend, schemas, docs, tests
 
 ### Phase 2 — GitHub App Security Configuration ✓
-- GitHub App authentication (JWT → installation token → Contents API)
-- PKCS#1/PKCS#8 private key compatibility
-- Constant-time admin token comparison (timing attack prevention)
-- Crypto-secure submission ID generation (crypto.getRandomValues)
-- Path sanitization for all IDs (path traversal prevention)
-- Rate limiting: 10 requests/minute/IP on POST endpoints (in-memory)
-- Unexpected field rejection in submissions
-- Request size limit enforcement (Content-Length + body size)
-- CORS opt-in via ALLOWED_ORIGIN (no wildcard by default)
-- Worker name fixed to `graveatlas` (matches deployed Worker)
-- Android ApiClient default URL corrected to production endpoint
-- GET /api/admin/reports endpoint added
-- GET /api/admin/status endpoint added
-- deleteFile function added to github.js
-- GitHub branch parameter (ref) support in all API calls
-- Reports excluded from admin submissions list
-- Error responses sanitized (no internal details, proper HTTP codes)
-- 502 for GitHub upstream errors, 429 for rate limited, 413 for oversized
-- 99 backend tests (all passing)
+- GitHub App auth, constant-time token comparison, crypto-secure IDs
+- Path sanitization, rate limiting, CORS opt-in, 106 backend tests
 
-### Documentation ✓
-- docs/SECRETS.md — complete secrets configuration guide
-- docs/GITHUB-APP.md — GitHub App setup (existing, verified)
-- docs/CLOUDFLARE.md — Worker configuration (updated)
-- docs/API.md — API documentation (updated with all endpoints)
-- docs/SECURITY.md — Security design (updated with all Phase 2 measures)
-- scripts/generate-admin-token.js — secure token generation script
+### Phase 3 — Android API Integration ✓
+- ApiClient updated with all endpoints (graves, cemeteries, submissions, health)
+- ApiErrorHandler — HTTP code to user-friendly message mapping
+- OfflineSubmissionManager — offline submission with exponential backoff
+- LocalCache — 5-minute TTL cache for public data
+- CemeteryRecord model added
+- SearchFragment — debounced search (400ms), cache fallback, tap-to-detail
+- CemeteryFragment — cemetery discovery with search and geo: intents
+- GraveDetailFragment — full grave record view with map link
+- MapFragment — location list with geo: intents (no paid map SDK)
+- AddGraveFragment — review step before submission, offline support
+- ContributeFragment — submission tracking, offline queue, status checking
+- SettingsFragment — API health check, URL config, cache management
+- HomeFragment — data summary from API, cemetery access
+- AboutFragment — updated with Phase 3 architecture info
+- Backend: 3 new endpoints (cemeteries, cemetery detail, submission status)
+- 30 Android unit tests (models, error handler, JSON parsing)
+- docs/ANDROID-API.md — complete integration documentation
+- No server credentials in Android app
+- No paid services added
+- Existing functionality preserved
 
-### Security Audit ✓
-- No private keys in repository
-- No tokens in source code
-- No .env files with real values
-- No secrets in test output
-- .gitignore covers .env, .pem, private_key files
-- App ID redacted from STATUS.md
-- Android app contains no server credentials
+## Backend Endpoints
 
-## Pending (Manual Steps Required)
+| Method | Path | Auth | Phase |
+|--------|------|------|-------|
+| GET | /api/health | None | P2 |
+| GET | /api/graves | None | P2 |
+| POST | /api/graves | Rate-limited | P2 |
+| GET | /api/graves/:id | None | P2 |
+| POST | /api/graves/:id/report | Rate-limited | P2 |
+| GET | /api/cemeteries | None | P3 |
+| GET | /api/cemeteries/:id | None | P3 |
+| GET | /api/submissions/:id | None | P3 |
+| GET | /api/admin/submissions | Admin | P2 |
+| GET | /api/admin/reports | Admin | P2 |
+| GET | /api/admin/status | Admin | P2 |
+| POST | /api/admin/submissions/:id/approve | Admin | P2 |
+| POST | /api/admin/submissions/:id/reject | Admin | P2 |
 
-### Cloudflare Secrets (User Must Configure)
-1. `GITHUB_APP_ID` — via `wrangler secret put GITHUB_APP_ID`
-2. `GITHUB_PRIVATE_KEY` — via `wrangler secret put GITHUB_PRIVATE_KEY`
-3. `GITHUB_INSTALLATION_ID` — via `wrangler secret put GITHUB_INSTALLATION_ID`
-4. `ADMIN_TOKEN` — generated, via `wrangler secret put ADMIN_TOKEN`
+## Pending (Manual Steps)
+
+### Cloudflare Secrets (if not yet configured)
+- GITHUB_APP_ID, GITHUB_PRIVATE_KEY, GITHUB_INSTALLATION_ID, ADMIN_TOKEN
 
 ### Post-Deployment Verification
-- Run `/api/health` to confirm GitHub configured
-- Run `/api/admin/status` with ADMIN_TOKEN to verify admin access
-- Submit a test grave via POST /api/graves
-- Verify pending submission appears in GitHub repo
-- Approve via admin endpoint
-- Verify published grave appears in GET /api/graves
+- Test health endpoint: `curl https://graveatlas.putraworks-2026.workers.dev/api/health`
+- Test cemeteries endpoint: `curl https://graveatlas.putraworks-2026.workers.dev/api/cemeteries`
+- Test submission status: `curl https://graveatlas.putraworks-2026.workers.dev/api/submissions/sub_test`
+
+### Android Build
+- GitHub Actions CI will build APK automatically on push
+- Verify unit tests pass in CI
+- Download APK from GitHub Releases
 
 ## Known Issues
 - None

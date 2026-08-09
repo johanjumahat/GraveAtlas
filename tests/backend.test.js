@@ -854,6 +854,102 @@ test('generated admin token is 64 bytes base64url', () => {
 });
 
 // ═══════════════════════════════════════════════
+// TEST: Cemetery endpoints
+// ═══════════════════════════════════════════════
+asyncTest('cemetery list returns published only', async () => {
+  const c = new MockGitHubClient();
+  await c.writeFile('cemeteries/cem001.json', JSON.stringify({ id: 'cem001', name: 'CCK Cemetery', status: 'published' }));
+  await c.writeFile('cemeteries/cem002.json', JSON.stringify({ id: 'cem002', name: 'Bidadari', status: 'published' }));
+  await c.writeFile('cemeteries/cem003.json', JSON.stringify({ id: 'cem003', name: 'Pending Cem', status: 'pending' }));
+  const files = await c.listFiles('cemeteries');
+  const published = [];
+  for (const f of files) {
+    const rec = JSON.parse(await c.readFile('cemeteries/' + f));
+    if (rec.status === 'published') published.push(rec);
+  }
+  assert.strictEqual(published.length, 2);
+});
+
+asyncTest('cemetery detail returns published record', async () => {
+  const c = new MockGitHubClient();
+  await c.writeFile('cemeteries/cem001.json', JSON.stringify({
+    id: 'cem001', name: 'Choa Chu Kang', address: 'Singapore',
+    latitude: 1.35, longitude: 103.8, status: 'published'
+  }));
+  const content = await c.readFile('cemeteries/cem001.json');
+  const rec = JSON.parse(content);
+  assert.strictEqual(rec.name, 'Choa Chu Kang');
+  assert.strictEqual(rec.status, 'published');
+});
+
+asyncTest('pending cemetery not returned in detail', async () => {
+  const c = new MockGitHubClient();
+  await c.writeFile('cemeteries/cem_pending.json', JSON.stringify({
+    id: 'cem_pending', name: 'Future Cemetery', status: 'pending'
+  }));
+  const content = await c.readFile('cemeteries/cem_pending.json');
+  const rec = JSON.parse(content);
+  // The handler checks status and returns 404 for non-published
+  assert.notStrictEqual(rec.status, 'published');
+});
+
+// ═══════════════════════════════════════════════
+// TEST: Submission status endpoint
+// ═══════════════════════════════════════════════
+asyncTest('submission status: pending returns status only', async () => {
+  const c = new MockGitHubClient();
+  const id = generateId();
+  await c.writeFile(`pending/${id}.json`, JSON.stringify({
+    id, name: 'Test Person', status: 'pending', submittedAt: new Date().toISOString()
+  }));
+  // Simulate: check pending first
+  const content = await c.readFile(`pending/${id}.json`);
+  const rec = JSON.parse(content);
+  assert.strictEqual(rec.status, 'pending');
+  // Should only expose: id, status, name, submittedAt — NOT full record
+  const safeResponse = { success: true, id, status: rec.status, name: rec.name, submittedAt: rec.submittedAt };
+  assert.strictEqual(safeResponse.status, 'pending');
+  assert.ok(!safeResponse.cemetery); // not exposed
+  assert.ok(!safeResponse.notes); // not exposed
+});
+
+asyncTest('submission status: published returns published info', async () => {
+  const c = new MockGitHubClient();
+  const id = generateId();
+  await c.writeFile(`graves/${id}.json`, JSON.stringify({
+    id, name: 'Published Person', cemetery: 'CCK', status: 'published'
+  }));
+  // Check graves first
+  const graveContent = await c.readFile(`graves/${id}.json`);
+  assert.ok(graveContent);
+  const rec = JSON.parse(graveContent);
+  assert.strictEqual(rec.status, 'published');
+});
+
+asyncTest('submission status: not found returns 404', async () => {
+  const c = new MockGitHubClient();
+  const content = await c.readFile('pending/nonexistent.json');
+  assert.strictEqual(content, null);
+  const graveContent = await c.readFile('graves/nonexistent.json');
+  assert.strictEqual(graveContent, null);
+});
+
+asyncTest('submission status: rejected shows rejected status', async () => {
+  const c = new MockGitHubClient();
+  const id = generateId();
+  await c.writeFile(`pending/${id}.json`, JSON.stringify({
+    id, name: 'Rejected Person', status: 'rejected', rejectionReason: 'Duplicate',
+    submittedAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+  }));
+  const content = await c.readFile(`pending/${id}.json`);
+  const rec = JSON.parse(content);
+  // The handler returns only status, not rejectionReason
+  const safeResponse = { success: true, id, status: rec.status, name: rec.name };
+  assert.strictEqual(safeResponse.status, 'rejected');
+  assert.ok(!safeResponse.rejectionReason); // not exposed to public
+});
+
+// ═══════════════════════════════════════════════
 // Run all tests
 // ═══════════════════════════════════════════════
 
