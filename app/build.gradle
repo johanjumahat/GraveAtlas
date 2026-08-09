@@ -93,4 +93,5 @@ dependencies {
 
     // Unit testing
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:org.json:20231013'
 }

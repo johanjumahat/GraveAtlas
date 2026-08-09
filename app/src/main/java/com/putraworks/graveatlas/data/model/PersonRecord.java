@@ -66,7 +66,7 @@ public class PersonRecord {
             int month = Integer.parseInt(parts[1]);
             String[] months = {"", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
                     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
-            if (month >= 1 && month <= 12) return parts[2] + " " + months[month] + " " + parts[0];
+            if (month >= 1 && month <= 12) return Integer.parseInt(parts[2]) + " " + months[month] + " " + parts[0];
             return date;
         }
         return date;

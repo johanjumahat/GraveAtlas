@@ -58,6 +58,10 @@ public class SearchResult {
             if (sb.length() > 0) sb.append(" • ");
             sb.append(cemetery);
         }
+        if (city != null) {
+            if (sb.length() > 0) sb.append(" • ");
+            sb.append(city);
+        }
         if (country != null) {
             if (sb.length() > 0) sb.append(" • ");
             sb.append(country);
