@@ -29,3 +29,7 @@ A worldwide cemetery & memorial locator for Android. Search, explore, and contri
 ```
 
 APK output: `app/build/outputs/apk/release/`
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the mandatory branching workflow. All changes must go through a branch + CI pass before merging to `main`. This applies to AI agents too.
