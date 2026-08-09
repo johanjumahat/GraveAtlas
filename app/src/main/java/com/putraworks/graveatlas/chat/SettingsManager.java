@@ -28,11 +28,13 @@ public class SettingsManager {
 
         // Use per-user encrypted prefs if logged in, fall back to encrypted global
         String prefsName = (userId != null) ? "user_" + userId + "_settings" : "graveatlas_settings";
+        SharedPreferences loaded;
         try {
-            prefs = SecureStorage.getEncryptedPrefs(context, prefsName);
+            loaded = SecureStorage.getEncryptedPrefs(context, prefsName);
         } catch (Exception e) {
-            prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE);
+            loaded = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE);
         }
+        prefs = loaded;
     }
 
     // ── API Keys ──
