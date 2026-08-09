@@ -1,14 +1,14 @@
 # GraveAtlas — Status
 
 **Last updated:** 2026-08-09
-**Version:** 6.0.0 (Phase 6A)
+**Version:** 7.0.0 (Phase 7A)
 **Repository:** putraworks2026/GraveAtlas
 **Data repo:** putraworks2026/graveatlas-data
 **Worker:** graveatlas.putraworks-2026.workers.dev
 
 ---
 
-## Current Phase: 6A — Community Accounts & Contribution System
+## Current Phase: 7A — Advanced Search & Global Discovery
 
 ### Completed Phases
 
@@ -22,24 +22,29 @@
 | 5 | Global Discovery, Open-Data Import | ✅ Complete |
 | 5.5 | Production Readiness, Security Audit | ✅ Complete |
 | 6A | Community Accounts & Contribution System | ✅ Complete |
+| 7A | Advanced Search & Global Discovery | ✅ Complete |
 
-### Phase 6A Features
+### Phase 7A Features
 
-- **User accounts** — Registration, profile (display name, bio, contribution count), account states (ACTIVE/SUSPENDED/DEACTIVATED)
-- **Contribution system** — Cemetery, grave, correction, photo, and report submissions
-- **Submission statuses** — DRAFT → PENDING_REVIEW → CHANGES_REQUESTED → APPROVED/REJECTED/CANCELLED
-- **Status transitions** — Validated, invalid transitions rejected
-- **Drafts** — Save, update, delete, and submit incomplete contributions
-- **Contribution history** — Paginated list with filtering by type and status
-- **Contribution details** — Full submission data with reviewer feedback
-- **Cancel contributions** — Users can cancel pending submissions
-- **Duplicate detection** — 4-level (NO_MATCH, POSSIBLE_DUPLICATE, HIGH_CONFIDENCE_MATCH, EXACT_DUPLICATE) with absolute scoring
-- **Photo contributions** — With rights declaration (OWN_WORK, PERMISSION_GRANTED, OPEN_LICENSE, PUBLIC_DOMAIN, UNKNOWN)
-- **Photo validation** — URL format, target validation, path traversal protection
-- **Authorization** — Users can only access their own contributions and drafts
-- **Audit events** — CONTRIBUTION_CREATED, DRAFT_UPDATED, SUBMISSION_CREATED, CORRECTION_CREATED, PHOTO_SUBMITTED, SUBMISSION_CANCELLED, USER_REGISTERED, USER_PROFILE_UPDATED, USER_STATUS_CHANGED
-- **Rate limiting** — 30 actions per user per hour (in addition to existing IP-based limiting)
-- **18 new API endpoints** for user, contribution, draft, and photo operations
+- **Global search** — Unified search across people, cemeteries, memorials, and locations
+- **Categorized results** — Results grouped by category with counts (PEOPLE, CEMETERIES, MEMORIALS, LOCATIONS)
+- **Person search** — By full name, partial name, alt names, birth year, death year, cemetery, country
+- **Cemetery search** — By name, alt names, city, region, country, location
+- **Location search** — Countries, regions, and cities with cemetery counts
+- **Name normalization** — Unicode NFD, accent stripping, lowercase, punctuation handling (source data never modified)
+- **Country directory** — Worldwide with actual cemetery and memorial counts
+- **Region directory** — Country → Regions with cemetery counts
+- **City/locality directory** — Country → Region → Cities with cemetery counts and coordinates
+- **Browse by location** — Filter cemeteries by country/region/city hierarchy
+- **Advanced filters** — Country, region, city, birth year, death year, year range, record type
+- **Date search** — Exact year, year range, handles incomplete dates (year-only, approx, unknown)
+- **Sorting** — Relevance (score), name (alphabetical), date (most recent), distance (haversine)
+- **Server-side pagination** — Default 20, max 100 per page — Android never downloads full dataset
+- **Search caching** — 5-minute TTL for search results, 10-minute TTL for directories
+- **Related records** — Nearby cemeteries (50km), same-cemetery people, same-region cemeteries
+- **Search security** — Path traversal neutralized, query length limits, parameter validation, rate limiting
+- **Internationalization** — Full Unicode support (Arabic, Chinese, Japanese, Korean, Thai, Hebrew, Cyrillic)
+- **11 new API endpoints** for global search, directories, browse, and related records
 
 ### Tests
 
@@ -50,30 +55,31 @@
 | Phase 5 Import Pipeline | 64 | 0 |
 | Phase 5.5 E2E | 59 | 0 |
 | Phase 6A | 123 | 0 |
-| **Total** | **639** | **0** |
+| Phase 7A | 105 | 0 |
+| **Total** | **744** | **0** |
 
 ### Security
 
 - ✅ No secrets in any source files
-- ✅ No API keys, tokens, or credentials in code
-- ✅ Path traversal protection on all user inputs
-- ✅ User-scoped authorization — users can only access their own data
-- ✅ Admin endpoints remain Bearer-token protected
-- ✅ Rate limiting at both IP and user level
-- ✅ Photo URL validation (HTTP/HTTPS only)
-- ✅ No file execution — photos are never processed as code
+- ✅ Path traversal queries neutralized by normalization
+- ✅ No GitHub credentials exposed through search
+- ✅ Maximum query length enforced (200 chars)
+- ✅ All search parameters validated
+- ✅ Rate limiting via existing IP-based limiter
+- ✅ No arbitrary file or repository access through search
+- ✅ Source data never modified by search normalization
 
 ### API Version
 
-- Current: `6.0.0`
-- 18 new endpoints added in Phase 6A
+- Current: `7.0.0`
+- 11 new endpoints added in Phase 7A
 
 ### Production Blockers (Manual Steps)
 
-1. **Deploy updated Cloudflare Worker** — Production runs v2.0.0, code is now v6.0.0
+1. **Deploy updated Cloudflare Worker** — Production runs v2.0.0, code is now v7.0.0
 2. **Configure Worker secrets** — GITHUB_APP_ID, GITHUB_PRIVATE_KEY, GITHUB_INSTALLATION_ID, ADMIN_TOKEN
 3. **Build Android APK** — Requires Android SDK
 
 ### Next Phase
 
-Phase 6B — Community Moderation, Reputation, Reports, Notifications & Final QA
+Phase 7B — Advanced Maps, Nearby Discovery, Saved Places & Final QA

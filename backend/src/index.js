@@ -18,6 +18,7 @@
 
 import { getToken, writeFile, readFile, listFiles, deleteFile, sanitizePathSegment } from './github.js';
 import * as Phase6A from './phase6a.js';
+import * as Phase7A from './phase7a.js';
 
 // ── Constants ──
 
@@ -197,7 +198,7 @@ async function handleRequest(request, env, ctx) {
     // ── Public routes ──
 
     if (path === '/' && method === 'GET') {
-      return jsonResponse({ name: 'GraveAtlas API', version: '6.0.0', status: 'operational' }, 200, corsHeaders);
+      return jsonResponse({ name: 'GraveAtlas API', version: '7.0.0', status: 'operational' }, 200, corsHeaders);
     }
 
     if (path === '/api/health' && method === 'GET') {
@@ -391,6 +392,60 @@ async function handleRequest(request, env, ctx) {
       return await handleSubmitPhoto(request, env, corsHeaders);
     }
 
+
+    // ── Phase 7A: Advanced Search & Global Discovery routes ──
+
+    // Global unified search (Part 82)
+    if (path === '/api/search/global' && method === 'GET') {
+      return await handleGlobalSearch(request, env, corsHeaders);
+    }
+
+    // Person search (Part 84)
+    if (path === '/api/search/people' && method === 'GET') {
+      return await handlePersonSearch(request, env, corsHeaders);
+    }
+
+    // Cemetery search (Part 86)
+    if (path === '/api/search/cemeteries' && method === 'GET') {
+      return await handleCemeterySearch(request, env, corsHeaders);
+    }
+
+    // Location search (Part 87)
+    if (path === '/api/search/locations' && method === 'GET') {
+      return await handleLocationSearch(request, env, corsHeaders);
+    }
+
+    // Country directory (Part 88)
+    if (path === '/api/countries' && method === 'GET') {
+      return await handleCountryDirectory(request, env, corsHeaders);
+    }
+
+    // Region directory (Part 89)
+    if (path.match(/^\/api\/countries\/[^/]+\/regions$/) && method === 'GET') {
+      const country = decodeURIComponent(path.split('/')[3]);
+      return await handleRegionDirectory(country, request, env, corsHeaders);
+    }
+
+    // City directory (Part 90)
+    if (path.match(/^\/api\/countries\/[^/]+\/regions\/[^/]+\/cities$/) && method === 'GET') {
+      const parts = path.split('/');
+      const country = decodeURIComponent(parts[3]);
+      const region = decodeURIComponent(parts[5]);
+      return await handleCityDirectory(country, region, request, env, corsHeaders);
+    }
+
+    // Browse by location (Part 87)
+    if (path === '/api/browse' && method === 'GET') {
+      return await handleBrowseByLocation(request, env, corsHeaders);
+    }
+
+    // Related records (Part 101)
+    if (path.match(/^\/api\/related\/[^/]+$/) && method === 'GET') {
+      const parts = path.split('/');
+      const recordId = decodeURIComponent(parts[3]);
+      return await handleRelatedRecords(recordId, request, env, corsHeaders);
+    }
+
     // ── Admin routes (auth-protected) ──
 
     if (path === '/api/admin/submissions' && method === 'GET') {
@@ -518,7 +573,7 @@ async function handleHealth(request, env, cors) {
   return jsonResponse({
     status: 'ok',
     service: 'GraveAtlas',
-    version: '6.0.0',
+    version: '7.0.0',
     githubConfigured: hasGithubConfig,
     adminConfigured: hasAdminToken,
     timestamp: new Date().toISOString()
@@ -2958,4 +3013,198 @@ async function handleSubmitPhoto(request, env, cors) {
     success: true,
     photo: { id: photo.id, status: photo.status, rights: photo.rights, createdAt: photo.createdAt }
   }, 201, cors);
+}
+
+// ── Phase 7A: Advanced Search & Global Discovery Handlers ──
+
+async function handleGlobalSearch(request, env, cors) {
+  const url = new URL(request.url);
+  const params = url.searchParams;
+
+  const errors = Phase7A.validateSearchQuery(params);
+  if (errors.length > 0) {
+    return jsonResponse({ success: false, error: 'Validation failed', details: errors }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, results: [], categories: {}, count: 0, total: 0, message: 'Search unavailable — GitHub not configured.' }, 200, cors);
+  }
+
+  try {
+    const result = await Phase7A.globalSearch(env, params);
+    return jsonResponse(result, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: true, results: [], categories: {}, count: 0, message: 'Search temporarily unavailable.' }, 200, cors);
+  }
+}
+
+async function handlePersonSearch(request, env, cors) {
+  const url = new URL(request.url);
+  const params = url.searchParams;
+  params.set('type', 'people');
+
+  const errors = Phase7A.validateSearchQuery(params);
+  if (errors.length > 0) {
+    return jsonResponse({ success: false, error: 'Validation failed', details: errors }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, results: [], count: 0, message: 'Search unavailable.' }, 200, cors);
+  }
+
+  try {
+    const result = await Phase7A.globalSearch(env, params);
+    const peopleResults = result.results.filter(r => r.category === 'people');
+    return jsonResponse({
+      success: true,
+      results: peopleResults,
+      count: peopleResults.length,
+      total: result.total,
+      page: result.page,
+      pageSize: result.pageSize,
+      hasMore: result.hasMore
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: true, results: [], count: 0, message: 'Search temporarily unavailable.' }, 200, cors);
+  }
+}
+
+async function handleCemeterySearch(request, env, cors) {
+  const url = new URL(request.url);
+  const params = url.searchParams;
+  params.set('type', 'cemeteries');
+
+  const errors = Phase7A.validateSearchQuery(params);
+  if (errors.length > 0) {
+    return jsonResponse({ success: false, error: 'Validation failed', details: errors }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, results: [], count: 0, message: 'Search unavailable.' }, 200, cors);
+  }
+
+  try {
+    const result = await Phase7A.globalSearch(env, params);
+    const cemeteryResults = result.results.filter(r => r.category === 'cemeteries');
+    return jsonResponse({
+      success: true,
+      results: cemeteryResults,
+      count: cemeteryResults.length,
+      total: result.total,
+      page: result.page,
+      pageSize: result.pageSize,
+      hasMore: result.hasMore
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: true, results: [], count: 0, message: 'Search temporarily unavailable.' }, 200, cors);
+  }
+}
+
+async function handleLocationSearch(request, env, cors) {
+  const url = new URL(request.url);
+  const params = url.searchParams;
+  params.set('type', 'locations');
+
+  const errors = Phase7A.validateSearchQuery(params);
+  if (errors.length > 0) {
+    return jsonResponse({ success: false, error: 'Validation failed', details: errors }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, results: [], count: 0, message: 'Search unavailable.' }, 200, cors);
+  }
+
+  try {
+    const result = await Phase7A.globalSearch(env, params);
+    const locationResults = result.results.filter(r => r.category === 'locations');
+    return jsonResponse({
+      success: true,
+      results: locationResults,
+      count: locationResults.length,
+      total: result.total,
+      page: result.page,
+      pageSize: result.pageSize,
+      hasMore: result.hasMore
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: true, results: [], count: 0, message: 'Search temporarily unavailable.' }, 200, cors);
+  }
+}
+
+async function handleCountryDirectory(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, countries: [], count: 0, message: 'Directory unavailable.' }, 200, cors);
+  }
+
+  try {
+    const result = await Phase7A.getCountryDirectory(env);
+    return jsonResponse(result, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: true, countries: [], count: 0, message: 'Directory temporarily unavailable.' }, 200, cors);
+  }
+}
+
+async function handleRegionDirectory(country, request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, regions: [], count: 0 }, 200, cors);
+  }
+
+  try {
+    const result = await Phase7A.getRegionDirectory(env, country);
+    return jsonResponse(result, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: true, regions: [], count: 0 }, 200, cors);
+  }
+}
+
+async function handleCityDirectory(country, region, request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, cities: [], count: 0 }, 200, cors);
+  }
+
+  try {
+    const result = await Phase7A.getCityDirectory(env, country, region);
+    return jsonResponse(result, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: true, cities: [], count: 0 }, 200, cors);
+  }
+}
+
+async function handleBrowseByLocation(request, env, cors) {
+  const url = new URL(request.url);
+  const country = url.searchParams.get('country');
+  const region = url.searchParams.get('region');
+  const city = url.searchParams.get('city');
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, cemeteries: [], count: 0 }, 200, cors);
+  }
+
+  try {
+    const result = await Phase7A.browseByLocation(env, country, region, city);
+    return jsonResponse(result, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: true, cemeteries: [], count: 0 }, 200, cors);
+  }
+}
+
+async function handleRelatedRecords(recordId, request, env, cors) {
+  const url = new URL(request.url);
+  const recordType = url.searchParams.get('type') || 'cemetery';
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, nearby: [], sameCemetery: [], sameRegion: [] }, 200, cors);
+  }
+
+  // Validate recordId - prevent path traversal
+  if (!recordId || recordId.includes('..') || recordId.includes('/') || recordId.includes('\\')) {
+    return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+  }
+
+  try {
+    const result = await Phase7A.getRelatedRecords(env, recordId, recordType);
+    return jsonResponse({ success: true, ...result }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: true, nearby: [], sameCemetery: [], sameRegion: [] }, 200, cors);
+  }
 }

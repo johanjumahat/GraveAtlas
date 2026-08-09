@@ -1,5 +1,91 @@
 # CHANGELOG
 
+## v7.0.0 — Phase 7A: Advanced Search & Global Discovery (2026-08-09)
+
+### Added — Global Search (Parts 82-83)
+- Unified global search across people, cemeteries, memorials, and locations
+- Results categorized into 4 groups with per-category counts
+- GET /api/search/global endpoint with full filter and sort support
+
+### Added — Person Search (Part 84)
+- Search by full name, partial name, alternative names, birth/death year
+- GET /api/search/people endpoint
+- Alt names, local names, and transliterations searched
+
+### Added — Cemetery Search (Part 86)
+- Search by name, alt names, city, region, country
+- GET /api/search/cemeteries endpoint
+
+### Added — Location Search (Part 87)
+- Search for countries, regions, and cities
+- GET /api/search/locations endpoint
+- Browse by location: GET /api/browse?country=...&region=...&city=...
+
+### Added — Name Normalization (Part 85)
+- Unicode NFD decomposition + accent stripping
+- Lowercase, punctuation handling, space normalization
+- Source data never modified by normalization
+- Full Unicode support (Arabic, Chinese, Japanese, Korean, Thai, Hebrew, Cyrillic)
+
+### Added — Geographic Directories (Parts 88-90)
+- Country directory: GET /api/countries — with actual cemetery and memorial counts
+- Region directory: GET /api/countries/:country/regions
+- City directory: GET /api/countries/:country/regions/:region/cities
+- Counts derived from actual indexed data — never fabricated
+
+### Added — Advanced Filters (Part 91)
+- Country, region, city, cemetery filters
+- Birth year, death year, year range (yearStart/yearEnd) filters
+- Record type filter (people, cemeteries, memorials, locations, all)
+
+### Added — Date Search (Part 92)
+- Exact year, year range support
+- Handles incomplete dates (year-only, approx, unknown) safely
+
+### Added — Search Sorting (Part 93)
+- Relevance (by match score, default)
+- Name (alphabetical)
+- Date (most recent first)
+- Distance (haversine, requires lat/lon parameters)
+
+### Added — Server-Side Pagination (Part 94)
+- Default page size: 20, max: 100
+- Android never downloads full dataset
+
+### Added — Search Caching (Part 99)
+- Search results: 5-minute TTL
+- Directory data: 10-minute TTL
+- LRU eviction when cache full
+
+### Added — Related Records (Part 101)
+- GET /api/related/:id?type=cemetery — nearby cemeteries (50km) + people in cemetery
+- GET /api/related/:id?type=grave — same-cemetery people + same-region cemeteries
+- No fabricated relationships
+
+### Added — Search Security (Part 97)
+- Path traversal queries neutralized
+- Query length limit (200 chars)
+- All parameters validated
+- No arbitrary file/repo access through search
+
+### Added — Internationalization (Part 107)
+- Full Unicode search support
+- Accent-insensitive matching
+- Multiple date format support
+
+### Added — Tests
+- 105 new Phase 7A tests (all passing)
+- Total tests: 744 (346 + 47 + 64 + 59 + 123 + 105)
+
+### Added — Documentation (Part 111)
+- docs/SEARCH.md — Search API, filters, sorting, normalization, caching
+- docs/GLOBAL-DISCOVERY.md — Geographic directories, browse, related records
+
+### Changed
+- API version bumped to 7.0.0
+- tests/run.js updated to include Phase 7A test suite
+
+
 ## v6.0.0 — Phase 6A: Community Accounts & Contribution System (2026-08-09)
 
 ### Added — User Accounts (Parts 2-3)

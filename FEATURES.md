@@ -108,3 +108,24 @@
 - **Audit Events** — 9 action types tracked for all contribution operations
 - **Rate Limiting** — 30 actions per user per hour
 - **18 New API Endpoints** — User, contribution, draft, and photo operations
+
+## Phase 7A — Advanced Search & Global Discovery
+
+- **Global Search** — Unified search across people, cemeteries, memorials, and locations
+- **Categorized Results** — Results grouped by category with counts
+- **Person Search** — Full name, partial name, alt names, birth/death year, cemetery, country
+- **Cemetery Search** — Name, alt names, city, region, country
+- **Location Search** — Countries, regions, cities with cemetery counts
+- **Name Normalization** — Unicode NFD, accent stripping, preserves source data
+- **Country Directory** — Worldwide with actual cemetery and memorial counts
+- **Region Directory** — Country → Regions with cemetery counts
+- **City Directory** — Country → Region → Cities with coordinates
+- **Browse by Location** — Filter cemeteries by geographic hierarchy
+- **Advanced Filters** — Country, region, city, birth year, death year, year range, record type
+- **Date Search** — Exact year, year range, handles incomplete dates
+- **Sorting** — Relevance, name, date, distance (haversine)
+- **Server-Side Pagination** — Android never downloads full dataset
+- **Search Caching** — 5-min results, 10-min directories
+- **Related Records** — Nearby cemeteries, same-cemetery people, same-region cemeteries
+- **Internationalization** — Full Unicode support (Arabic, Chinese, Japanese, Korean, Thai, Hebrew, Cyrillic)
+- **11 New API Endpoints** — Global search, person/cemetery/location search, directories, browse, related
