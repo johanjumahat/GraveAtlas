@@ -1,5 +1,86 @@
 # CHANGELOG
 
+## v4.5.0 — Phase 4.5: Data Governance, Moderation, Trust & Production Readiness (2026-08-09)
+
+### Added — Admin Dashboard (Part 2)
+- GET /api/admin/dashboard — Queue overview with pending counts, privacy report highlights
+- 12 new admin API endpoints for governance operations
+
+### Added — Moderation System (Parts 4-5)
+- Structured moderation reasons: INVALID_DATA, DUPLICATE, INSUFFICIENT_SOURCE, WRONG_LOCATION, PRIVACY_CONCERN, INAPPROPRIATE_CONTENT, INCORRECT_CEMETERY, OTHER
+- Internal moderation notes (not exposed to users)
+- Enhanced approval/rejection with audit events and contributor stats
+
+### Added — Correction Workflow (Part 6)
+- POST /api/admin/corrections/:id/approve — Apply correction, preserve previous values
+- POST /api/admin/corrections/:id/reject — Reject with structured reason
+- Previous values stored in correction record and audit event
+
+### Added — Audit Trail (Part 7)
+- createAuditEvent() — Appends audit events to audit/ directory
+- GET /api/admin/audit — List audit events (paginated, filterable)
+- GET /api/admin/audit/:entityId — Full audit trail for entity
+- 10 audit actions: CREATE, UPDATE, DELETE, APPROVE, REJECT, REQUEST_CORRECTION, VERIFY, UNVERIFY, REPORT, RESTORE
+
+### Added — Contributor Trust (Part 8)
+- updateContributorStats() — Track submissions, accepted, rejected, corrections, reports
+- GET /api/admin/contributors — List contributor statistics (admin only)
+- Acceptance rate calculated but never grants bypass of moderation
+
+### Added — Report System (Parts 9-10)
+- Structured report types: INCORRECT_INFORMATION, DUPLICATE, WRONG_LOCATION, PRIVACY_CONCERN, INAPPROPRIATE_PHOTO, WRONG_CEMETERY, CEMETERY_STATUS, OTHER
+- Report statuses: OPEN, UNDER_REVIEW, RESOLVED, REJECTED
+- POST /api/admin/reports/:id/resolve — Resolve report with action
+- POST /api/admin/reports/:id/reject — Reject invalid report
+- Privacy reports prioritized in dashboard
+
+### Added — Data Quality Engine (Parts 11, 25)
+- GET /api/admin/data-quality — 11 ERROR checks, 6 WARNING checks, 1 INFO check
+- scripts/data-quality-check.js — Standalone CLI for local/CI use
+- Checks: missing IDs, duplicate IDs, broken refs, invalid coords, impossible dates, malformed URLs, invalid country codes
+
+### Added — Status Transitions (Part 15)
+- State machine for submissions, corrections, and reports
+- Server-enforced: rejected→published is blocked, duplicate approvals blocked
+- HTTP 409 returned for invalid transitions
+
+### Added — Soft Delete & Restoration (Parts 18-19)
+- Entity lifecycle: ACTIVE, ARCHIVED, REMOVED_PENDING_REVIEW, REMOVED
+- POST /api/admin/restore/:id — Restore archived/removed records
+- Restoration creates audit event
+
+### Added — CI Validation (Part 26)
+- Enhanced data-validation.yml with 5 check types:
+  JSON syntax, required fields, duplicate IDs, broken references, secret scanning
+
+### Added — Documentation (Part 33)
+- docs/MODERATION.md — Moderation queue, lifecycle, reasons, admin API
+- docs/AUDIT-TRAIL.md — Audit event structure, actions, API, security
+- docs/DATA-QUALITY.md — Quality checks, categories, CLI usage
+- docs/REPORTS.md — Report types, statuses, lifecycle, privacy
+- docs/PRIVACY-REQUESTS.md — Privacy/takedown process, soft delete, contributor privacy
+- docs/RECOVERY.md — 6 recovery scenarios with Git procedures
+- docs/ADMIN-SECURITY.md — Authentication, authorization, rate limiting, security checklist
+
+### Added — Tests (Parts 27-30)
+- 76 new backend tests (346 total): moderation reasons, report types, audit actions, status transitions, duplicate detection, data consistency, soft delete, E2E moderation, correction, report, contributor trust, privacy, rate limiting
+- All 270 Phase 1-4 tests still pass (regression verified)
+
+### Changed
+- Backend version: 4.1.0 → 4.5.0
+- Enhanced report handler with structured reportType
+- Enhanced approve/reject with audit events and contributor stats
+- Enhanced data-validation.yml CI workflow
+
+### Verified
+- Part 24: Security audit — 11/11 checks passed
+- Part 34: No paid services added
+- Part 35: No AI for deterministic operations
+- Part 36: All GitHub writes through Worker only
+- Part 37: Git safety — no secrets committed
+- Final acceptance: 29/29 checks passed
+
+
 ## v4.1.0 — Phase 4 Parts 39-50: Performance, Testing, Security & Documentation (2026-08-09)
 
 ### Added — Performance (Part 39)

@@ -35,6 +35,55 @@ const DEFAULT_PAGE_LIMIT = 100;
 const MAX_PAGE_LIMIT = 500;
 const IDEMPOTENCY_TTL_MS = 60 * 60 * 1000; // 1 hour
 
+// ── Phase 4.5: Governance constants ──
+
+const MODERATION_REASONS = [
+  'INVALID_DATA', 'DUPLICATE', 'INSUFFICIENT_SOURCE', 'WRONG_LOCATION',
+  'PRIVACY_CONCERN', 'INAPPROPRIATE_CONTENT', 'INCORRECT_CEMETERY', 'OTHER'
+];
+
+const REPORT_TYPES = [
+  'INCORRECT_INFORMATION', 'DUPLICATE', 'WRONG_LOCATION', 'PRIVACY_CONCERN',
+  'INAPPROPRIATE_PHOTO', 'WRONG_CEMETERY', 'CEMETERY_STATUS', 'OTHER'
+];
+
+const REPORT_STATUSES = ['OPEN', 'UNDER_REVIEW', 'RESOLVED', 'REJECTED'];
+
+const AUDIT_ACTIONS = [
+  'CREATE', 'UPDATE', 'DELETE', 'APPROVE', 'REJECT',
+  'REQUEST_CORRECTION', 'VERIFY', 'UNVERIFY', 'REPORT', 'RESTORE'
+];
+
+const ENTITY_LIFECYCLE = ['ACTIVE', 'ARCHIVED', 'REMOVED_PENDING_REVIEW', 'REMOVED'];
+
+// Valid submission status transitions
+const SUBMISSION_TRANSITIONS = {
+  'pending': ['under_review', 'rejected'],
+  'under_review': ['published', 'rejected'],
+  'published': [],
+  'rejected': []
+};
+
+// Valid correction status transitions
+const CORRECTION_TRANSITIONS = {
+  'pending': ['under_review', 'rejected'],
+  'under_review': ['accepted', 'rejected'],
+  'accepted': [],
+  'rejected': []
+};
+
+// Valid report status transitions
+const REPORT_TRANSITIONS = {
+  'OPEN': ['UNDER_REVIEW', 'RESOLVED', 'REJECTED'],
+  'UNDER_REVIEW': ['RESOLVED', 'REJECTED'],
+  'RESOLVED': [],
+  'REJECTED': []
+};
+
+// Admin rate limit (stricter)
+const ADMIN_RATE_LIMIT_MAX = 30; // per minute
+const SEARCH_RATE_LIMIT_MAX = 60; // per minute - search gets more
+
 // ── In-memory rate limiting (per Worker isolate) ──
 
 const rateLimitMap = new Map();
@@ -147,7 +196,7 @@ async function handleRequest(request, env, ctx) {
     // ── Public routes ──
 
     if (path === '/' && method === 'GET') {
-      return jsonResponse({ name: 'GraveAtlas API', version: '4.1.0', status: 'operational' }, 200, corsHeaders);
+      return jsonResponse({ name: 'GraveAtlas API', version: '4.5.0', status: 'operational' }, 200, corsHeaders);
     }
 
     if (path === '/api/health' && method === 'GET') {
@@ -287,6 +336,58 @@ async function handleRequest(request, env, ctx) {
       return await requireAdmin(request, env, corsHeaders, () => handleRejectSubmission(id, request, env, corsHeaders));
     }
 
+    // ── Phase 4.5: Admin governance routes ──
+
+    if (path === '/api/admin/dashboard' && method === 'GET') {
+      return await requireAdmin(request, env, corsHeaders, () => handleAdminDashboard(env, corsHeaders));
+    }
+
+    if (path === '/api/admin/corrections' && method === 'GET') {
+      return await requireAdmin(request, env, corsHeaders, () => handleListCorrections(env, corsHeaders));
+    }
+
+    if (path.match(/^\/api\/admin\/corrections\/[^/]+\/approve$/) && method === 'POST') {
+      const id = path.split('/')[4];
+      return await requireAdmin(request, env, corsHeaders, () => handleApproveCorrection(id, request, env, corsHeaders));
+    }
+
+    if (path.match(/^\/api\/admin\/corrections\/[^/]+\/reject$/) && method === 'POST') {
+      const id = path.split('/')[4];
+      return await requireAdmin(request, env, corsHeaders, () => handleRejectCorrection(id, request, env, corsHeaders));
+    }
+
+    if (path === '/api/admin/audit' && method === 'GET') {
+      return await requireAdmin(request, env, corsHeaders, () => handleListAuditEvents(request, env, corsHeaders));
+    }
+
+    if (path.match(/^\/api\/admin\/audit\/[^/]+$/) && method === 'GET') {
+      const entityId = path.split('/').pop();
+      return await requireAdmin(request, env, corsHeaders, () => handleGetAuditTrail(entityId, env, corsHeaders));
+    }
+
+    if (path === '/api/admin/contributors' && method === 'GET') {
+      return await requireAdmin(request, env, corsHeaders, () => handleListContributors(env, corsHeaders));
+    }
+
+    if (path === '/api/admin/data-quality' && method === 'GET') {
+      return await requireAdmin(request, env, corsHeaders, () => handleDataQuality(request, env, corsHeaders));
+    }
+
+    if (path.match(/^\/api\/admin\/reports\/[^/]+\/resolve$/) && method === 'POST') {
+      const id = path.split('/')[4];
+      return await requireAdmin(request, env, corsHeaders, () => handleResolveReport(id, request, env, corsHeaders));
+    }
+
+    if (path.match(/^\/api\/admin\/reports\/[^/]+\/reject$/) && method === 'POST') {
+      const id = path.split('/')[4];
+      return await requireAdmin(request, env, corsHeaders, () => handleRejectReport(id, request, env, corsHeaders));
+    }
+
+    if (path.match(/^\/api\/admin\/restore\/[^/]+$/) && method === 'POST') {
+      const id = path.split('/').pop();
+      return await requireAdmin(request, env, corsHeaders, () => handleRestoreRecord(id, request, env, corsHeaders));
+    }
+
     return notFound(corsHeaders);
   } catch (error) {
     return jsonResponse({ success: false, error: 'Internal server error' }, 500, corsHeaders);
@@ -338,7 +439,7 @@ async function handleHealth(request, env, cors) {
   return jsonResponse({
     status: 'ok',
     service: 'GraveAtlas',
-    version: '4.1.0',
+    version: '4.5.0',
     githubConfigured: hasGithubConfig,
     adminConfigured: hasAdminToken,
     timestamp: new Date().toISOString()
@@ -531,6 +632,12 @@ async function handleReportGrave(id, request, env, cors) {
 
   if (!body.report || typeof body.report !== 'string' || body.report.trim().length === 0) {
     return jsonResponse({ success: false, error: 'Report text required' }, 400, cors);
+  }
+
+  // Validate report type if provided (Phase 4.5)
+  const reportType = body.reportType;
+  if (reportType && !REPORT_TYPES.includes(reportType)) {
+    return jsonResponse({ success: false, error: 'Invalid report type' }, 400, cors);
   }
 
   if (body.report.length > MAX_REPORT_LENGTH) {
@@ -1344,7 +1451,6 @@ async function handleAdminStatus(env, cors) {
 }
 
 async function handleApproveSubmission(id, env, cors) {
-  // Sanitize ID
   const safeId = sanitizePathSegment(id);
   if (!safeId || safeId !== id) {
     return jsonResponse({ success: false, error: 'Invalid submission ID' }, 400, cors);
@@ -1355,7 +1461,6 @@ async function handleApproveSubmission(id, env, cors) {
   }
 
   try {
-    // Read the pending submission
     const content = await readFile(`pending/${safeId}.json`, env);
     if (!content) {
       return jsonResponse({ success: false, error: 'Submission not found' }, 404, cors);
@@ -1368,8 +1473,15 @@ async function handleApproveSubmission(id, env, cors) {
       return jsonResponse({ success: false, error: 'Cannot approve a report as a grave submission' }, 400, cors);
     }
 
-    // Update status to published
+    // Validate status transition (Phase 4.5)
+    const currentStatus = record.status || 'pending';
+    if (!isValidTransition('submission', currentStatus, 'published')) {
+      return jsonResponse({ success: false, error: `Invalid transition: ${currentStatus} → published` }, 409, cors);
+    }
+
+    const previousStatus = record.status;
     record.status = 'published';
+    record.verificationStatus = record.verificationStatus || 'community_submitted';
     record.updatedAt = new Date().toISOString();
 
     // Write to graves/ directory
@@ -1383,8 +1495,22 @@ async function handleApproveSubmission(id, env, cors) {
     // Delete from pending/
     try {
       await deleteFile(`pending/${safeId}.json`, env, `Remove approved submission ${safeId} from pending`);
-    } catch (e) {
-      // Non-fatal — submission is already published
+    } catch (e) { /* Non-fatal */ }
+
+    // Create audit event (Phase 4.5)
+    await createAuditEvent(env, {
+      entityId: record.id,
+      entityType: 'grave',
+      action: 'APPROVE',
+      actorType: 'admin',
+      reason: 'Submission approved and published',
+      previousState: { status: previousStatus, submissionId: safeId },
+      newState: { status: 'published', verificationStatus: record.verificationStatus }
+    });
+
+    // Update contributor stats (Phase 4.5)
+    if (record.contributorId) {
+      await updateContributorStats(env, record.contributorId, 'accepted');
     }
 
     return jsonResponse({
@@ -1398,7 +1524,6 @@ async function handleApproveSubmission(id, env, cors) {
 }
 
 async function handleRejectSubmission(id, request, env, cors) {
-  // Sanitize ID
   const safeId = sanitizePathSegment(id);
   if (!safeId || safeId !== id) {
     return jsonResponse({ success: false, error: 'Invalid submission ID' }, 400, cors);
@@ -1406,6 +1531,11 @@ async function handleRejectSubmission(id, request, env, cors) {
 
   let body = {};
   try { body = await request.json(); } catch (e) {}
+
+  // Validate moderation reason (Phase 4.5)
+  if (body.reason && !MODERATION_REASONS.includes(body.reason)) {
+    return jsonResponse({ success: false, error: 'Invalid moderation reason' }, 400, cors);
+  }
 
   if (!env.GITHUB_APP_ID) {
     return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
@@ -1418,13 +1548,20 @@ async function handleRejectSubmission(id, request, env, cors) {
     }
 
     const record = JSON.parse(content);
-    record.status = 'rejected';
-    record.updatedAt = new Date().toISOString();
-    if (body.reason && typeof body.reason === 'string' && body.reason.length <= MAX_FIELD_LENGTH) {
-      record.rejectionReason = body.reason;
+    const previousStatus = record.status || 'pending';
+
+    // Validate status transition (Phase 4.5)
+    if (!isValidTransition('submission', previousStatus, 'rejected')) {
+      return jsonResponse({ success: false, error: `Invalid transition: ${previousStatus} → rejected` }, 409, cors);
     }
 
-    // Update the file in pending/ with rejected status
+    record.status = 'rejected';
+    record.updatedAt = new Date().toISOString();
+    if (body.reason) record.moderationReason = body.reason;
+    if (body.note && typeof body.note === 'string' && body.note.length <= MAX_FIELD_LENGTH) {
+      record.moderationNote = body.note; // Internal note, not exposed to users
+    }
+
     await writeFile(
       `pending/${safeId}.json`,
       JSON.stringify(record, null, 2),
@@ -1432,12 +1569,855 @@ async function handleRejectSubmission(id, request, env, cors) {
       `reject: submission ${safeId} rejected`
     );
 
+    // Create audit event (Phase 4.5)
+    await createAuditEvent(env, {
+      entityId: record.id || safeId,
+      entityType: 'grave',
+      action: 'REJECT',
+      actorType: 'admin',
+      reason: body.reason || 'OTHER',
+      note: body.note,
+      previousState: { status: previousStatus, submissionId: safeId },
+      newState: { status: 'rejected' }
+    });
+
+    // Update contributor stats (Phase 4.5)
+    if (record.contributorId) {
+      await updateContributorStats(env, record.contributorId, 'rejected');
+    }
+
     return jsonResponse({
       success: true,
       message: `Submission ${safeId} rejected`
     }, 200, cors);
   } catch (error) {
     return jsonResponse({ success: false, error: 'Failed to reject submission' }, 500, cors);
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// Phase 4.5: Governance Handlers
+// ═══════════════════════════════════════════════════════════════
+
+// ── Status transition validation (Part 15) ──
+
+function isValidTransition(type, from, to) {
+  const transitions = type === 'submission' ? SUBMISSION_TRANSITIONS
+    : type === 'correction' ? CORRECTION_TRANSITIONS
+    : type === 'report' ? REPORT_TRANSITIONS
+    : null;
+  if (!transitions) return false;
+  const allowed = transitions[from];
+  if (!allowed) return false;
+  return allowed.includes(to);
+}
+
+// ── Audit trail (Part 7) ──
+
+async function createAuditEvent(env, event) {
+  if (!env.GITHUB_APP_ID) return; // No-op if GitHub not configured
+
+  const auditId = `audit_${generateId().replace('sub_', '')}`;
+  const auditRecord = {
+    id: auditId,
+    entityId: event.entityId || null,
+    entityType: event.entityType || 'unknown',
+    action: event.action || 'UPDATE',
+    actorType: event.actorType || 'system',
+    actorId: event.actorId || null,
+    timestamp: new Date().toISOString(),
+    reason: event.reason || null,
+    note: event.note || null,
+    previousState: event.previousState || null,
+    newState: event.newState || null,
+    moderationDecision: event.moderationDecision || null
+  };
+
+  try {
+    await writeFile(
+      `audit/${auditId}.json`,
+      JSON.stringify(auditRecord, null, 2),
+      env,
+      `audit: ${auditRecord.action} on ${auditRecord.entityType} ${auditRecord.entityId || ''}`
+    );
+  } catch (e) {
+    // Non-fatal — audit is best-effort
+  }
+  return auditId;
+}
+
+async function handleListAuditEvents(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  const url = new URL(request.url);
+  const { limit, offset } = parsePagination(url);
+  const actionFilter = url.searchParams.get('action');
+  const entityFilter = url.searchParams.get('entityType');
+
+  try {
+    const files = await listFiles('audit', env);
+    if (!files || files.length === 0) {
+      return jsonResponse({ success: true, events: [], count: 0, limit, offset, hasMore: false }, 200, cors);
+    }
+
+    let events = [];
+    for (const file of files) {
+      try {
+        const content = await readFile(`audit/${file.name}`, env);
+        if (content) {
+          const record = JSON.parse(content);
+          if (actionFilter && record.action !== actionFilter) continue;
+          if (entityFilter && record.entityType !== entityFilter) continue;
+          // Strip internal notes from public-facing list (Part 5)
+          events.push({
+            id: record.id,
+            entityId: record.entityId,
+            entityType: record.entityType,
+            action: record.action,
+            actorType: record.actorType,
+            timestamp: record.timestamp,
+            reason: record.reason
+          });
+        }
+      } catch (e) { /* skip invalid */ }
+    }
+
+    events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    const total = events.length;
+    const results = events.slice(offset, offset + limit);
+    const hasMore = offset + limit < total;
+
+    return jsonResponse({ success: true, events: results, count: results.length, total, limit, offset, hasMore }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to fetch audit events' }, 502, cors);
+  }
+}
+
+async function handleGetAuditTrail(entityId, env, cors) {
+  const safeId = sanitizePathSegment(entityId);
+  if (!safeId || safeId !== entityId) {
+    return jsonResponse({ success: false, error: 'Invalid entity ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const files = await listFiles('audit', env);
+    if (!files) {
+      return jsonResponse({ success: true, events: [] }, 200, cors);
+    }
+
+    let events = [];
+    for (const file of files) {
+      try {
+        const content = await readFile(`audit/${file.name}`, env);
+        if (content) {
+          const record = JSON.parse(content);
+          if (record.entityId === entityId) {
+            events.push(record);
+          }
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return jsonResponse({ success: true, entityId, events, count: events.length }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to fetch audit trail' }, 502, cors);
+  }
+}
+
+// ── Admin dashboard (Part 2) ──
+
+async function handleAdminDashboard(env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const pendingFiles = await listFiles('pending', env);
+    let pendingSubmissions = 0;
+    let pendingCorrections = 0;
+    let openReports = 0;
+    let privacyReports = 0;
+
+    if (pendingFiles) {
+      for (const file of pendingFiles) {
+        try {
+          const content = await readFile(`pending/${file.name}`, env);
+          if (content) {
+            const record = JSON.parse(content);
+            if (record.status === 'reported') {
+              openReports++;
+              if (record.reportType === 'PRIVACY_CONCERN') privacyReports++;
+            } else if (record.targetType) {
+              pendingCorrections++;
+            } else {
+              pendingSubmissions++;
+            }
+          }
+        } catch (e) { /* skip */ }
+      }
+    }
+
+    // Count published records
+    let publishedGraves = 0;
+    let publishedCemeteries = 0;
+    try {
+      const graveFiles = await listFiles('graves', env);
+      publishedGraves = graveFiles ? graveFiles.length : 0;
+    } catch (e) { /* skip */ }
+    try {
+      const cemeteryFiles = await listFiles('cemeteries', env);
+      publishedCemeteries = cemeteryFiles ? cemeteryFiles.length : 0;
+    } catch (e) { /* skip */ }
+
+    // Count audit events
+    let auditCount = 0;
+    try {
+      const auditFiles = await listFiles('audit', env);
+      auditCount = auditFiles ? auditFiles.length : 0;
+    } catch (e) { /* skip */ }
+
+    return jsonResponse({
+      success: true,
+      dashboard: {
+        pendingSubmissions,
+        pendingCorrections,
+        openReports,
+        privacyReports,
+        publishedGraves,
+        publishedCemeteries,
+        auditEvents: auditCount,
+        githubConfigured: true,
+        adminConfigured: !!env.ADMIN_TOKEN
+      }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to fetch dashboard' }, 502, cors);
+  }
+}
+
+// ── Moderation queue for corrections (Part 4, 6) ──
+
+async function handleListCorrections(env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const files = await listFiles('pending', env);
+    if (!files) {
+      return jsonResponse({ success: true, corrections: [], count: 0 }, 200, cors);
+    }
+
+    let corrections = [];
+    for (const file of files) {
+      try {
+        const content = await readFile(`pending/${file.name}`, env);
+        if (content) {
+          const record = JSON.parse(content);
+          if (record.targetType) {
+            corrections.push({
+              id: record.id,
+              targetId: record.targetId,
+              targetType: record.targetType,
+              corrections: record.corrections,
+              reason: record.reason,
+              status: record.status || 'pending',
+              submittedAt: record.submittedAt,
+              contributorId: record.contributorId
+            });
+          }
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    return jsonResponse({ success: true, corrections, count: corrections.length }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to fetch corrections' }, 502, cors);
+  }
+}
+
+async function handleApproveCorrection(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid correction ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  let body = {};
+  try { body = await request.json(); } catch (e) {}
+
+  try {
+    const content = await readFile(`pending/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Correction not found' }, 404, cors);
+    }
+
+    const correction = JSON.parse(content);
+    if (!correction.targetType) {
+      return jsonResponse({ success: false, error: 'Not a correction' }, 400, cors);
+    }
+
+    const previousStatus = correction.status || 'pending';
+    if (!isValidTransition('correction', previousStatus, 'accepted')) {
+      return jsonResponse({ success: false, error: `Invalid transition: ${previousStatus} → accepted` }, 409, cors);
+    }
+
+    // Read the canonical record (Part 6 — preserve previous value)
+    let canonicalRecord = null;
+    let canonicalPath = '';
+    if (correction.targetType === 'grave') canonicalPath = `graves/${correction.targetId}.json`;
+    else if (correction.targetType === 'cemetery') canonicalPath = `cemeteries/${correction.targetId}.json`;
+    else if (correction.targetType === 'person') canonicalPath = `people/${correction.targetId}.json`;
+
+    if (canonicalPath) {
+      try {
+        const canonicalContent = await readFile(canonicalPath, env);
+        if (canonicalContent) canonicalRecord = JSON.parse(canonicalContent);
+      } catch (e) { /* record may not exist */ }
+    }
+
+    // Store previous values for audit (Part 6)
+    const previousValues = {};
+    if (canonicalRecord) {
+      for (const field of Object.keys(correction.corrections || {})) {
+        previousValues[field] = canonicalRecord[field];
+        // Apply correction to canonical record
+        canonicalRecord[field] = correction.corrections[field];
+      }
+      canonicalRecord.updatedAt = new Date().toISOString();
+
+      // Write updated canonical record
+      await writeFile(
+        canonicalPath,
+        JSON.stringify(canonicalRecord, null, 2),
+        env,
+        `correction: apply correction ${safeId} to ${correction.targetType} ${correction.targetId}`
+      );
+    }
+
+    // Update correction status
+    correction.status = 'accepted';
+    correction.updatedAt = new Date().toISOString();
+    correction.reviewedAt = new Date().toISOString();
+    correction.previousValues = previousValues;
+    if (body.note) correction.moderationNote = body.note;
+
+    await writeFile(
+      `pending/${safeId}.json`,
+      JSON.stringify(correction, null, 2),
+      env,
+      `correction: ${safeId} accepted`
+    );
+
+    // Create audit event (Part 6, 7)
+    await createAuditEvent(env, {
+      entityId: correction.targetId,
+      entityType: correction.targetType,
+      action: 'UPDATE',
+      actorType: 'admin',
+      reason: `Correction accepted: ${correction.reason || 'no reason provided'}`,
+      previousState: previousValues,
+      newState: correction.corrections
+    });
+
+    if (correction.contributorId) {
+      await updateContributorStats(env, correction.contributorId, 'accepted');
+    }
+
+    return jsonResponse({
+      success: true,
+      message: `Correction ${safeId} accepted and applied`,
+      targetId: correction.targetId,
+      previousValues
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to approve correction' }, 500, cors);
+  }
+}
+
+async function handleRejectCorrection(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid correction ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  let body = {};
+  try { body = await request.json(); } catch (e) {}
+
+  if (body.reason && !MODERATION_REASONS.includes(body.reason)) {
+    return jsonResponse({ success: false, error: 'Invalid moderation reason' }, 400, cors);
+  }
+
+  try {
+    const content = await readFile(`pending/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Correction not found' }, 404, cors);
+    }
+
+    const correction = JSON.parse(content);
+    if (!correction.targetType) {
+      return jsonResponse({ success: false, error: 'Not a correction' }, 400, cors);
+    }
+
+    const previousStatus = correction.status || 'pending';
+    if (!isValidTransition('correction', previousStatus, 'rejected')) {
+      return jsonResponse({ success: false, error: `Invalid transition: ${previousStatus} → rejected` }, 409, cors);
+    }
+
+    correction.status = 'rejected';
+    correction.updatedAt = new Date().toISOString();
+    correction.reviewedAt = new Date().toISOString();
+    if (body.reason) correction.moderationReason = body.reason;
+    if (body.note) correction.moderationNote = body.note;
+
+    await writeFile(
+      `pending/${safeId}.json`,
+      JSON.stringify(correction, null, 2),
+      env,
+      `correction: ${safeId} rejected`
+    );
+
+    await createAuditEvent(env, {
+      entityId: correction.targetId,
+      entityType: correction.targetType,
+      action: 'REJECT',
+      actorType: 'admin',
+      reason: body.reason || 'OTHER',
+      note: body.note,
+      previousState: { status: previousStatus },
+      newState: { status: 'rejected' }
+    });
+
+    if (correction.contributorId) {
+      await updateContributorStats(env, correction.contributorId, 'rejected');
+    }
+
+    return jsonResponse({ success: true, message: `Correction ${safeId} rejected` }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to reject correction' }, 500, cors);
+  }
+}
+
+// ── Contributor tracking (Part 8) ──
+
+async function updateContributorStats(env, contributorId, outcome) {
+  if (!env.GITHUB_APP_ID || !contributorId) return;
+
+  let stats = {
+    contributorId,
+    submissions: 0,
+    accepted: 0,
+    rejected: 0,
+    corrections: 0,
+    reports: 0,
+    usefulReports: 0,
+    invalidReports: 0,
+    updatedAt: new Date().toISOString()
+  };
+
+  try {
+    const existing = await readFile(`contributors/${contributorId}.json`, env);
+    if (existing) stats = JSON.parse(existing);
+  } catch (e) { /* new contributor */ }
+
+  if (outcome === 'accepted') {
+    stats.accepted++;
+    stats.submissions++;
+  } else if (outcome === 'rejected') {
+    stats.rejected++;
+    stats.submissions++;
+  } else if (outcome === 'correction') {
+    stats.corrections++;
+  } else if (outcome === 'report') {
+    stats.reports++;
+  } else if (outcome === 'useful_report') {
+    stats.usefulReports++;
+  } else if (outcome === 'invalid_report') {
+    stats.invalidReports++;
+  }
+
+  stats.updatedAt = new Date().toISOString();
+
+  try {
+    await writeFile(
+      `contributors/${contributorId}.json`,
+      JSON.stringify(stats, null, 2),
+      env,
+      `contributor: stats updated for ${contributorId}`
+    );
+  } catch (e) { /* non-fatal */ }
+}
+
+async function handleListContributors(env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const files = await listFiles('contributors', env);
+    if (!files) {
+      return jsonResponse({ success: true, contributors: [], count: 0 }, 200, cors);
+    }
+
+    let contributors = [];
+    for (const file of files) {
+      try {
+        const content = await readFile(`contributors/${file.name}`, env);
+        if (content) {
+          const record = JSON.parse(content);
+          // Calculate acceptance rate (not publicly exposed — admin only)
+          const totalSubs = record.accepted + record.rejected;
+          record.acceptanceRate = totalSubs > 0 ? (record.accepted / totalSubs) : 0;
+          contributors.push(record);
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    contributors.sort((a, b) => b.submissions - a.submissions);
+    return jsonResponse({ success: true, contributors, count: contributors.length }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to fetch contributors' }, 502, cors);
+  }
+}
+
+// ── Report resolution (Part 9, 10) ──
+
+async function handleResolveReport(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid report ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  let body = {};
+  try { body = await request.json(); } catch (e) {}
+
+  try {
+    // Reports are stored as pending/report_<id>.json
+    const reportPath = `pending/report_${safeId.replace('report_', '')}.json`;
+    const content = await readFile(reportPath, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Report not found' }, 404, cors);
+    }
+
+    const report = JSON.parse(content);
+    if (report.status !== 'reported') {
+      return jsonResponse({ success: false, error: 'Not a report' }, 400, cors);
+    }
+
+    const previousStatus = 'OPEN';
+    if (!isValidTransition('report', previousStatus, 'RESOLVED')) {
+      return jsonResponse({ success: false, error: 'Invalid transition' }, 409, cors);
+    }
+
+    report.reportStatus = 'RESOLVED';
+    report.resolvedAt = new Date().toISOString();
+    if (body.resolution && typeof body.resolution === 'string' && body.resolution.length <= MAX_FIELD_LENGTH) {
+      report.resolution = body.resolution;
+    }
+    if (body.action && body.action.length <= MAX_FIELD_LENGTH) {
+      report.resolutionAction = body.action;
+    }
+
+    await writeFile(
+      reportPath,
+      JSON.stringify(report, null, 2),
+      env,
+      `report: ${safeId} resolved`
+    );
+
+    // Audit event
+    await createAuditEvent(env, {
+      entityId: report.targetId || safeId,
+      entityType: 'report',
+      action: 'UPDATE',
+      actorType: 'admin',
+      reason: `Report resolved: ${body.resolution || 'no resolution noted'}`,
+      previousState: { status: 'OPEN' },
+      newState: { status: 'RESOLVED', action: body.action }
+    });
+
+    // Update contributor stats for useful report
+    if (report.contributorId) {
+      await updateContributorStats(env, report.contributorId, 'useful_report');
+    }
+
+    return jsonResponse({ success: true, message: `Report ${safeId} resolved` }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to resolve report' }, 500, cors);
+  }
+}
+
+async function handleRejectReport(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid report ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  let body = {};
+  try { body = await request.json(); } catch (e) {}
+
+  try {
+    const reportPath = `pending/report_${safeId.replace('report_', '')}.json`;
+    const content = await readFile(reportPath, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Report not found' }, 404, cors);
+    }
+
+    const report = JSON.parse(content);
+    if (report.status !== 'reported') {
+      return jsonResponse({ success: false, error: 'Not a report' }, 400, cors);
+    }
+
+    report.reportStatus = 'REJECTED';
+    report.resolvedAt = new Date().toISOString();
+    if (body.reason) report.rejectionReason = body.reason;
+
+    await writeFile(
+      reportPath,
+      JSON.stringify(report, null, 2),
+      env,
+      `report: ${safeId} rejected`
+    );
+
+    await createAuditEvent(env, {
+      entityId: report.targetId || safeId,
+      entityType: 'report',
+      action: 'REJECT',
+      actorType: 'admin',
+      reason: body.reason || 'Report rejected',
+      previousState: { status: 'OPEN' },
+      newState: { status: 'REJECTED' }
+    });
+
+    if (report.contributorId) {
+      await updateContributorStats(env, report.contributorId, 'invalid_report');
+    }
+
+    return jsonResponse({ success: true, message: `Report ${safeId} rejected` }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to reject report' }, 500, cors);
+  }
+}
+
+// ── Data quality engine (Part 11) ──
+
+async function handleDataQuality(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  const errors = [];
+  const warnings = [];
+  const info = [];
+
+  try {
+    // Load all published graves
+    const graveFiles = await listFiles('graves', env);
+    const graves = new Map();
+    if (graveFiles) {
+      for (const file of graveFiles) {
+        try {
+          const content = await readFile(`graves/${file.name}`, env);
+          if (content) {
+            const record = JSON.parse(content);
+            const id = record.id || file.name.replace('.json', '');
+            graves.set(id, record);
+
+            // Check: missing required identifier
+            if (!record.id) errors.push({ type: 'ERROR', check: 'missing_id', file: `graves/${file.name}`, message: 'Missing required id field' });
+
+            // Check: missing name
+            if (!record.name) errors.push({ type: 'ERROR', check: 'missing_name', file: `graves/${file.name}`, message: 'Missing required name field' });
+
+            // Check: invalid coordinates
+            if (record.latitude !== undefined && record.longitude !== undefined) {
+              const lat = parseFloat(record.latitude), lon = parseFloat(record.longitude);
+              if (isNaN(lat) || lat < -90 || lat > 90) errors.push({ type: 'ERROR', check: 'invalid_lat', file: `graves/${file.name}`, message: `Invalid latitude: ${record.latitude}` });
+              if (isNaN(lon) || lon < -180 || lon > 180) errors.push({ type: 'ERROR', check: 'invalid_lon', file: `graves/${file.name}`, message: `Invalid longitude: ${record.longitude}` });
+            }
+
+            // Check: impossible dates
+            if (record.birthDate && record.deathDate) {
+              const birth = parseInt(record.birthDate.substring(0, 4));
+              const death = parseInt(record.deathDate.substring(0, 4));
+              if (!isNaN(birth) && !isNaN(death) && death < birth) {
+                errors.push({ type: 'ERROR', check: 'impossible_date', file: `graves/${file.name}`, message: `Death date (${record.deathDate}) before birth date (${record.birthDate})` });
+              }
+            }
+
+            // Warning: no coordinates
+            if (record.latitude === undefined && record.longitude === undefined) {
+              warnings.push({ type: 'WARNING', check: 'no_coordinates', file: `graves/${file.name}`, message: 'Grave has no coordinates' });
+            }
+
+            // Warning: no source refs
+            if (!record.sourceRefs || record.sourceRefs.length === 0) {
+              warnings.push({ type: 'WARNING', check: 'no_source', file: `graves/${file.name}`, message: 'Grave has no source references' });
+            }
+
+            // Info: no photo
+            if (!record.photoRefs || record.photoRefs.length === 0) {
+              info.push({ type: 'INFO', check: 'no_photo', file: `graves/${file.name}`, message: 'Grave has no photo' });
+            }
+          }
+        } catch (e) {
+          errors.push({ type: 'ERROR', check: 'invalid_json', file: `graves/${file.name}`, message: `Cannot parse JSON: ${e.message}` });
+        }
+      }
+    }
+
+    // Load all published cemeteries
+    const cemeteryFiles = await listFiles('cemeteries', env);
+    const cemeteries = new Map();
+    if (cemeteryFiles) {
+      for (const file of cemeteryFiles) {
+        try {
+          const content = await readFile(`cemeteries/${file.name}`, env);
+          if (content) {
+            const record = JSON.parse(content);
+            const id = record.id || file.name.replace('.json', '');
+            cemeteries.set(id, record);
+
+            if (!record.id) errors.push({ type: 'ERROR', check: 'missing_id', file: `cemeteries/${file.name}`, message: 'Missing required id field' });
+            if (!record.name) errors.push({ type: 'ERROR', check: 'missing_name', file: `cemeteries/${file.name}`, message: 'Missing required name field' });
+
+            // Check: invalid country code
+            if (record.countryCode && !/^[A-Z]{2}$/.test(record.countryCode)) {
+              errors.push({ type: 'ERROR', check: 'invalid_country_code', file: `cemeteries/${file.name}`, message: `Invalid country code: ${record.countryCode}` });
+            }
+
+            // Check: malformed URL
+            if (record.website && !/^https?:\/\//.test(record.website)) {
+              errors.push({ type: 'ERROR', check: 'malformed_url', file: `cemeteries/${file.name}`, message: `Malformed website URL: ${record.website}` });
+            }
+          }
+        } catch (e) {
+          errors.push({ type: 'ERROR', check: 'invalid_json', file: `cemeteries/${file.name}`, message: `Cannot parse JSON: ${e.message}` });
+        }
+      }
+    }
+
+    // Cross-reference checks (Part 13: Data consistency)
+    for (const [graveId, grave] of graves) {
+      // Check: orphaned grave (references cemetery that doesn't exist)
+      if (grave.cemeteryId && !cemeteries.has(grave.cemeteryId)) {
+        errors.push({ type: 'ERROR', check: 'orphaned_grave', entity: graveId, message: `Grave references missing cemetery: ${grave.cemeteryId}` });
+      }
+    }
+
+    // Check: duplicate IDs across graves and cemeteries
+    const allIds = new Set();
+    for (const [id, record] of graves) {
+      if (allIds.has(id)) errors.push({ type: 'ERROR', check: 'duplicate_id', message: `Duplicate ID: ${id}` });
+      allIds.add(id);
+    }
+    for (const [id, record] of cemeteries) {
+      if (allIds.has(id)) errors.push({ type: 'ERROR', check: 'duplicate_id', message: `Duplicate ID across entities: ${id}` });
+      allIds.add(id);
+    }
+
+    return jsonResponse({
+      success: true,
+      dataQuality: {
+        errors,
+        warnings,
+        info,
+        summary: {
+          totalErrors: errors.length,
+          totalWarnings: warnings.length,
+          totalInfo: info.length,
+          totalGraves: graves.size,
+          totalCemeteries: cemeteries.size
+        }
+      }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to run data quality checks' }, 500, cors);
+  }
+}
+
+// ── Restoration (Part 19) ──
+
+async function handleRestoreRecord(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  // Try to find the record in archives or pending
+  const paths = [
+    `graves/${safeId}.json`,
+    `cemeteries/${safeId}.json`,
+    `pending/${safeId}.json`
+  ];
+
+  try {
+    for (const path of paths) {
+      try {
+        const content = await readFile(path, env);
+        if (content) {
+          const record = JSON.parse(content);
+
+          // Check if record is archived/removed
+          if (record.lifecycleStatus === 'ARCHIVED' || record.lifecycleStatus === 'REMOVED') {
+            record.lifecycleStatus = 'ACTIVE';
+            record.restoredAt = new Date().toISOString();
+
+            await writeFile(
+              path,
+              JSON.stringify(record, null, 2),
+              env,
+              `restore: ${safeId} restored from ${record.lifecycleStatus}`
+            );
+
+            await createAuditEvent(env, {
+              entityId: safeId,
+              entityType: path.startsWith('graves/') ? 'grave' : path.startsWith('cemeteries/') ? 'cemetery' : 'submission',
+              action: 'RESTORE',
+              actorType: 'admin',
+              reason: `Record restored from ${record.lifecycleStatus}`,
+              previousState: { lifecycleStatus: 'ARCHIVED' },
+              newState: { lifecycleStatus: 'ACTIVE' }
+            });
+
+            return jsonResponse({ success: true, message: `Record ${safeId} restored`, path }, 200, cors);
+          }
+
+          return jsonResponse({ success: false, error: 'Record is not archived or removed' }, 409, cors);
+        }
+      } catch (e) { /* try next path */ }
+    }
+
+    return jsonResponse({ success: false, error: 'Record not found' }, 404, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to restore record' }, 500, cors);
   }
 }
 

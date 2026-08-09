@@ -7,6 +7,8 @@ on:
       - 'graves/**'
       - 'cemeteries/**'
       - 'pending/**'
+      - 'people/**'
+      - 'sources/**'
       - 'schema/**'
   pull_request:
     branches: [main]
@@ -14,6 +16,8 @@ on:
       - 'graves/**'
       - 'cemeteries/**'
       - 'pending/**'
+      - 'people/**'
+      - 'sources/**'
       - 'schema/**'
 
 jobs:
@@ -23,11 +27,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate grave records
+      - name: Validate JSON syntax
         run: |
-          echo "Checking all JSON files in graves/ and pending/..."
+          echo "Checking all JSON files for syntax errors..."
           ERROR=0
-          for f in $(find graves/ pending/ -name '*.json' 2>/dev/null); do
+          for f in $(find graves/ cemeteries/ pending/ people/ sources/ -name '*.json' 2>/dev/null); do
+            if ! python3 -c "import json; json.load(open('$f'))" 2>/dev/null; then
+              echo "ERROR: $f has invalid JSON syntax"
+              ERROR=1
+            fi
+          done
+          if [ $ERROR -eq 1 ]; then
+            echo "JSON validation FAILED"
+            exit 1
+          fi
+          echo "All JSON files are valid"
+
+      - name: Validate required fields
+        run: |
+          echo "Checking required fields..."
+          ERROR=0
+          for f in $(find graves/ cemeteries/ pending/ -name '*.json' 2>/dev/null); do
             if ! python3 -c "
           import json, sys
           try:
@@ -52,6 +72,25 @@ jobs:
               if lon is not None and (lon < -180 or lon > 180):
                   print(f'ERROR: $f invalid longitude {lon}')
                   sys.exit(1)
+              # Check country code format
+              cc = d.get('countryCode')
+              if cc and not (isinstance(cc, str) and len(cc) == 2 and cc.isupper()):
+                  print(f'ERROR: $f invalid country code: {cc}')
+                  sys.exit(1)
+              # Check website URL format
+              web = d.get('website')
+              if web and not web.startswith(('http://', 'https://')):
+                  print(f'ERROR: $f malformed website URL: {web}')
+                  sys.exit(1)
+              # Check impossible dates
+              birth = d.get('birthDate')
+              death = d.get('deathDate')
+              if birth and death:
+                  by = int(str(birth)[:4]) if str(birth)[:4].isdigit() else None
+                  dy = int(str(death)[:4]) if str(death)[:4].isdigit() else None
+                  if by and dy and dy < by:
+                      print(f'ERROR: $f death date {death} before birth date {birth}')
+                      sys.exit(1)
               print(f'OK: $f')
           except json.JSONDecodeError as e:
               print(f'ERROR: $f invalid JSON: {e}')
@@ -60,24 +99,79 @@ jobs:
                 ERROR=1
             fi
           done
+          if [ $ERROR -eq 1 ]; then
+            echo "Field validation FAILED"
+            exit 1
+          fi
+          echo "All fields valid"
 
-          # Duplicate detection
+      - name: Check for duplicate IDs
+        run: |
           echo "Checking for duplicates..."
           python3 -c "
           import json, glob, sys
           ids = {}
-          for f in glob.glob('graves/*.json') + glob.glob('pending/*.json'):
+          error = False
+          for f in glob.glob('graves/*.json') + glob.glob('cemeteries/*.json') + glob.glob('pending/*.json') + glob.glob('people/*.json'):
               d = json.load(open(f))
               gid = d.get('id')
+              if not gid:
+                  continue
               if gid in ids:
                   print(f'DUPLICATE: id {gid} in {f} and {ids[gid]}')
-                  sys.exit(1)
+                  error = True
               ids[gid] = f
+          if error:
+              sys.exit(1)
           print(f'No duplicates found ({len(ids)} records)')
           "
 
-          if [ $ERROR -eq 1 ]; then
-            echo "Validation FAILED"
+      - name: Check broken references
+        run: |
+          echo "Checking entity references..."
+          python3 -c "
+          import json, glob, sys
+
+          # Collect all IDs
+          cemetery_ids = set()
+          grave_ids = set()
+          person_ids = set()
+          for f in glob.glob('cemeteries/*.json'):
+              d = json.load(open(f))
+              if d.get('id'): cemetery_ids.add(d['id'])
+          for f in glob.glob('graves/*.json'):
+              d = json.load(open(f))
+              if d.get('id'): grave_ids.add(d['id'])
+          for f in glob.glob('people/*.json'):
+              d = json.load(open(f))
+              if d.get('id'): person_ids.add(d['id'])
+
+          error = False
+          # Check grave → cemetery references
+          for f in glob.glob('graves/*.json'):
+              d = json.load(open(f))
+              cid = d.get('cemeteryId')
+              if cid and cid not in cemetery_ids:
+                  print(f'BROKEN_REF: {f} references missing cemetery {cid}')
+                  error = True
+          # Check person → grave references
+          for f in glob.glob('people/*.json'):
+              d = json.load(open(f))
+              gid = d.get('graveId')
+              if gid and gid not in grave_ids:
+                  print(f'BROKEN_REF: {f} references missing grave {gid}')
+                  error = True
+
+          if error:
+              sys.exit(1)
+          print('All references valid')
+          "
+
+      - name: Scan for secrets
+        run: |
+          echo "Scanning for accidentally committed secrets..."
+          if grep -rn --include="*.json" -iE "(ghp_[a-zA-Z0-9]{36}|github_pat_|-----BEGIN.*PRIVATE KEY-----)" . 2>/dev/null; then
+            echo "DANGER: Potential secret found in data files!"
             exit 1
           fi
-          echo "All records valid"
+          echo "No secrets found in data files"
