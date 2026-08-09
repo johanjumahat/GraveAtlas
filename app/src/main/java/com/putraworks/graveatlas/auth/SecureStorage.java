@@ -40,7 +40,7 @@ public class SecureStorage {
 
     /** Get encrypted SharedPreferences for a specific file name. */
         /** Package-private: get encrypted prefs for a file name. */
-    static SharedPreferences getEncryptedPrefs(Context context, String fileName) {
+    public static SharedPreferences getEncryptedPrefs(Context context, String fileName) {
         try {
             return EncryptedSharedPreferences.create(
                     context,
