@@ -201,7 +201,6 @@ public class MainNavActivity extends AppCompatActivity {
             selectHomeTabSilently();
         }
     }
-}
 
     @Override
     protected void onNewIntent(Intent intent) {
@@ -232,4 +231,5 @@ public class MainNavActivity extends AppCompatActivity {
             loadFragment(GraveDetailFragment.newInstance(link.id));
         }
         selectHomeTabSilently();
+    }
 }
