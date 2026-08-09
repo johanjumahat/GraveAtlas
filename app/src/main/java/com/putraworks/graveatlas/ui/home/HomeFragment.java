@@ -24,9 +24,6 @@ import androidx.fragment.app.Fragment;
 import com.putraworks.graveatlas.MainActivity;
 import com.putraworks.graveatlas.MainNavActivity;
 import com.putraworks.graveatlas.R;
-import com.putraworks.graveatlas.data.api.ApiClient;
-import com.putraworks.graveatlas.data.api.LocalCache;
-import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.ui.addgrave.AddGraveFragment;
 import com.putraworks.graveatlas.ui.map.MapFragment;
 import com.putraworks.graveatlas.ui.search.SearchFragment;
@@ -34,32 +31,43 @@ import com.putraworks.graveatlas.util.LocationHelper;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
+import java.util.Set;
 
 /**
  * Home screen — card-based layout with quick actions and location detection.
  *
- * GPS icon detects user's country, state/county, and city using reverse geocoding.
- * User can also manually select from dropdowns.
+ * GPS icon detects user's country, state/province, and city using reverse geocoding.
+ * Max 3 dropdowns: Country, State/Province, City.
+ * City-states (e.g. Singapore) hide the State dropdown — only 2 dropdowns shown.
  */
 public class HomeFragment extends Fragment {
 
     private static final String PREFS_NAME = "graveatlas_location";
     private static final String K_COUNTRY = "country";
     private static final String K_STATE = "state";
-    private static final String K_COUNTY = "county";
     private static final String K_CITY = "city";
 
-    private TextView summaryText, summaryLabel, locationDisplay;
-    private ProgressBar summaryProgress, gpsProgress;
+    private static final String PLACEHOLDER_COUNTRY = "Select country...";
+    private static final String PLACEHOLDER_STATE = "Select state/province...";
+    private static final String PLACEHOLDER_CITY = "Select city...";
+
+    // Countries with no meaningful state/province level — hide the State dropdown for these.
+    private static final Set<String> CITY_STATES = new HashSet<>(Arrays.asList(
+            "Singapore", "Monaco", "Vatican City", "Hong Kong", "Macau", "Gibraltar"
+    ));
+
+    private TextView locationDisplay;
+    private ProgressBar gpsProgress;
     private ImageButton gpsIconBtn;
-    private Spinner spinnerCountry, spinnerState, spinnerCounty, spinnerCity;
+    private Spinner spinnerCountry, spinnerState, spinnerCity;
+    private View stateGroup;
 
     private LocationHelper locationHelper;
     private SharedPreferences locPrefs;
+    private boolean suppressSpinnerListeners = false;
 
-    // Common countries list (can be expanded)
     private final String[] commonCountries = {
         "Singapore", "Malaysia", "Indonesia", "Thailand", "Philippines",
         "Vietnam", "Brunei", "Myanmar", "Cambodia", "Laos",
@@ -92,22 +100,18 @@ public class HomeFragment extends Fragment {
         setupSpinners();
         loadSavedLocation();
         setupQuickActions(view);
-        loadDataSummary();
 
         return view;
     }
 
     private void initViews(View view) {
-        summaryText = view.findViewById(R.id.summaryText);
-        summaryLabel = view.findViewById(R.id.summaryLabel);
-        summaryProgress = view.findViewById(R.id.summaryProgress);
         locationDisplay = view.findViewById(R.id.locationDisplay);
         gpsProgress = view.findViewById(R.id.gpsProgress);
         gpsIconBtn = view.findViewById(R.id.gpsIconBtn);
         spinnerCountry = view.findViewById(R.id.spinnerCountry);
         spinnerState = view.findViewById(R.id.spinnerState);
-        spinnerCounty = view.findViewById(R.id.spinnerCounty);
         spinnerCity = view.findViewById(R.id.spinnerCity);
+        stateGroup = view.findViewById(R.id.stateGroup);
 
         gpsIconBtn.setOnClickListener(v -> {
             if (locationHelper.hasLocationPermission()) {
@@ -128,30 +132,12 @@ public class HomeFragment extends Fragment {
 
         locationHelper.detectLocation(new LocationHelper.LocationCallback() {
             @Override
-            public void onLocationDetected(String country, String state, String county, String city, double lat, double lon) {
+            public void onLocationDetected(String country, String state, String city, double lat, double lon) {
                 if (getActivity() == null) return;
                 getActivity().runOnUiThread(() -> {
                     gpsProgress.setVisibility(View.GONE);
                     gpsIconBtn.setAlpha(1f);
-
-                    // Save to prefs
-                    locPrefs.edit()
-                            .putString(K_COUNTRY, country)
-                            .putString(K_STATE, state)
-                            .putString(K_COUNTY, county)
-                            .putString(K_CITY, city)
-                            .apply();
-
-                    // Update dropdowns
-                    selectSpinnerValue(spinnerCountry, country);
-                    selectSpinnerValue(spinnerState, state);
-                    selectSpinnerValue(spinnerCounty, county);
-                    selectSpinnerValue(spinnerCity, city);
-
-                    // Update display
-                    String display = buildLocationDisplay(country, state, county, city);
-                    locationDisplay.setText(display);
-
+                    applyDetectedLocation(country, state, city);
                     Toast.makeText(getContext(), "Location detected!", Toast.LENGTH_SHORT).show();
                 });
             }
@@ -162,161 +148,147 @@ public class HomeFragment extends Fragment {
                 getActivity().runOnUiThread(() -> {
                     gpsProgress.setVisibility(View.GONE);
                     gpsIconBtn.setAlpha(1f);
-                    locationDisplay.setText("Could not detect location");
                     Toast.makeText(getContext(), message, Toast.LENGTH_LONG).show();
                 });
             }
         });
     }
 
-    private String buildLocationDisplay(String country, String state, String county, String city) {
-        List<String> parts = new ArrayList<>();
-        if (city != null && !city.isEmpty()) parts.add(city);
-        if (county != null && !county.isEmpty() && !county.equals(city)) parts.add(county);
-        if (state != null && !state.isEmpty() && !state.equals(county)) parts.add(state);
-        if (country != null && !country.isEmpty()) parts.add(country);
-        return parts.isEmpty() ? "Location not set" : String.join(", ", parts);
+    /**
+     * Applies a GPS-detected location to all 3 dropdowns.
+     * Always overwrites every field (even to placeholder/empty) — never leaves
+     * a stale value from a previous detection or manual selection.
+     */
+    private void applyDetectedLocation(String country, String state, String city) {
+        suppressSpinnerListeners = true;
+
+        selectOrAddSpinnerValue(spinnerCountry, country, PLACEHOLDER_COUNTRY);
+        updateStateVisibilityAndOptions(country);
+
+        boolean isCityState = CITY_STATES.contains(country);
+        if (!isCityState) {
+            if (!state.isEmpty()) {
+                selectOrAddSpinnerValue(spinnerState, state, PLACEHOLDER_STATE);
+            } else {
+                resetSpinnerToPlaceholder(spinnerState);
+            }
+        }
+
+        if (!city.isEmpty()) {
+            resetCitySpinner();
+            selectOrAddSpinnerValue(spinnerCity, city, PLACEHOLDER_CITY);
+        } else {
+            resetCitySpinner();
+        }
+
+        suppressSpinnerListeners = false;
+
+        saveLocationFromSpinners();
     }
 
     private void setupSpinners() {
         // Country spinner
-        List<String> countries = new ArrayList<>(Arrays.asList(commonCountries));
-        ArrayAdapter<String> countryAdapter = new ArrayAdapter<>(requireContext(),
-                android.R.layout.simple_spinner_item, countries) {
-            @Override
-            public View getView(int position, View convertView, ViewGroup parent) {
-                View v = super.getView(position, convertView, parent);
-                if (v instanceof android.widget.TextView) {
-                    ((android.widget.TextView) v).setTextColor(getResources().getColor(R.color.text_primary_dark));
-                    ((android.widget.TextView) v).setTextSize(13f);
-                }
-                return v;
-            }
-            @Override
-            public View getDropDownView(int position, View convertView, ViewGroup parent) {
-                View v = super.getDropDownView(position, convertView, parent);
-                if (v instanceof android.widget.TextView) {
-                    ((android.widget.TextView) v).setTextColor(getResources().getColor(R.color.text_primary_dark));
-                }
-                return v;
-            }
-        };
-        countryAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        countryAdapter.insert("Select country...", 0);
-        spinnerCountry.setAdapter(countryAdapter);
+        List<String> countries = new ArrayList<>();
+        countries.add(PLACEHOLDER_COUNTRY);
+        countries.addAll(Arrays.asList(commonCountries));
+        spinnerCountry.setAdapter(buildAdapter(countries));
 
-        // State, County, City start with just "Select..." options
-        setupSimpleSpinner(spinnerState, "Select state/province...");
-        setupSimpleSpinner(spinnerCounty, "Select county/district...");
-        setupSimpleSpinner(spinnerCity, "Select city...");
+        setupSimpleSpinner(spinnerState, PLACEHOLDER_STATE);
+        setupSimpleSpinner(spinnerCity, PLACEHOLDER_CITY);
 
-        // When country changes, update state options (basic state lists for common countries)
         spinnerCountry.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View v, int position, long id) {
-                if (position == 0) return; // "Select country..."
+                if (suppressSpinnerListeners) return;
+                if (position == 0) return; // placeholder
                 String country = spinnerCountry.getSelectedItem().toString();
-                updateStateOptions(country);
+                updateStateVisibilityAndOptions(country);
+                resetSpinnerToPlaceholder(spinnerState);
+                resetCitySpinner();
                 saveLocationFromSpinners();
             }
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
         });
 
         spinnerState.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View v, int position, long id) {
+                if (suppressSpinnerListeners) return;
                 if (position == 0) return;
                 saveLocationFromSpinners();
             }
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
-        });
-
-        spinnerCounty.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View v, int position, long id) {
-                if (position == 0) return;
-                saveLocationFromSpinners();
-            }
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
         });
 
         spinnerCity.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View v, int position, long id) {
+                if (suppressSpinnerListeners) return;
                 if (position == 0) return;
                 saveLocationFromSpinners();
             }
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
         });
     }
 
     private void setupSimpleSpinner(Spinner spinner, String placeholder) {
         List<String> items = new ArrayList<>();
         items.add(placeholder);
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(requireContext(),
-                android.R.layout.simple_spinner_item, items) {
-            @Override
-            public View getView(int position, View convertView, ViewGroup parent) {
-                View v = super.getView(position, convertView, parent);
-                if (v instanceof android.widget.TextView) {
-                    ((android.widget.TextView) v).setTextColor(getResources().getColor(R.color.text_primary_dark));
-                    ((android.widget.TextView) v).setTextSize(13f);
-                }
-                return v;
-            }
-            @Override
-            public View getDropDownView(int position, View convertView, ViewGroup parent) {
-                View v = super.getDropDownView(position, convertView, parent);
-                if (v instanceof android.widget.TextView) {
-                    ((android.widget.TextView) v).setTextColor(getResources().getColor(R.color.text_primary_dark));
-                }
-                return v;
-            }
-        };
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        spinner.setAdapter(adapter);
+        spinner.setAdapter(buildAdapter(items));
     }
 
-    private void updateStateOptions(String country) {
-        // Provide state options for known countries
-        String[] states = getStatesForCountry(country);
-        List<String> items = new ArrayList<>();
-        items.add("Select state/province...");
-        if (states != null) {
-            items.addAll(Arrays.asList(states));
-        }
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(requireContext(),
+    private ArrayAdapter<String> buildAdapter(List<String> items) {
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(requireContext(),
                 android.R.layout.simple_spinner_item, items) {
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
                 View v = super.getView(position, convertView, parent);
-                if (v instanceof android.widget.TextView) {
-                    ((android.widget.TextView) v).setTextColor(getResources().getColor(R.color.text_primary_dark));
-                    ((android.widget.TextView) v).setTextSize(13f);
+                if (v instanceof TextView) {
+                    ((TextView) v).setTextColor(getResources().getColor(R.color.text_primary_dark));
+                    ((TextView) v).setTextSize(13f);
                 }
                 return v;
             }
             @Override
             public View getDropDownView(int position, View convertView, ViewGroup parent) {
                 View v = super.getDropDownView(position, convertView, parent);
-                if (v instanceof android.widget.TextView) {
-                    ((android.widget.TextView) v).setTextColor(getResources().getColor(R.color.text_primary_dark));
+                if (v instanceof TextView) {
+                    ((TextView) v).setTextColor(getResources().getColor(R.color.text_primary_dark));
                 }
                 return v;
             }
         };
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        spinnerState.setAdapter(adapter);
+        return adapter;
+    }
+
+    /** Shows/hides the State dropdown based on whether the country is a city-state, and repopulates its options. */
+    private void updateStateVisibilityAndOptions(String country) {
+        boolean isCityState = CITY_STATES.contains(country);
+        stateGroup.setVisibility(isCityState ? View.GONE : View.VISIBLE);
+
+        if (isCityState) return;
+
+        String[] states = getStatesForCountry(country);
+        List<String> items = new ArrayList<>();
+        items.add(PLACEHOLDER_STATE);
+        if (states != null) items.addAll(Arrays.asList(states));
+        spinnerState.setAdapter(buildAdapter(items));
+    }
+
+    private void resetSpinnerToPlaceholder(Spinner spinner) {
+        spinner.setSelection(0);
+    }
+
+    /** City options are freeform (GPS-detected or typed), so just reset to a single placeholder entry. */
+    private void resetCitySpinner() {
+        List<String> items = new ArrayList<>();
+        items.add(PLACEHOLDER_CITY);
+        spinnerCity.setAdapter(buildAdapter(items));
     }
 
     private String[] getStatesForCountry(String country) {
         switch (country) {
-            case "Singapore":
-                return new String[]{"Central Region", "East Region", "North Region", "North-East Region", "West Region"};
             case "Malaysia":
                 return new String[]{"Johor", "Kedah", "Kelantan", "Kuala Lumpur", "Labuan", "Melaka",
                         "Negeri Sembilan", "Pahang", "Penang", "Perak", "Perlis", "Putrajaya",
@@ -349,19 +321,24 @@ public class HomeFragment extends Fragment {
                 return new String[]{"Andhra Pradesh", "Delhi", "Goa", "Gujarat", "Karnataka", "Kerala",
                         "Maharashtra", "Tamil Nadu", "Telangana", "West Bengal", "Uttar Pradesh"};
             default:
-                return null; // User types state manually (or from GPS)
+                return null; // GPS-detected value gets added dynamically instead
         }
     }
 
-    private void selectSpinnerValue(Spinner spinner, String value) {
-        if (value == null || value.isEmpty()) return;
+    /** Selects value in spinner if present, otherwise adds it and selects it. */
+    private void selectOrAddSpinnerValue(Spinner spinner, String value, String placeholder) {
+        if (value == null || value.isEmpty()) {
+            resetSpinnerToPlaceholder(spinner);
+            return;
+        }
+        @SuppressWarnings("unchecked")
         ArrayAdapter<String> adapter = (ArrayAdapter<String>) spinner.getAdapter();
         if (adapter == null) return;
 
-        // Check if value exists in adapter
         int pos = -1;
         for (int i = 0; i < adapter.getCount(); i++) {
-            if (adapter.getItem(i) != null && adapter.getItem(i).equalsIgnoreCase(value)) {
+            String item = adapter.getItem(i);
+            if (item != null && item.equalsIgnoreCase(value)) {
                 pos = i;
                 break;
             }
@@ -370,48 +347,54 @@ public class HomeFragment extends Fragment {
         if (pos >= 0) {
             spinner.setSelection(pos);
         } else {
-            // Add the value to the adapter
             adapter.add(value);
             spinner.setSelection(adapter.getCount() - 1);
         }
     }
 
+    private String buildLocationDisplay(String country, String state, String city) {
+        List<String> parts = new ArrayList<>();
+        if (city != null && !city.isEmpty()) parts.add(city);
+        if (state != null && !state.isEmpty() && !state.equals(city)) parts.add(state);
+        if (country != null && !country.isEmpty()) parts.add(country);
+        return parts.isEmpty() ? "Location not set" : String.join(", ", parts);
+    }
+
     private void saveLocationFromSpinners() {
-        String country = spinnerCountry.getSelectedItemPosition() > 0
-                ? spinnerCountry.getSelectedItem().toString() : "";
-        String state = spinnerState.getSelectedItemPosition() > 0
-                ? spinnerState.getSelectedItem().toString() : "";
-        String county = spinnerCounty.getSelectedItemPosition() > 0
-                ? spinnerCounty.getSelectedItem().toString() : "";
-        String city = spinnerCity.getSelectedItemPosition() > 0
-                ? spinnerCity.getSelectedItem().toString() : "";
+        String country = selectedOrEmpty(spinnerCountry);
+        String state = stateGroup.getVisibility() == View.VISIBLE ? selectedOrEmpty(spinnerState) : "";
+        String city = selectedOrEmpty(spinnerCity);
 
         locPrefs.edit()
                 .putString(K_COUNTRY, country)
                 .putString(K_STATE, state)
-                .putString(K_COUNTY, county)
                 .putString(K_CITY, city)
                 .apply();
 
-        String display = buildLocationDisplay(country, state, county, city);
-        if (!display.equals("Location not set")) {
-            locationDisplay.setText(display);
-        }
+        locationDisplay.setText(buildLocationDisplay(country, state, city));
+    }
+
+    private String selectedOrEmpty(Spinner spinner) {
+        return spinner.getSelectedItemPosition() > 0 ? spinner.getSelectedItem().toString() : "";
     }
 
     private void loadSavedLocation() {
         String country = locPrefs.getString(K_COUNTRY, "");
         String state = locPrefs.getString(K_STATE, "");
-        String county = locPrefs.getString(K_COUNTY, "");
         String city = locPrefs.getString(K_CITY, "");
 
         if (!country.isEmpty()) {
-            selectSpinnerValue(spinnerCountry, country);
-            updateStateOptions(country);
-            if (!state.isEmpty()) selectSpinnerValue(spinnerState, state);
-            if (!county.isEmpty()) selectSpinnerValue(spinnerCounty, county);
-            if (!city.isEmpty()) selectSpinnerValue(spinnerCity, city);
-            locationDisplay.setText(buildLocationDisplay(country, state, county, city));
+            suppressSpinnerListeners = true;
+            selectOrAddSpinnerValue(spinnerCountry, country, PLACEHOLDER_COUNTRY);
+            updateStateVisibilityAndOptions(country);
+            if (!state.isEmpty() && stateGroup.getVisibility() == View.VISIBLE) {
+                selectOrAddSpinnerValue(spinnerState, state, PLACEHOLDER_STATE);
+            }
+            if (!city.isEmpty()) {
+                selectOrAddSpinnerValue(spinnerCity, city, PLACEHOLDER_CITY);
+            }
+            suppressSpinnerListeners = false;
+            locationDisplay.setText(buildLocationDisplay(country, state, city));
         }
     }
 
@@ -428,42 +411,6 @@ public class HomeFragment extends Fragment {
         view.findViewById(R.id.quickChat).setOnClickListener(v -> {
             Intent intent = new Intent(getActivity(), MainActivity.class);
             startActivity(intent);
-        });
-    }
-
-    private void loadDataSummary() {
-        LocalCache cache = new LocalCache(getContext());
-        List<GraveRecord> cached = cache.getCachedGraves();
-        if (!cached.isEmpty()) {
-            summaryText.setText(String.valueOf(cached.size()));
-        }
-
-        summaryProgress.setVisibility(View.VISIBLE);
-
-        ApiClient apiClient = new ApiClient();
-        apiClient.getGraves(new ApiClient.ApiCallback<List<GraveRecord>>() {
-            @Override
-            public void onSuccess(List<GraveRecord> result) {
-                if (getActivity() != null) {
-                    getActivity().runOnUiThread(() -> {
-                        summaryProgress.setVisibility(View.GONE);
-                        summaryText.setText(String.valueOf(result.size()));
-                    });
-                }
-            }
-
-            @Override
-            public void onError(String error) {
-                if (getActivity() != null) {
-                    getActivity().runOnUiThread(() -> {
-                        summaryProgress.setVisibility(View.GONE);
-                        if (cached.isEmpty()) {
-                            summaryText.setText("—");
-                            summaryLabel.setText("Connect to see available graves");
-                        }
-                    });
-                }
-            }
         });
     }
 
