@@ -70,6 +70,18 @@
         android:textSize="13sp"
         android:visibility="gone" />
 
+    <!-- Optional: skip login -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnSkipLogin"
+        android:layout_width="wrap_content"
+        android:layout_height="40dp"
+        android:layout_marginTop="16dp"
+        android:text="Continue without signing in"
+        android:textSize="12sp"
+        android:textColor="@color/text_secondary_dark"
+        app:backgroundTint="@android:color/transparent"
+        app:rippleColor="@android:color/transparent" />
+
     <!-- Privacy note -->
     <TextView
         android:layout_width="wrap_content"

@@ -16,9 +16,8 @@
         android:theme="@style/Theme.GraveAtlas"
         android:usesCleartextTraffic="false">
 
-        <!-- LoginActivity is now the launcher -->
         <activity
-            android:name=".auth.LoginActivity"
+            android:name=".MainNavActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
@@ -27,8 +26,9 @@
             </intent-filter>
         </activity>
 
+        <!-- LoginActivity — optional sign-in, launched from Settings -->
         <activity
-            android:name=".MainNavActivity"
+            android:name=".auth.LoginActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 

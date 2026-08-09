@@ -21,7 +21,6 @@ import com.putraworks.graveatlas.ui.addgrave.AddGraveFragment;
 import com.putraworks.graveatlas.ui.cemetery.CemeteryFragment;
 import com.putraworks.graveatlas.ui.contribute.ContributeFragment;
 import com.putraworks.graveatlas.auth.SecureStorage;
-import com.putraworks.graveatlas.auth.LoginActivity;
 import com.putraworks.graveatlas.ui.home.HomeFragment;
 import com.putraworks.graveatlas.ui.map.MapFragment;
 import com.putraworks.graveatlas.ui.search.SearchFragment;
@@ -48,13 +47,9 @@ public class MainNavActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main_nav);
 
-        // Require Google login
+        // Login is optional — app works without it.
+        // Login unlocks per-user encrypted storage (chat history, API keys).
         SecureStorage.init(this);
-        if (!SecureStorage.isLoggedIn(this)) {
-            startActivity(new Intent(this, LoginActivity.class));
-            finish();
-            return;
-        }
 
         loadSavedApiUrl();
 

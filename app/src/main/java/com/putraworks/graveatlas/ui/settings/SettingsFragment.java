@@ -161,17 +161,29 @@ public class SettingsFragment extends Fragment {
         userInfo.setPadding(0, 0, 0, 12);
         layout.addView(userInfo);
 
-        Button logoutBtn = new Button(getContext());
-        logoutBtn.setText("Sign Out");
-        logoutBtn.setAllCaps(false);
-        logoutBtn.setOnClickListener(v -> {
-            SecureStorage.clearCurrentUser(getContext());
-            Intent intent = new Intent(getContext(), LoginActivity.class);
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-            startActivity(intent);
-            if (getActivity() != null) getActivity().finish();
-        });
-        layout.addView(logoutBtn);
+        Button accountBtn = new Button(getContext());
+        if (userName != null) {
+            accountBtn.setText("Sign Out");
+            accountBtn.setAllCaps(false);
+            accountBtn.setOnClickListener(v -> {
+                SecureStorage.clearCurrentUser(getContext());
+                android.widget.Toast.makeText(getContext(), "Signed out", android.widget.Toast.LENGTH_SHORT).show();
+                // Refresh the fragment to update UI
+                if (getActivity() != null) {
+                    getActivity().getSupportFragmentManager().beginTransaction()
+                            .replace(R.id.fragment_container, new SettingsFragment())
+                            .commit();
+                }
+            });
+        } else {
+            accountBtn.setText("Sign In with Google");
+            accountBtn.setAllCaps(false);
+            accountBtn.setOnClickListener(v -> {
+                Intent intent = new Intent(getContext(), LoginActivity.class);
+                startActivity(intent);
+            });
+        }
+        layout.addView(accountBtn);
 
         // ── About ──
         Button aboutBtn = new Button(getContext());
