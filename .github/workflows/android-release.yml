@@ -10,6 +10,8 @@ on:
       - 'gradle/**'
       - 'gradle.properties'
       - 'version.properties'
+      - 'gradlew'
+      - 'gradlew.bat'
       - '.github/workflows/android-release.yml'
   workflow_dispatch:
 
