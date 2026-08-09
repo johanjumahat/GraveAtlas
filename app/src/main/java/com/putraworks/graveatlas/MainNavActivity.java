@@ -25,7 +25,11 @@ import com.putraworks.graveatlas.ui.home.HomeFragment;
 import com.putraworks.graveatlas.ui.map.MapFragment;
 import com.putraworks.graveatlas.ui.search.SearchFragment;
 import com.putraworks.graveatlas.ui.search.GlobalSearchFragment;
+import com.putraworks.graveatlas.ui.nearby.NearbyFragment;
+import com.putraworks.graveatlas.ui.saved.SavedFragment;
 import com.putraworks.graveatlas.ui.settings.SettingsFragment;
+import com.putraworks.graveatlas.ui.gravedetail.GraveDetailFragment;
+import com.putraworks.graveatlas.utils.ShareUtils;
 
 /**
  * GraveAtlas — Main Activity with bottom navigation (NurOne-style).
@@ -55,6 +59,9 @@ public class MainNavActivity extends AppCompatActivity {
         SecureStorage.init(this);
 
         loadSavedApiUrl();
+
+        // Handle deep link if launched from a share URL (Part 126)
+        handleDeepLink(getIntent());
 
         bottomNav = findViewById(R.id.bottom_navigation);
 
@@ -109,6 +116,20 @@ public class MainNavActivity extends AppCompatActivity {
             dialog.dismiss();
             startActivity(new Intent(this, CompassActivity.class));
         });
+
+        // Phase 7B: Nearby and Saved
+        try {
+            sheetView.findViewById(R.id.moreNearby).setOnClickListener(v -> {
+                dialog.dismiss();
+                loadFragment(new NearbyFragment());
+                selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.moreSaved).setOnClickListener(v -> {
+                dialog.dismiss();
+                loadFragment(new SavedFragment());
+                selectHomeTabSilently();
+            });
+        } catch (Exception e) { /* IDs not in layout yet — skip */ }
 
         sheetView.findViewById(R.id.moreChat).setOnClickListener(v -> {
             dialog.dismiss();
@@ -180,4 +201,35 @@ public class MainNavActivity extends AppCompatActivity {
             selectHomeTabSilently();
         }
     }
+}
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        handleDeepLink(intent);
+    }
+
+    /**
+     * Parse incoming deep links or share URLs and navigate to the record (Part 126).
+     * Format: graveatlas://record/{type}/{id}
+     *      or https://graveatlas.../record/{type}/{id}
+     */
+    private void handleDeepLink(Intent intent) {
+        if (intent == null) return;
+        android.net.Uri data = intent.getData();
+        if (data == null) return;
+
+        ShareUtils.ParsedDeepLink link = ShareUtils.parseDeepLink(data);
+        if (link == null) {
+            link = ShareUtils.parseShareUrl(data);
+        }
+        if (link == null) return;
+
+        // Navigate to the appropriate detail fragment
+        if ("cemetery".equals(link.type)) {
+            loadFragment(CemeteryFragment.newInstance(link.id));
+        } else if ("person".equals(link.type) || "grave".equals(link.type) || "memorial".equals(link.type)) {
+            loadFragment(GraveDetailFragment.newInstance(link.id));
+        }
+        selectHomeTabSilently();
 }

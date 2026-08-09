@@ -24,6 +24,14 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="graveatlas" android:host="record" />
+                <data android:scheme="https" android:host="graveatlas.putraworks-2026.workers.dev" android:pathPrefix="/record/" />
+            </intent-filter>
+            </intent-filter>
         </activity>
 
         <!-- LoginActivity — optional sign-in, launched from Settings -->

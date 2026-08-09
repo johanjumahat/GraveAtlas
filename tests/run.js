@@ -6,6 +6,7 @@ try {
   execSync('node tests/phase55-e2e.test.js', { stdio: 'inherit' });
   execSync('node tests/phase6a.test.js', { stdio: 'inherit' });
   execSync('node tests/phase7a.test.js', { stdio: 'inherit' });
+  execSync('node tests/phase7b.test.js', { stdio: 'inherit' });
 } catch (e) {
   process.exit(1);
 }

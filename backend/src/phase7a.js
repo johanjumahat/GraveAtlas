@@ -813,3 +813,145 @@ export async function browseByLocation(env, country, region, city) {
     count: filtered.length
   };
 }
+
+// ── Nearby Discovery (Part 116-118) ──
+
+export async function nearbySearch(env, lat, lon, radiusKm, type) {
+  if (!lat || !lon) return { success: false, error: 'lat and lon parameters are required' };
+
+  const radius = radiusKm || 10;
+  const maxRadius = 100;
+  const actualRadius = Math.min(radius, maxRadius);
+
+  const latNum = parseFloat(lat);
+  const lonNum = parseFloat(lon);
+
+  if (isNaN(latNum) || isNaN(lonNum)) return { success: false, error: 'Invalid coordinates' };
+  if (latNum < -90 || latNum > 90 || lonNum < -180 || lonNum > 180) {
+    return { success: false, error: 'Coordinates out of range' };
+  }
+
+  const cacheKey = `nearby:${latNum}:${lonNum}:${actualRadius}:${type || 'all'}`;
+  const cached = getSearchCache(cacheKey);
+  if (cached) return cached;
+
+  const results = [];
+
+  // Search cemeteries nearby
+  if (!type || type === 'all' || type === 'cemetery') {
+    const cemeteries = await loadAllCemeteries(env);
+    for (const record of cemeteries) {
+      if (!record.latitude || !record.longitude) continue;
+      const dist = haversineDistance(latNum, lonNum, record.latitude, record.longitude);
+      if (dist <= actualRadius) {
+        results.push({
+          type: 'cemetery',
+          category: 'cemeteries',
+          id: record.id,
+          name: record.name,
+          country: record.country || null,
+          region: record.region || null,
+          city: record.city || null,
+          latitude: record.latitude,
+          longitude: record.longitude,
+          distance: Math.round(dist * 10) / 10,
+          score: 0
+        });
+      }
+    }
+  }
+
+  // Search graves/memorials nearby
+  if (!type || type === 'all' || type === 'person' || type === 'memorial') {
+    const graves = await loadAllGraves(env);
+    for (const record of graves) {
+      const recordLat = record.latitude || record.graveLatitude;
+      const recordLon = record.longitude || record.graveLongitude;
+      if (!recordLat || !recordLon) continue;
+      const dist = haversineDistance(latNum, lonNum, recordLat, recordLon);
+      if (dist <= actualRadius) {
+        const isMemorial = record.type === 'memorial' || record.cemeteryType === 'memorial';
+        results.push({
+          type: isMemorial ? 'memorial' : 'person',
+          category: isMemorial ? 'memorials' : 'people',
+          id: record.id,
+          name: record.name || record.graveIdentifier || 'Unknown',
+          cemetery: record.cemeteryName || record.cemetery || null,
+          cemeteryId: record.cemeteryId || null,
+          latitude: recordLat,
+          longitude: recordLon,
+          distance: Math.round(dist * 10) / 10,
+          score: 0
+        });
+      }
+    }
+  }
+
+  // Sort by distance
+  results.sort((a, b) => a.distance - b.distance);
+
+  const response = {
+    success: true,
+    results,
+    count: results.length,
+    radius: actualRadius,
+    latitude: latNum,
+    longitude: lonNum
+  };
+
+  setSearchCache(cacheKey, response);
+  return response;
+}
+
+// ── Discovery Recommendations (Part 128) ──
+
+export async function getRecommendations(env, recordId, recordType) {
+  const recommendations = {
+    nearby: [],
+    sameCountry: [],
+    sameRegion: [],
+    sameCemetery: []
+  };
+
+  if (recordType === 'cemetery') {
+    const cemeteries = await loadAllCemeteries(env);
+    const target = cemeteries.find(c => c.id === recordId);
+    if (!target) return recommendations;
+
+    // Nearby cemeteries (Part 128: geographic proximity)
+    if (target.latitude && target.longitude) {
+      for (const c of cemeteries) {
+        if (c.id === recordId || !c.latitude || !c.longitude) continue;
+        const dist = haversineDistance(target.latitude, target.longitude, c.latitude, c.longitude);
+        if (dist <= 50) {
+          recommendations.nearby.push({
+            id: c.id, name: c.name, city: c.city, region: c.region,
+            country: c.country, distance: Math.round(dist * 10) / 10
+          });
+        }
+      }
+      recommendations.nearby.sort((a, b) => a.distance - b.distance);
+      recommendations.nearby = recommendations.nearby.slice(0, 5);
+    }
+
+    // More in this country (Part 128)
+    if (target.country) {
+      recommendations.sameCountry = cemeteries
+        .filter(c => c.id !== recordId && normalizeName(c.country) === normalizeName(target.country))
+        .slice(0, 5)
+        .map(c => ({ id: c.id, name: c.name, city: c.city, region: c.region }));
+    }
+
+    // More in this region (Part 128)
+    if (target.country && target.region) {
+      recommendations.sameRegion = cemeteries
+        .filter(c => c.id !== recordId &&
+          normalizeName(c.country) === normalizeName(target.country) &&
+          normalizeName(c.region) === normalizeName(target.region))
+        .slice(0, 5)
+        .map(c => ({ id: c.id, name: c.name, city: c.city }));
+    }
+  }
+
+  return recommendations;
+}

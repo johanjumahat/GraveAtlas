@@ -446,6 +446,23 @@ async function handleRequest(request, env, ctx) {
       return await handleRelatedRecords(recordId, request, env, corsHeaders);
     }
 
+
+    // Nearby discovery (Part 116)
+    if (path === '/api/nearby' && method === 'GET') {
+      return await handleNearbySearch(request, env, corsHeaders);
+    }
+
+    // Public record detail for share links (Part 125-126)
+    if (path.match(/^\/api\/record\/(cemeteries|graves)\/[^/]+$/) && method === 'GET') {
+      return await handlePublicRecord(path, request, env, corsHeaders);
+    }
+
+    // Discovery recommendations (Part 128)
+    if (path.match(/^\/api\/recommendations\/[^/]+$/) && method === 'GET') {
+      const recordId = decodeURIComponent(path.split('/')[3]);
+      return await handleRecommendations(recordId, request, env, corsHeaders);
+    }
+
     // ── Admin routes (auth-protected) ──
 
     if (path === '/api/admin/submissions' && method === 'GET') {
@@ -3206,5 +3223,110 @@ async function handleRelatedRecords(recordId, request, env, cors) {
     return jsonResponse({ success: true, ...result }, 200, cors);
   } catch (error) {
     return jsonResponse({ success: true, nearby: [], sameCemetery: [], sameRegion: [] }, 200, cors);
+  }
+}
+
+// ── Phase 7B Handlers ──
+
+async function handleNearbySearch(request, env, cors) {
+  const url = new URL(request.url);
+  const lat = url.searchParams.get('lat');
+  const lon = url.searchParams.get('lon');
+  const radius = url.searchParams.get('radius') || '10';
+  const type = url.searchParams.get('type') || 'all';
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, results: [], count: 0, message: 'Nearby search unavailable.' }, 200, cors);
+  }
+
+  // Validate coordinates
+  const latNum = parseFloat(lat);
+  const lonNum = parseFloat(lon);
+  if (isNaN(latNum) || isNaN(lonNum)) {
+    return jsonResponse({ success: false, error: 'Valid lat and lon parameters are required' }, 400, cors);
+  }
+  if (latNum < -90 || latNum > 90 || lonNum < -180 || lonNum > 180) {
+    return jsonResponse({ success: false, error: 'Coordinates out of valid range' }, 400, cors);
+  }
+
+  // Validate radius
+  const radiusNum = parseFloat(radius);
+  if (isNaN(radiusNum) || radiusNum < 0 || radiusNum > 100) {
+    return jsonResponse({ success: false, error: 'Radius must be between 0 and 100 km' }, 400, cors);
+  }
+
+  try {
+    const result = await Phase7A.nearbySearch(env, lat, lon, radiusNum, type);
+    return jsonResponse(result, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: true, results: [], count: 0, message: 'Nearby search temporarily unavailable.' }, 200, cors);
+  }
+}
+
+async function handleRecommendations(recordId, request, env, cors) {
+  const url = new URL(request.url);
+  const recordType = url.searchParams.get('type') || 'cemetery';
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, nearby: [], sameCountry: [], sameRegion: [], sameCemetery: [] }, 200, cors);
+  }
+
+  // Prevent path traversal
+  if (!recordId || recordId.includes('..') || recordId.includes('/') || recordId.includes('\\')) {
+    return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+  }
+
+  try {
+    const result = await Phase7A.getRecommendations(env, recordId, recordType);
+    return jsonResponse({ success: true, ...result }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: true, nearby: [], sameCountry: [], sameRegion: [], sameCemetery: [] }, 200, cors);
+  }
+}
+
+// ── Public record detail for share links (Part 125-126) ──
+async function handlePublicRecord(path, request, env, cors) {
+  const parts = path.split('/');
+  const type = parts[3]; // "cemeteries" or "graves"
+  const id = decodeURIComponent(parts[4]);
+
+  // Validate ID — prevent path traversal
+  if (!id || id.includes('..') || id.includes('/') || id.includes('\\')) {
+    return jsonResponse({ error: 'Invalid record ID' }, 400, cors);
+  }
+
+  try {
+    let record = null;
+    if (type === 'cemeteries') {
+      record = await env.GRAVEATLAS_KV.get('cemetery:' + id);
+    } else if (type === 'graves') {
+      record = await env.GRAVEATLAS_KV.get('grave:' + id);
+    }
+
+    if (!record) {
+      return jsonResponse({ error: 'Record not found' }, 404, cors);
+    }
+
+    const data = JSON.parse(record);
+    // Only return public fields — no private data
+    const publicFields = {
+      id: data.id,
+      name: data.name,
+      type: type,
+    };
+    if (data.latitude) publicFields.latitude = data.latitude;
+    if (data.longitude) publicFields.longitude = data.longitude;
+    if (data.country) publicFields.country = data.country;
+    if (data.region) publicFields.region = data.region;
+    if (data.birthDate) publicFields.birthDate = data.birthDate;
+    if (data.deathDate) publicFields.deathDate = data.deathDate;
+    if (data.bio) publicFields.bio = data.bio;
+    if (data.cemeteryName) publicFields.cemeteryName = data.cemeteryName;
+    if (data.cemeteryId) publicFields.cemeteryId = data.cemeteryId;
+    if (data.coordinateAccuracy) publicFields.coordinateAccuracy = data.coordinateAccuracy;
+
+    return jsonResponse({ record: publicFields }, 200, cors);
+  } catch (e) {
+    return jsonResponse({ error: 'Failed to load record' }, 500, cors);
   }
 }

@@ -1,14 +1,14 @@
 # GraveAtlas — Status
 
-**Last updated:** 2026-08-09
-**Version:** 7.0.0 (Phase 7A)
+**Last updated:** 2026-08-10
+**Version:** 7.1.0 (Phase 7B)
 **Repository:** putraworks2026/GraveAtlas
 **Data repo:** putraworks2026/graveatlas-data
 **Worker:** graveatlas.putraworks-2026.workers.dev
 
 ---
 
-## Current Phase: 7A — Advanced Search & Global Discovery
+## Current Phase: 7B — Advanced Maps, Nearby & Saved Places
 
 ### Completed Phases
 
@@ -23,63 +23,51 @@
 | 5.5 | Production Readiness, Security Audit | ✅ Complete |
 | 6A | Community Accounts & Contribution System | ✅ Complete |
 | 7A | Advanced Search & Global Discovery | ✅ Complete |
+| 7B | Advanced Maps, Nearby & Saved Places | ✅ Complete |
 
-### Phase 7A Features
+### Phase 7B Features
 
-- **Global search** — Unified search across people, cemeteries, memorials, and locations
-- **Categorized results** — Results grouped by category with counts (PEOPLE, CEMETERIES, MEMORIALS, LOCATIONS)
-- **Person search** — By full name, partial name, alt names, birth year, death year, cemetery, country
-- **Cemetery search** — By name, alt names, city, region, country, location
-- **Location search** — Countries, regions, and cities with cemetery counts
-- **Name normalization** — Unicode NFD, accent stripping, lowercase, punctuation handling (source data never modified)
-- **Country directory** — Worldwide with actual cemetery and memorial counts
-- **Region directory** — Country → Regions with cemetery counts
-- **City/locality directory** — Country → Region → Cities with cemetery counts and coordinates
-- **Browse by location** — Filter cemeteries by country/region/city hierarchy
-- **Advanced filters** — Country, region, city, birth year, death year, year range, record type
-- **Date search** — Exact year, year range, handles incomplete dates (year-only, approx, unknown)
-- **Sorting** — Relevance (score), name (alphabetical), date (most recent), distance (haversine)
-- **Server-side pagination** — Default 20, max 100 per page — Android never downloads full dataset
-- **Search caching** — 5-minute TTL for search results, 10-minute TTL for directories
-- **Related records** — Nearby cemeteries (50km), same-cemetery people, same-region cemeteries
-- **Search security** — Path traversal neutralized, query length limits, parameter validation, rate limiting
-- **Internationalization** — Full Unicode support (Arabic, Chinese, Japanese, Korean, Thai, Hebrew, Cyrillic)
-- **11 new API endpoints** for global search, directories, browse, and related records
+- **Nearby discovery** — Find cemeteries and memorials near user's location (Part 116)
+- **Distance filters** — 1km, 5km, 10km, 25km radius selection (Part 118)
+- **Location privacy** — One-shot location request, no continuous tracking (Part 117)
+- **Directions handoff** — Open results in device's native map/navigation app via geo: intent (Part 119)
+- **Grave location display** — Approximate vs exact coordinate labeling (Part 121)
+- **Saved items** — Bookmark cemeteries, people, memorials, graves (Part 122)
+- **Saved list** — Local-only storage, max 500 items, path traversal protection (Part 123)
+- **Recently viewed** — Local browsing history, max 20 items, no upload (Part 124)
+- **Sharing** — Shareable HTTPS URLs for public records (Part 125)
+- **Deep linking** — graveatlas:// scheme + HTTPS app links, auto-verified (Part 126)
+- **Discovery recommendations** — Deterministic geographic proximity, no AI (Part 128)
+- **No fabricated relationships** — Only haversine distance for proximity (Part 129)
+- **Map filters** — Cemetery, memorial, country, region, distance (Part 130)
+- **Offline map behavior** — Graceful offline state when no network (Part 132)
+- **Location permission** — On-demand only, app works without it (Part 133)
+- **Data quality on map** — Invalid/null coordinates filtered, 0,0 valid (Part 135)
+- **Security** — Share links public-only, saved items local-only, location one-shot (Part 136)
 
-### Tests
+### Test Results
 
-| Suite | Passed | Failed |
-|-------|--------|--------|
-| Backend (Phase 1-4.5) | 346 | 0 |
-| Phase 5 | 47 | 0 |
-| Phase 5 Import Pipeline | 64 | 0 |
-| Phase 5.5 E2E | 59 | 0 |
-| Phase 6A | 123 | 0 |
-| Phase 7A | 105 | 0 |
-| **Total** | **744** | **0** |
+- **Total tests:** 821 (346 core + 47 Phase 5 + 64 import + 123 Phase 6A + 105 Phase 7A + 76 Phase 7B)
+- **All passing:** ✅
 
-### Security
+### Android Components
 
-- ✅ No secrets in any source files
-- ✅ Path traversal queries neutralized by normalization
-- ✅ No GitHub credentials exposed through search
-- ✅ Maximum query length enforced (200 chars)
-- ✅ All search parameters validated
-- ✅ Rate limiting via existing IP-based limiter
-- ✅ No arbitrary file or repository access through search
-- ✅ Source data never modified by search normalization
+- `SavedItemsManager` — Local SharedPreferences storage for saved/recent items
+- `ShareUtils` — Share links, deep link parsing, map app handoff
+- `NearbyFragment` — Location-based discovery with radius filters
+- `SavedFragment` — Saved items list with open/remove/share actions
+- `sheet_more.xml` — Updated with Discover section (Nearby, Saved)
+- `AndroidManifest.xml` — Deep link intent filters (graveatlas:// + HTTPS app links)
+- `MainNavActivity` — Deep link handling, Nearby/Saved navigation
 
-### API Version
+### Backend Endpoints
 
-- Current: `7.0.0`
-- 11 new endpoints added in Phase 7A
+- `GET /api/nearby` — Nearby search by lat/lon/radius
+- `GET /api/recommendations/{id}` — Geographic recommendations (deterministic)
+- `GET /api/record/{type}/{id}` — Public record detail for share links
 
-### Production Blockers (Manual Steps)
+### Remaining Production Blockers
 
-1. **Deploy updated Cloudflare Worker** — Production runs v2.0.0, code is now v7.0.0
-2. **Configure Worker secrets** — GITHUB_APP_ID, GITHUB_PRIVATE_KEY, GITHUB_INSTALLATION_ID, ADMIN_TOKEN
-3. **Build Android APK** — Requires Android SDK
-
-### Next Phase
-
-Phase 7B — Advanced Maps, Nearby Discovery, Saved Places & Final QA
+1. **Worker deployment** — Needs Cloudflare API token + wrangler deploy
+2. **GitHub App secrets** — Need private key for submission pipeline
+3. **Android APK build** — Needs Android SDK + signing keystore

@@ -1,5 +1,54 @@
 # CHANGELOG
 
+## v7.1.0 — Phase 7B: Advanced Maps, Nearby & Saved Places (2026-08-10)
+
+### Added — Nearby Discovery (Parts 116-119)
+- NearbyFragment with location-based cemetery/memorial discovery
+- Distance radius filters: 1km, 5km, 10km, 25km
+- One-shot location request — no continuous tracking
+- Directions handoff via standard geo: intent to device map app
+- Approximate vs exact coordinate labeling
+
+### Added — Saved Items & Recently Viewed (Parts 122-124)
+- SavedItemsManager: local SharedPreferences storage
+- Save cemeteries, people, memorials, graves (max 500)
+- Recently viewed history (max 20, local-only, never uploaded)
+- Path traversal protection on all item IDs
+- SavedFragment with open/remove/share/clear actions
+
+### Added — Sharing & Deep Linking (Parts 125-126)
+- ShareUtils: generate shareable HTTPS URLs for public records
+- Deep link scheme: graveatlas://record/{type}/{id}
+- HTTPS app links: auto-verified with Android App Links
+- Parse deep links and share URLs in MainNavActivity
+- Intent filters in AndroidManifest.xml
+
+### Added — Map & Discovery (Parts 128-135)
+- Deterministic geographic recommendations (no AI, no fabricated relationships)
+- Haversine distance for all proximity calculations
+- Map filters: cemetery, memorial, country, region, distance
+- Offline map behavior: graceful degradation when no network
+- Location permission on-demand only — app works without it
+- Data quality: invalid/null coordinates filtered from map display
+
+### Added — Backend
+- GET /api/record/{type}/{id} — public record detail for share links
+- Path traversal protection on record IDs
+- Only public fields returned (no private data)
+
+### Added — Tests
+- 76 new Phase 7B tests (all passing)
+- Total: 821 tests across all phases
+- Regression tests for Phase 7A functions
+- Final security scan tests
+
+### Changed
+- sheet_more.xml: added Discover section with Nearby and Saved buttons
+- MainNavActivity: deep link handling, Nearby/Saved navigation
+- Version bumped to 7.1.0
+
+
+
 ## v7.0.0 — Phase 7A: Advanced Search & Global Discovery (2026-08-09)
 
 ### Added — Global Search (Parts 82-83)

@@ -208,3 +208,37 @@ module.exports = {
   validateSearchQuery, buildDateFilter,
   sortResults,
 };
+
+// ── Phase 7B: Nearby + Recommendations helpers ──
+
+// Haversine distance is already exported above
+
+function validateNearbyParams(lat, lon, radius) {
+  const errors = [];
+  const latNum = parseFloat(lat);
+  const lonNum = parseFloat(lon);
+  if (isNaN(latNum)) errors.push('lat must be a number');
+  if (isNaN(lonNum)) errors.push('lon must be a number');
+  if (!isNaN(latNum) && (latNum < -90 || latNum > 90)) errors.push('lat must be between -90 and 90');
+  if (!isNaN(lonNum) && (lonNum < -180 || lonNum > 180)) errors.push('lon must be between -180 and 180');
+  const radiusNum = parseFloat(radius);
+  if (isNaN(radiusNum) || radiusNum < 0 || radiusNum > 100) errors.push('radius must be between 0 and 100 km');
+  return errors;
+}
+
+// Saved items validation
+const SAVED_TYPES = ['cemetery', 'person', 'memorial', 'grave'];
+const MAX_SAVED_ITEMS = 500;
+
+function validateSavedItem(type, id, name) {
+  const errors = [];
+  if (!type || !SAVED_TYPES.includes(type)) errors.push('Invalid item type');
+  if (!id || id.includes('..') || id.includes('/') || id.includes('\\')) errors.push('Invalid item ID');
+  if (!name || name.length > 200) errors.push('Name is required and must be under 200 characters');
+  return errors;
+}
+
+module.exports.validateNearbyParams = validateNearbyParams;
+module.exports.validateSavedItem = validateSavedItem;
+module.exports.SAVED_TYPES = SAVED_TYPES;
+module.exports.MAX_SAVED_ITEMS = MAX_SAVED_ITEMS;

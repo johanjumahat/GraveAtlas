@@ -187,6 +187,109 @@
         android:layout_marginTop="12dp"
         android:layout_marginBottom="12dp" />
 
+    <!-- Section: Discover -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="DISCOVER"
+        android:clickable="false"
+        android:focusable="false"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:textColor="@color/text_muted_dark"
+        android:letterSpacing="0.1"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Row 2: Nearby, Saved, Search, Map -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="4dp">
+
+        <LinearLayout
+            android:id="@+id/moreNearby"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_more_compass"
+                android:background="@android:color/transparent"
+                app:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Nearby"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/moreSaved"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_more_about"
+                android:background="@android:color/transparent"
+                app:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Saved"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
+
+        <!-- Empty spacers to fill the row -->
+        <View
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1" />
+        <View
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1" />
+    </LinearLayout>
+
+    <!-- Divider -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/divider_dark"
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="12dp" />
+
     <!-- Section: Tools -->
     <TextView
         android:layout_width="wrap_content"
@@ -200,7 +303,7 @@
         android:letterSpacing="0.1"
         android:layout_marginBottom="8dp" />
 
-    <!-- Row 2: AI Chat, Settings, About -->
+    <!-- Row 3: AI Chat, Settings, About -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -309,4 +412,5 @@
             android:layout_height="match_parent"
             android:layout_weight="1" />
     </LinearLayout>
+
 </LinearLayout>
