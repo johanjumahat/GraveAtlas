@@ -6,6 +6,30 @@
  *
  * Secrets are loaded from Cloudflare Worker environment — never hardcoded.
  */
+// ── Unicode-safe base64 helpers ──
+// Cloudflare Workers' btoa() throws DOMException on non-ASCII characters.
+// Cemetery names, descriptions, and metadata frequently contain Unicode
+// (em-dashes, accented names, Arabic/Chinese script, etc.), so we must
+// encode via UTF-8 bytes before base64.
+
+function unicodeBtoa(str) {
+  const bytes = new TextEncoder().encode(str);
+  let binary = '';
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
+}
+
+function unicodeAtob(b64) {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new TextDecoder().decode(bytes);
+}
+
 
 /**
  * Generate a JWT from the GitHub App's private key.
@@ -55,6 +79,7 @@ async function getInstallationToken(jwt, installationId) {
     {
       method: 'POST',
       headers: {
+        'User-Agent': 'GraveAtlas-Worker',
         'Authorization': `Bearer ${jwt}`,
         'Accept': 'application/vnd.github+json',
       },
@@ -142,7 +167,7 @@ async function writeFile(path, content, env, commitMessage) {
   let sha = null;
   try {
     const resp = await fetch(url, {
-      headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json' },
+      headers: { 'User-Agent': 'GraveAtlas-Worker', 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json' },
     });
     if (resp.ok) {
       const data = await resp.json();
@@ -152,7 +177,7 @@ async function writeFile(path, content, env, commitMessage) {
 
   const body = {
     message: commitMessage || `Write ${path}`,
-    content: btoa(content),
+    content: unicodeBtoa(content),
     branch: env.GITHUB_BRANCH || 'main',
   };
   if (sha) body.sha = sha;
@@ -160,6 +185,7 @@ async function writeFile(path, content, env, commitMessage) {
   const resp = await fetch(url, {
     method: 'PUT',
     headers: {
+      'User-Agent': 'GraveAtlas-Worker',
       'Authorization': `token ${token}`,
       'Accept': 'application/vnd.github+json',
       'Content-Type': 'application/json',
@@ -184,13 +210,13 @@ async function readFile(path, env) {
   const url = `${base}/${encodePath(path)}${ref}`;
 
   const resp = await fetch(url, {
-    headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json' },
+    headers: { 'User-Agent': 'GraveAtlas-Worker', 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json' },
   });
 
   if (!resp.ok) return null;
 
   const data = await resp.json();
-  return atob(data.content);
+  return unicodeAtob(data.content);
 }
 
 /**
@@ -203,7 +229,7 @@ async function listFiles(dirPath, env) {
   const url = `${base}/${encodePath(dirPath)}${ref}`;
 
   const resp = await fetch(url, {
-    headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json' },
+    headers: { 'User-Agent': 'GraveAtlas-Worker', 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json' },
   });
 
   if (!resp.ok) return [];
@@ -223,7 +249,7 @@ async function deleteFile(path, env, commitMessage) {
   const url = `${base}/${encodePath(path)}${ref}`;
 
   const getResp = await fetch(url, {
-    headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json' },
+    headers: { 'User-Agent': 'GraveAtlas-Worker', 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json' },
   });
 
   if (!getResp.ok) {
@@ -235,6 +261,7 @@ async function deleteFile(path, env, commitMessage) {
   const deleteResp = await fetch(url, {
     method: 'DELETE',
     headers: {
+      'User-Agent': 'GraveAtlas-Worker',
       'Authorization': `token ${token}`,
       'Accept': 'application/vnd.github+json',
       'Content-Type': 'application/json',
