@@ -45,9 +45,16 @@
 - **Data quality on map** — Invalid/null coordinates filtered, 0,0 valid (Part 135)
 - **Security** — Share links public-only, saved items local-only, location one-shot (Part 136)
 
+### Build Status
+
+- **Android APK (GitHub Actions):** ✅ Fixed — AndroidManifest.xml duplicate `</intent-filter>` tag removed
+- **Last successful build:** Phase 5.5 merge (build #38)
+- **Failed builds:** Phase 7A (#39) and Phase 7B (#40) — both due to manifest parse error, now fixed
+- **Test suite:** 761 tests, all passing
+
 ### Test Results
 
-- **Total tests:** 821 (346 core + 47 Phase 5 + 64 import + 123 Phase 6A + 105 Phase 7A + 76 Phase 7B)
+- **Total tests:** 761 (346 core + 47 Phase 5 + 64 import + 123 Phase 6A + 105 Phase 7A + 76 Phase 7B)
 - **All passing:** ✅
 
 ### Android Components

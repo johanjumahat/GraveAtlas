@@ -31,7 +31,6 @@
                 <data android:scheme="graveatlas" android:host="record" />
                 <data android:scheme="https" android:host="graveatlas.putraworks-2026.workers.dev" android:pathPrefix="/record/" />
             </intent-filter>
-            </intent-filter>
         </activity>
 
         <!-- LoginActivity — optional sign-in, launched from Settings -->

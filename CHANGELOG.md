@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## v7.1.1 — Build Fix: AndroidManifest.xml (2026-08-10)
+
+### Fixed
+- AndroidManifest.xml: removed duplicate `</intent-filter>` closing tag
+- This caused `processDebugMainManifest` to fail in GitHub Actions
+- Affected builds: Phase 7A (#39) and Phase 7B (#40)
+- All 761 backend tests still passing
+
+### Changed
+- STATUS.md: added Build Status section
+- docs/CLOUDFLARE-WORKER.md: complete API routes table (65+ endpoints)
+- docs/CLOUDFLARE.md: symlink to CLOUDFLARE-WORKER.md
+- backend/src/index.js: version bumped to 7.1.0
+
+
 ## v7.1.0 — Phase 7B: Advanced Maps, Nearby & Saved Places (2026-08-10)
 
 ### Added — Nearby Discovery (Parts 116-119)
