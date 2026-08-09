@@ -21,14 +21,19 @@ import java.util.Locale;
 
 /**
  * GPS location detection with reverse geocoding.
- * Detects country, state/county, and city from GPS coordinates.
+ * Detects country, state/province, and city from GPS coordinates.
  * Uses Android's built-in Geocoder — no API key needed, zero credits.
  */
 public class LocationHelper {
 
     public interface LocationCallback {
-        void onLocationDetected(String country, String state, String county, String city,
-                                double lat, double lon);
+        /**
+         * @param country full country name, never null (falls back to "Unknown")
+         * @param state   state/province name, may be empty string if not applicable
+         *                (e.g. city-states like Singapore) or not resolvable
+         * @param city    city/town/locality name, may be empty string if not resolvable
+         */
+        void onLocationDetected(String country, String state, String city, double lat, double lon);
         void onError(String message);
     }
 
@@ -109,6 +114,7 @@ public class LocationHelper {
         }
 
         final boolean fGps = gpsRequested, fNet = netRequested;
+        // Timeout: if no live fix arrives in 12s, fall back to last-known (better than nothing)
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             if (gpsFixHandled) return;
             gpsFixHandled = true;
@@ -130,8 +136,12 @@ public class LocationHelper {
     }
 
     /**
-     * Reverse geocode GPS coordinates to get country, state, county, city.
+     * Reverse geocode GPS coordinates to get country, state, city.
      * Uses Android's built-in Geocoder — no API key needed.
+     *
+     * IMPORTANT: always calls back with a definitive value (possibly empty string)
+     * for state/city — never silently omits a field, so callers can safely
+     * overwrite stale UI state instead of leaving old values displayed.
      */
     private void reverseGeocode(Location loc, LocationCallback callback) {
         double lat = loc.getLatitude();
@@ -151,29 +161,20 @@ public class LocationHelper {
                 if (addresses != null && !addresses.isEmpty()) {
                     Address addr = addresses.get(0);
                     String country = addr.getCountryName();
-                    String state = addr.getAdminArea();       // state/province
-                    String county = addr.getSubAdminArea();    // county/district
-                    String city = addr.getLocality();          // city/town
+                    String state = addr.getAdminArea();   // state/province
 
-                    // Fallbacks for missing fields
-                    if (county == null || county.isEmpty()) {
-                        county = addr.getSubLocality();         // sub-locality
-                    }
-                    if (city == null || city.isEmpty()) {
-                        city = addr.getAdminArea();            // use state as fallback
-                    }
-                    if (state == null || state.isEmpty()) {
-                        state = addr.getSubAdminArea();        // use county as fallback
-                    }
-                    if (country == null) country = "Unknown";
+                    // City fallback chain: locality -> subLocality -> subAdminArea -> featureName
+                    String city = addr.getLocality();
+                    if (isBlank(city)) city = addr.getSubLocality();
+                    if (isBlank(city)) city = addr.getSubAdminArea();
+                    if (isBlank(city)) city = addr.getFeatureName();
 
-                    final String fCountry = country;
-                    final String fState = state != null ? state : "";
-                    final String fCounty = county != null ? county : "";
-                    final String fCity = city != null ? city : "";
+                    final String fCountry = !isBlank(country) ? country : "Unknown";
+                    final String fState = !isBlank(state) ? state : "";
+                    final String fCity = !isBlank(city) ? city : "";
 
                     new Handler(Looper.getMainLooper()).post(() ->
-                        callback.onLocationDetected(fCountry, fState, fCounty, fCity, lat, lon));
+                        callback.onLocationDetected(fCountry, fState, fCity, lat, lon));
                 } else {
                     new Handler(Looper.getMainLooper()).post(() ->
                         callback.onError("Could not determine address from GPS coordinates"));
@@ -183,5 +184,9 @@ public class LocationHelper {
                     callback.onError("Geocoder error: " + e.getMessage()));
             }
         }).start();
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.trim().isEmpty();
     }
 }
