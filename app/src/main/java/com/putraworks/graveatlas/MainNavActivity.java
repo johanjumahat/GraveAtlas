@@ -1,8 +1,11 @@
 package com.putraworks.graveatlas;
 
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.view.LayoutInflater;
+import android.view.View;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.fragment.app.Fragment;
@@ -10,9 +13,11 @@ import androidx.fragment.app.FragmentManager;
 import androidx.fragment.app.FragmentTransaction;
 
 import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.putraworks.graveatlas.data.api.ApiClient;
 import com.putraworks.graveatlas.ui.about.AboutFragment;
 import com.putraworks.graveatlas.ui.addgrave.AddGraveFragment;
+import com.putraworks.graveatlas.ui.cemetery.CemeteryFragment;
 import com.putraworks.graveatlas.ui.contribute.ContributeFragment;
 import com.putraworks.graveatlas.ui.home.HomeFragment;
 import com.putraworks.graveatlas.ui.map.MapFragment;
@@ -20,16 +25,13 @@ import com.putraworks.graveatlas.ui.search.SearchFragment;
 import com.putraworks.graveatlas.ui.settings.SettingsFragment;
 
 /**
- * GraveAtlas — Main Activity with bottom navigation.
+ * GraveAtlas — Main Activity with bottom navigation (NurOne-style).
  *
  * Tab 1: Home       — overview and quick actions
- * Tab 2: Search    — search graves
- * Tab 3: Map       — map view
- * Tab 4: Add       — submit a new grave
- * Tab 5: Mine      — user contributions
- *
- * Settings, About, Cemeteries, and Grave Details accessible from Home.
- * Chat and Compass accessible from Home action buttons.
+ * Tab 2: Search     — search graves
+ * Tab 3: Map        — map view
+ * Tab 4: More       — bottom sheet with: Add Grave, Mine, Cemeteries, Compass,
+ *                     AI Chat, Settings, About
  */
 public class MainNavActivity extends AppCompatActivity {
 
@@ -43,7 +45,6 @@ public class MainNavActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main_nav);
 
-        // Load saved API URL before any API calls
         loadSavedApiUrl();
 
         bottomNav = findViewById(R.id.bottom_navigation);
@@ -63,15 +64,60 @@ public class MainNavActivity extends AppCompatActivity {
             } else if (id == R.id.nav_map) {
                 loadFragment(new MapFragment());
                 return true;
-            } else if (id == R.id.nav_add) {
-                loadFragment(new AddGraveFragment());
-                return true;
-            } else if (id == R.id.nav_mine) {
-                loadFragment(new ContributeFragment());
-                return true;
+            } else if (id == R.id.nav_more) {
+                showMoreSheet();
+                return false; // don't select "More" as active tab
             }
             return false;
         });
+    }
+
+    private void showMoreSheet() {
+        View sheetView = LayoutInflater.from(this).inflate(R.layout.sheet_more, null);
+        BottomSheetDialog dialog = new BottomSheetDialog(this);
+        dialog.setContentView(sheetView);
+
+        sheetView.findViewById(R.id.moreAdd).setOnClickListener(v -> {
+            loadFragment(new AddGraveFragment());
+            bottomNav.setSelectedItemId(R.id.nav_home);
+            dialog.dismiss();
+        });
+
+        sheetView.findViewById(R.id.moreMine).setOnClickListener(v -> {
+            loadFragment(new ContributeFragment());
+            bottomNav.setSelectedItemId(R.id.nav_home);
+            dialog.dismiss();
+        });
+
+        sheetView.findViewById(R.id.moreCemetery).setOnClickListener(v -> {
+            loadFragment(new CemeteryFragment());
+            bottomNav.setSelectedItemId(R.id.nav_home);
+            dialog.dismiss();
+        });
+
+        sheetView.findViewById(R.id.moreCompass).setOnClickListener(v -> {
+            startActivity(new Intent(this, CompassActivity.class));
+            dialog.dismiss();
+        });
+
+        sheetView.findViewById(R.id.moreChat).setOnClickListener(v -> {
+            startActivity(new Intent(this, MainActivity.class));
+            dialog.dismiss();
+        });
+
+        sheetView.findViewById(R.id.moreSettings).setOnClickListener(v -> {
+            loadFragment(new SettingsFragment());
+            bottomNav.setSelectedItemId(R.id.nav_home);
+            dialog.dismiss();
+        });
+
+        sheetView.findViewById(R.id.moreAbout).setOnClickListener(v -> {
+            loadFragment(new AboutFragment());
+            bottomNav.setSelectedItemId(R.id.nav_home);
+            dialog.dismiss();
+        });
+
+        dialog.show();
     }
 
     private void loadSavedApiUrl() {

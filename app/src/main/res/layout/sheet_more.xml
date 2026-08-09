@@ -1,0 +1,311 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@color/bg_surface"
+    android:paddingTop="12dp"
+    android:paddingBottom="24dp"
+    android:paddingStart="20dp"
+    android:paddingEnd="20dp">
+
+    <!-- Drag handle -->
+    <View
+        android:layout_width="40dp"
+        android:layout_height="4dp"
+        android:background="@color/divider_dark"
+        android:layout_gravity="center"
+        android:layout_marginBottom="16dp" />
+
+    <!-- Title -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="More"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:textColor="@color/gold"
+        android:letterSpacing="0.05"
+        android:layout_marginBottom="16dp" />
+
+    <!-- Section: Contribute -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="CONTRIBUTE"
+        android:clickable="false"
+        android:focusable="false"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:textColor="@color/text_muted_dark"
+        android:letterSpacing="0.1"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Row 1: Add Grave, My Contributions, Cemeteries, Compass -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="4dp">
+
+        <LinearLayout
+            android:id="@+id/moreAdd"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_more_add"
+                android:background="@android:color/transparent"
+                android:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Add Grave"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/moreMine"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_more_mine"
+                android:background="@android:color/transparent"
+                android:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Mine"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/moreCemetery"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_more_cemetery"
+                android:background="@android:color/transparent"
+                android:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Cemeteries"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/moreCompass"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_more_compass"
+                android:background="@android:color/transparent"
+                android:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Compass"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Divider -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/divider_dark"
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="12dp" />
+
+    <!-- Section: Tools -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="TOOLS"
+        android:clickable="false"
+        android:focusable="false"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:textColor="@color/text_muted_dark"
+        android:letterSpacing="0.1"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Row 2: AI Chat, Settings, About -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="4dp">
+
+        <LinearLayout
+            android:id="@+id/moreChat"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_more_chat"
+                android:background="@android:color/transparent"
+                android:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="AI Chat"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/moreSettings"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_more_settings"
+                android:background="@android:color/transparent"
+                android:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Settings"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/moreAbout"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_more_about"
+                android:background="@android:color/transparent"
+                android:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="About"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
+
+        <!-- Empty spacer to keep grid aligned -->
+        <View
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1" />
+    </LinearLayout>
+</LinearLayout>
