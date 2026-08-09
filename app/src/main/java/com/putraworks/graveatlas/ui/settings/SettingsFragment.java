@@ -19,7 +19,10 @@ import androidx.fragment.app.Fragment;
 import com.putraworks.graveatlas.MainNavActivity;
 import com.putraworks.graveatlas.data.api.ApiClient;
 import com.putraworks.graveatlas.data.api.LocalCache;
+import com.putraworks.graveatlas.auth.SecureStorage;
+import com.putraworks.graveatlas.auth.LoginActivity;
 import com.putraworks.graveatlas.ui.about.AboutFragment;
+import android.content.Intent;
 
 /**
  * Settings screen — API health check, API URL config, clear cache, about.
@@ -136,6 +139,39 @@ public class SettingsFragment extends Fragment {
             android.widget.Toast.makeText(getContext(), "Cache cleared", android.widget.Toast.LENGTH_SHORT).show();
         });
         layout.addView(clearCacheBtn);
+
+
+        // ── Account ──
+        TextView accountTitle = new TextView(getContext());
+        accountTitle.setText("Account");
+        accountTitle.setTextSize(15);
+        accountTitle.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        accountTitle.setPadding(0, 16, 0, 8);
+        layout.addView(accountTitle);
+
+        TextView userInfo = new TextView(getContext());
+        String userName = SecureStorage.getCurrentUserName(getContext());
+        String userEmail = SecureStorage.getCurrentUserEmail(getContext());
+        if (userName != null) {
+            userInfo.setText("Signed in as: " + userName + "\n" + (userEmail != null ? userEmail : ""));
+        } else {
+            userInfo.setText("Not signed in");
+        }
+        userInfo.setTextSize(13);
+        userInfo.setPadding(0, 0, 0, 12);
+        layout.addView(userInfo);
+
+        Button logoutBtn = new Button(getContext());
+        logoutBtn.setText("Sign Out");
+        logoutBtn.setAllCaps(false);
+        logoutBtn.setOnClickListener(v -> {
+            SecureStorage.clearCurrentUser(getContext());
+            Intent intent = new Intent(getContext(), LoginActivity.class);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(intent);
+            if (getActivity() != null) getActivity().finish();
+        });
+        layout.addView(logoutBtn);
 
         // ── About ──
         Button aboutBtn = new Button(getContext());

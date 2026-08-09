@@ -1,2 +1,7 @@
-# AI Signal Pro ProGuard rules
--keep class com.putraworks.aisignalpro.core.architect.** { *; }
+# Google Play Services Auth
+-keep class com.google.android.gms.auth.** { *; }
+-keep class com.google.android.gms.common.** { *; }
+
+# EncryptedSharedPreferences
+-keep class androidx.security.crypto.** { *; }
+-keep class com.google.crypto.tink.** { *; }

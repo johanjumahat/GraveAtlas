@@ -3,7 +3,6 @@ plugins {
 }
 
 // ── Versioning ──
-// Read base version from version.properties. CI overrides via -PversionCode/-PversionName.
 def versionProps = new Properties()
 def versionPropsFile = rootProject.file('version.properties')
 if (versionPropsFile.exists()) {
@@ -26,8 +25,6 @@ android {
         versionName appVersionName
     }
 
-    // ── Signing ──
-    // CI passes -Psigning* properties; local builds use local.properties; unsigned if neither.
     signingConfigs {
         release {
             def ciKeystore = project.findProperty('signingKeystoreFile')
@@ -91,6 +88,12 @@ dependencies {
 
     // Fragment
     implementation 'androidx.fragment:fragment:1.6.2'
+
+    // Google Sign-In
+    implementation 'com.google.android.gms:play-services-auth:21.0.0'
+
+    // Encrypted SharedPreferences
+    implementation 'androidx.security:security-crypto:1.1.0-alpha06'
 
     // Unit testing
     testImplementation 'junit:junit:4.13.2'

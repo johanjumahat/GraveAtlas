@@ -14,7 +14,7 @@ import java.util.List;
 
 /**
  * RecyclerView adapter for chat messages.
- * User messages align right, AI messages align left.
+ * User messages align right (gold), AI messages align left (dark surface).
  */
 public class ChatAdapter extends RecyclerView.Adapter<ChatAdapter.MessageViewHolder> {
 
@@ -109,20 +109,20 @@ public class ChatAdapter extends RecyclerView.Adapter<ChatAdapter.MessageViewHol
             tvMessage.setText(msg.getContent());
 
             if (msg.isUser()) {
-                // User message — right aligned, primary background
+                // User message — right aligned, gold background, dark text
                 container.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
                 tvMessage.setBackgroundResource(R.drawable.bg_msg_user);
-                tvMessage.setTextColor(0xFFFFFFFF);
+                tvMessage.setTextColor(0xFF0B0B0D); // bg_root dark text on gold
             } else if (msg.isError()) {
-                // Error message — left aligned, error background
+                // Error message — left aligned, dark surface with red border
                 container.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
                 tvMessage.setBackgroundResource(R.drawable.bg_msg_error);
-                tvMessage.setTextColor(0xFFD32F2F);
+                tvMessage.setTextColor(0xFFEF5350); // light red text
             } else {
-                // AI message — left aligned, card background
+                // AI message — left aligned, dark surface, light text
                 container.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
                 tvMessage.setBackgroundResource(R.drawable.bg_msg_ai);
-                tvMessage.setTextColor(0xFF202124);
+                tvMessage.setTextColor(0xFFF5F1E8); // text_primary_dark
             }
         }
     }
