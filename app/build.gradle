@@ -2,6 +2,18 @@ plugins {
     id 'com.android.application'
 }
 
+// ── Versioning ──
+// Read base version from version.properties. CI overrides via -PversionCode/-PversionName.
+def versionProps = new Properties()
+def versionPropsFile = rootProject.file('version.properties')
+if (versionPropsFile.exists()) {
+    versionProps.load(new FileInputStream(versionPropsFile))
+}
+def appVersionName = project.findProperty('versionName') ?: versionProps.getProperty('versionName', '1.0.0')
+def appVersionCode = project.findProperty('versionCode') ?
+    project.property('versionCode').toInteger() :
+    Integer.parseInt(versionProps.getProperty('versionCode', '1'))
+
 android {
     namespace 'com.putraworks.graveatlas'
     compileSdk 34
@@ -10,31 +22,45 @@ android {
         applicationId "com.putraworks.graveatlas"
         minSdk 24
         targetSdk 34
-        versionCode 1
-        versionName "1.0"
+        versionCode appVersionCode
+        versionName appVersionName
     }
 
+    // ── Signing ──
+    // CI passes -Psigning* properties; local builds use local.properties; unsigned if neither.
     signingConfigs {
         release {
-            // Read signing config from local.properties or environment variables.
-            // Never hardcode keystore passwords in the repo.
-            def localProps = new Properties()
-            def localPropsFile = rootProject.file('local.properties')
-            if (localPropsFile.exists()) {
-                localProps.load(new FileInputStream(localPropsFile))
+            def ciKeystore = project.findProperty('signingKeystoreFile')
+            if (ciKeystore != null) {
+                storeFile file(ciKeystore)
+                storeType "pkcs12"
+                storePassword project.findProperty('signingKeystorePassword') ?: ''
+                keyAlias project.findProperty('signingKeyAlias') ?: ''
+                keyPassword project.findProperty('signingKeyPassword') ?: ''
+            } else {
+                def localProps = new Properties()
+                def localPropsFile = rootProject.file('local.properties')
+                if (localPropsFile.exists()) {
+                    localProps.load(new FileInputStream(localPropsFile))
+                }
+                def keystorePath = localProps.getProperty('keystore.file', '')
+                if (!keystorePath.isEmpty() && rootProject.file(keystorePath).exists()) {
+                    storeFile rootProject.file(keystorePath)
+                    storeType localProps.getProperty('keystore.type', 'pkcs12')
+                    storePassword localProps.getProperty('keystore.storePassword', '')
+                    keyAlias localProps.getProperty('keystore.keyAlias', '')
+                    keyPassword localProps.getProperty('keystore.keyPassword', '')
+                }
             }
-            storeFile file(localProps.getProperty('keystore.file', 'graveatlas-release.p12'))
-            storeType localProps.getProperty('keystore.type', 'pkcs12')
-            storePassword localProps.getProperty('keystore.storePassword', System.getenv('GRAVEATLAS_KEYSTORE_PASSWORD') ?: '')
-            keyAlias localProps.getProperty('keystore.keyAlias', System.getenv('GRAVEATLAS_KEY_ALIAS') ?: '')
-            keyPassword localProps.getProperty('keystore.keyPassword', System.getenv('GRAVEATLAS_KEY_PASSWORD') ?: '')
         }
     }
 
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig signingConfigs.release
+            if (signingConfigs.release.storeFile != null) {
+                signingConfig signingConfigs.release
+            }
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
         debug {
