@@ -27,3 +27,18 @@ Logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Environment files — NEVER commit real secrets
+.env
+.env.local
+.env.production
+backend/.env
+*.pem
+*_private_key*
+
+# Node
+backend/node_modules/
+backend/.wrangler/
+
+# Downloaded artifacts
+downloads/
