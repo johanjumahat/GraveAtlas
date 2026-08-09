@@ -28,11 +28,13 @@ public class ChatHistoryManager {
 
         // Per-user encrypted prefs if logged in, encrypted global otherwise
         String prefsName = (userId != null) ? "user_" + userId + "_chat" : "graveatlas_chat";
+        SharedPreferences loaded;
         try {
-            prefs = SecureStorage.getEncryptedPrefs(context, prefsName);
+            loaded = SecureStorage.getEncryptedPrefs(context, prefsName);
         } catch (Exception e) {
-            prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE);
+            loaded = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE);
         }
+        prefs = loaded;
     }
 
     public void save(List<ChatMessage> messages) {
