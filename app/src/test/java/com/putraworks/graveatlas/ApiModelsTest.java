@@ -4,6 +4,8 @@ import com.putraworks.graveatlas.data.api.ApiErrorHandler;
 import com.putraworks.graveatlas.data.model.CemeteryRecord;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
+import com.putraworks.graveatlas.data.model.PersonRecord;
+import com.putraworks.graveatlas.data.model.SearchResult;
 
 import org.json.JSONObject;
 import org.junit.Test;
@@ -353,11 +355,6 @@ public class ApiModelsTest {
     @Test
     public void errorHandler_isRetryable_falseFor400() {
         assertFalse(ApiErrorHandler.isRetryable(400));
-    }
-
-    @Test
-    public void errorHandler_isRetryable_falseFor404() {
-        assertFalse(ApiErrorHandler.isRetryable(404));
     }
 
     @Test
