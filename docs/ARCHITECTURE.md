@@ -15,7 +15,7 @@ Cloudflare Worker API
     |
     | GitHub App authentication (JWT + installation token)
     v
-GitHub Repository (kubur-sg-data)
+GitHub Repository (graveatlas-data)
     |
     +-- pending/      (unverified submissions, awaiting moderation)
     +-- graves/       (approved, published grave records)
@@ -113,5 +113,5 @@ The request specified `/android` as the directory name. The existing project use
 ### External Configuration Required
 - Cloudflare Worker deployment
 - GitHub App creation and private key
-- GitHub repository: kubur-sg-data
+- GitHub repository: graveatlas-data
 - Cloudflare secrets (GITHUB_APP_ID, GITHUB_PRIVATE_KEY, etc.)

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The "database" is a public GitHub repository (`kubur-sg-data`) containing JSON files. This approach provides:
+The "database" is a public GitHub repository (`graveatlas-data`) containing JSON files. This approach provides:
 
 - Full history and audit trail via Git
 - Community transparency
@@ -13,7 +13,7 @@ The "database" is a public GitHub repository (`kubur-sg-data`) containing JSON f
 ## Repository Structure
 
 ```
-kubur-sg-data/
+graveatlas-data/
 ├── graves/
 │   ├── abc12345.json      # Individual grave record
 │   ├── def67890.json

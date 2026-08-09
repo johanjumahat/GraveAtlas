@@ -2,7 +2,7 @@
  * GraveAtlas Backend API — Cloudflare Worker
  *
  * Architecture:
- *   Android App → HTTPS → Cloudflare Worker → GitHub App → GitHub Repo (kubur-sg-data)
+ *   Android App → HTTPS → Cloudflare Worker → GitHub App → GitHub Repo (graveatlas-data)
  *
  * Security:
  *   - No secrets in Android app

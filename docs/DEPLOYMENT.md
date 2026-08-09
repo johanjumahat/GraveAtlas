@@ -38,7 +38,7 @@ npx wrangler secret put ADMIN_TOKEN
 ```toml
 [vars]
 GITHUB_OWNER = "putraworks2026"
-GITHUB_REPO = "kubur-sg-data"
+GITHUB_REPO = "graveatlas-data"
 GITHUB_BRANCH = "main"
 ```
 
@@ -79,9 +79,9 @@ cd app
 
 ## Data Repository Deployment
 
-The public data repository (`kubur-sg-data`) is a separate GitHub repository:
+The public data repository (`graveatlas-data`) is a separate GitHub repository:
 
-1. Create private repo `kubur-sg-data`
+1. Create private repo `graveatlas-data`
 2. Create the directory structure (graves/, cemeteries/, pending/, photos/, index/, schema/)
 3. Copy schema files from this repo's `github/schema/` to the data repo's `schema/`
 4. Create README.md in the data repo

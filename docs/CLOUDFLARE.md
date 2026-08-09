@@ -23,7 +23,7 @@ compatibility_date = "2024-01-01"
 
 [vars]
 GITHUB_OWNER = "putraworks2026"
-GITHUB_REPO = "kubur-sg-data"
+GITHUB_REPO = "graveatlas-data"
 GITHUB_BRANCH = "main"
 ```
 

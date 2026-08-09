@@ -37,7 +37,7 @@ GraveAtlas uses a GitHub App (not a personal access token) for backend-to-GitHub
 
 1. In the App settings, click "Install App"
 2. Install it on the `putraworks2026` account
-3. Select the `kubur-sg-data` repository
+3. Select the `graveatlas-data` repository
 4. Note the installation ID from the URL — this is your `GITHUB_INSTALLATION_ID`
 
 ### 4. Configure Cloudflare Secrets
