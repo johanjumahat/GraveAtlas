@@ -16,6 +16,7 @@ import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.putraworks.graveatlas.data.api.ApiClient;
 import com.putraworks.graveatlas.ui.about.AboutFragment;
+import com.putraworks.graveatlas.compass.CompassActivity;
 import com.putraworks.graveatlas.ui.addgrave.AddGraveFragment;
 import com.putraworks.graveatlas.ui.cemetery.CemeteryFragment;
 import com.putraworks.graveatlas.ui.contribute.ContributeFragment;
