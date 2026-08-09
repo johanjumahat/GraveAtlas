@@ -24,6 +24,7 @@ import com.putraworks.graveatlas.auth.SecureStorage;
 import com.putraworks.graveatlas.ui.home.HomeFragment;
 import com.putraworks.graveatlas.ui.map.MapFragment;
 import com.putraworks.graveatlas.ui.search.SearchFragment;
+import com.putraworks.graveatlas.ui.search.GlobalSearchFragment;
 import com.putraworks.graveatlas.ui.settings.SettingsFragment;
 
 /**
@@ -68,7 +69,7 @@ public class MainNavActivity extends AppCompatActivity {
                 loadFragment(new HomeFragment());
                 return true;
             } else if (id == R.id.nav_search) {
-                loadFragment(new SearchFragment());
+                loadFragment(new GlobalSearchFragment());
                 return true;
             } else if (id == R.id.nav_map) {
                 loadFragment(new MapFragment());

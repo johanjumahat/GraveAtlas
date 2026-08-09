@@ -456,6 +456,193 @@ public class ApiClient {
         });
     }
 
+
+    // ── Phase 7A: Advanced Search & Global Discovery ──
+
+    /**
+     * Global search with categories, filters, sorting, and pagination.
+     * Returns a GlobalSearchResponse with categorized results.
+     */
+    public void globalSearch(String query, String type, int page, int pageSize,
+                             String sort, String country, String region, String city,
+                             String birthYear, String deathYear,
+                             final ApiCallback<GlobalSearchResponse> callback) {
+        HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/api/search/global").newBuilder();
+        if (query != null && !query.isEmpty()) urlBuilder.addQueryParameter("q", query);
+        if (type != null && !type.equals("all")) urlBuilder.addQueryParameter("type", type);
+        urlBuilder.addQueryParameter("page", String.valueOf(page));
+        urlBuilder.addQueryParameter("pageSize", String.valueOf(pageSize));
+        if (sort != null) urlBuilder.addQueryParameter("sort", sort);
+        if (country != null && !country.isEmpty()) urlBuilder.addQueryParameter("country", country);
+        if (region != null && !region.isEmpty()) urlBuilder.addQueryParameter("region", region);
+        if (city != null && !city.isEmpty()) urlBuilder.addQueryParameter("city", city);
+        if (birthYear != null && !birthYear.isEmpty()) urlBuilder.addQueryParameter("birthYear", birthYear);
+        if (deathYear != null && !deathYear.isEmpty()) urlBuilder.addQueryParameter("deathYear", deathYear);
+
+        Request request = new Request.Builder().url(urlBuilder.build()).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                String body = response.body() != null ? response.body().string() : "{}";
+                if (response.isSuccessful()) {
+                    try {
+                        JSONObject json = new JSONObject(body);
+                        GlobalSearchResponse result = GlobalSearchResponse.fromJson(json);
+                        callback.onSuccess(result);
+                    } catch (JSONException e) {
+                        callback.onError("Failed to parse search results");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getMessageForCode(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get country directory with cemetery and memorial counts.
+     */
+    public void getCountries(final ApiCallback<java.util.List<CountryInfo>> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/countries")
+                .get()
+                .build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                String body = response.body() != null ? response.body().string() : "{}";
+                if (response.isSuccessful()) {
+                    try {
+                        JSONObject json = new JSONObject(body);
+                        JSONArray arr = json.optJSONArray("countries");
+                        java.util.List<CountryInfo> countries = new java.util.ArrayList<>();
+                        if (arr != null) {
+                            for (int i = 0; i < arr.length(); i++) {
+                                countries.add(CountryInfo.fromJson(arr.getJSONObject(i)));
+                            }
+                        }
+                        callback.onSuccess(countries);
+                    } catch (JSONException e) {
+                        callback.onError("Failed to parse country directory");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getMessageForCode(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get regions for a country.
+     */
+    public void getRegions(String country, final ApiCallback<java.util.List<RegionInfo>> callback) {
+        HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/api/countries/" + java.net.URLEncoder.encode(country, "UTF-8") + "/regions").newBuilder();
+        Request request = new Request.Builder().url(urlBuilder.build()).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                String body = response.body() != null ? response.body().string() : "{}";
+                if (response.isSuccessful()) {
+                    try {
+                        JSONObject json = new JSONObject(body);
+                        JSONArray arr = json.optJSONArray("regions");
+                        java.util.List<RegionInfo> regions = new java.util.ArrayList<>();
+                        if (arr != null) {
+                            for (int i = 0; i < arr.length(); i++) {
+                                regions.add(RegionInfo.fromJson(arr.getJSONObject(i)));
+                            }
+                        }
+                        callback.onSuccess(regions);
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse region directory");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getMessageForCode(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get cities for a country + region.
+     */
+    public void getCities(String country, String region, final ApiCallback<java.util.List<CityInfo>> callback) {
+        String encodedCountry = java.net.URLEncoder.encode(country, "UTF-8");
+        String encodedRegion = java.net.URLEncoder.encode(region, "UTF-8");
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/countries/" + encodedCountry + "/regions/" + encodedRegion + "/cities")
+                .get()
+                .build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                String body = response.body() != null ? response.body().string() : "{}";
+                if (response.isSuccessful()) {
+                    try {
+                        JSONObject json = new JSONObject(body);
+                        JSONArray arr = json.optJSONArray("cities");
+                        java.util.List<CityInfo> cities = new java.util.ArrayList<>();
+                        if (arr != null) {
+                            for (int i = 0; i < arr.length(); i++) {
+                                cities.add(CityInfo.fromJson(arr.getJSONObject(i)));
+                            }
+                        }
+                        callback.onSuccess(cities);
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse city directory");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getMessageForCode(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get related records for a cemetery or grave.
+     */
+    public void getRelatedRecords(String recordId, String recordType, final ApiCallback<RelatedRecords> callback) {
+        HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/api/related/" + recordId).newBuilder();
+        if (recordType != null) urlBuilder.addQueryParameter("type", recordType);
+        Request request = new Request.Builder().url(urlBuilder.build()).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                String body = response.body() != null ? response.body().string() : "{}";
+                if (response.isSuccessful()) {
+                    try {
+                        JSONObject json = new JSONObject(body);
+                        callback.onSuccess(RelatedRecords.fromJson(json));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse related records");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getMessageForCode(response.code()));
+                }
+            }
+        });
+    }
+
     // ── Phase 4: Cemetery Submission ──
 
     public void submitCemetery(CemeteryRecord cemetery, final ApiCallback<SubmissionResponse> callback) {
