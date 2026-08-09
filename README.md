@@ -10,6 +10,9 @@ A worldwide cemetery & memorial locator for Android. Search, explore, and contri
 - **Compass + GPS** — Navigate to grave sites with built-in compass
 - **AI Chat** — Ask questions about cemeteries and genealogy
 - **My Contributions** — Track records you've submitted
+- **Nearby** — Discover cemeteries and memorials near your location
+- **Saved Items** — Bookmark records and view browsing history
+- **Sharing** — Share records via deep links and HTTPS URLs
 - **Settings** — Configure API endpoint and preferences
 
 ## Tech Stack
