@@ -17,12 +17,13 @@ import com.google.android.gms.auth.api.signin.GoogleSignInClient;
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 import com.google.android.gms.common.api.ApiException;
 import com.google.android.gms.tasks.Task;
-import com.putraworks.graveatlas.MainNavActivity;
 import com.putraworks.graveatlas.R;
 
 /**
- * Google Sign-In screen. On success, stores user info in encrypted preferences
- * and launches MainNavActivity. On failure, shows error and allows retry.
+ * Optional Google Sign-In screen. Launched from Settings.
+ * On success, stores user info in encrypted storage and returns to caller.
+ * The app works fully without signing in — login just enables per-user
+ * encrypted storage for chat history and API keys.
  */
 public class LoginActivity extends AppCompatActivity {
 
@@ -40,9 +41,9 @@ public class LoginActivity extends AppCompatActivity {
 
         SecureStorage.init(this);
 
-        // If already logged in, go straight to main
+        // If already logged in, just close
         if (SecureStorage.isLoggedIn(this)) {
-            startActivity(new Intent(this, MainNavActivity.class));
+            Toast.makeText(this, "Already signed in as " + SecureStorage.getCurrentUserName(this), Toast.LENGTH_SHORT).show();
             finish();
             return;
         }
@@ -58,6 +59,12 @@ public class LoginActivity extends AppCompatActivity {
         btnSignIn = findViewById(R.id.btnGoogleSignIn);
         progressBar = findViewById(R.id.loginProgress);
         tvError = findViewById(R.id.tvLoginError);
+
+        Button btnSkip = findViewById(R.id.btnSkipLogin);
+        btnSkip.setOnClickListener(v -> {
+            setResult(RESULT_CANCELED);
+            finish();
+        });
 
         btnSignIn.setOnClickListener(v -> {
             tvError.setVisibility(View.GONE);
@@ -77,16 +84,12 @@ public class LoginActivity extends AppCompatActivity {
             try {
                 GoogleSignInAccount account = task.getResult(ApiException.class);
                 if (account != null) {
-                    // Save user info in encrypted storage
                     String userId = account.getId() != null ? account.getId() : account.getEmail();
                     SecureStorage.saveCurrentUser(this, userId, account.getEmail(),
                             account.getDisplayName() != null ? account.getDisplayName() : "User");
 
-                    // Load any saved data for this user
-                    // (Chat history and API keys will be loaded by MainActivity from SecureStorage)
-
-                    Toast.makeText(this, "Welcome, " + SecureStorage.getCurrentUserName(this), Toast.LENGTH_SHORT).show();
-                    startActivity(new Intent(this, MainNavActivity.class));
+                    Toast.makeText(this, "Signed in as " + SecureStorage.getCurrentUserName(this), Toast.LENGTH_SHORT).show();
+                    setResult(RESULT_OK);
                     finish();
                 }
             } catch (ApiException e) {
@@ -95,20 +98,6 @@ public class LoginActivity extends AppCompatActivity {
                 tvError.setText("Sign-in failed: " + e.getStatusCode());
                 tvError.setVisibility(View.VISIBLE);
             }
-        }
-    }
-
-    @Override
-    protected void onStart() {
-        super.onStart();
-        // Check if already signed in (silent sign-in)
-        GoogleSignInAccount account = GoogleSignIn.getLastSignedInAccount(this);
-        if (account != null && !SecureStorage.isLoggedIn(this)) {
-            String userId = account.getId() != null ? account.getId() : account.getEmail();
-            SecureStorage.saveCurrentUser(this, userId, account.getEmail(),
-                    account.getDisplayName() != null ? account.getDisplayName() : "User");
-            startActivity(new Intent(this, MainNavActivity.class));
-            finish();
         }
     }
 }
