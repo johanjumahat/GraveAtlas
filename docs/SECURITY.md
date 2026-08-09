@@ -1,142 +1,67 @@
-# GraveAtlas Security Design
+# Security
 
-## Principles
+**Last updated:** 2026-08-09
 
-1. **No secrets in the Android app** — GitHub credentials never touch the app
-2. **GitHub App authentication** — not personal access tokens
-3. **Moderation before publication** — no unverified data goes public
-4. **Input validation on every request** — reject invalid data early
-5. **Minimal permissions** — only request what the app needs
-6. **Constant-time token comparison** — prevents timing attacks on admin auth
-7. **Path sanitization** — prevents path traversal in file operations
-8. **Crypto-secure ID generation** — no Math.random() for submission IDs
-9. **Rate limiting** — prevents abuse on submission endpoints
-10. **No wildcard CORS** — CORS disabled by default, opt-in via ALLOWED_ORIGIN
+## Architecture Security
 
-## Threat Model
+### Android → Worker
+- Android app never contacts GitHub directly
+- All API calls go through Cloudflare Worker
+- HTTPS only (usesCleartextTraffic=false)
+- No credentials stored in Android app
 
-### Spam / Automated Abuse
-- **Mitigation:** Rate limiting — 10 requests/minute/IP on POST endpoints (in-memory, per Worker isolate)
-- **Mitigation:** Request size limit (50KB, enforced via Content-Length header)
-- **Mitigation:** Field length limits (name: 500, text fields: 2000)
-- **Mitigation:** Unexpected field rejection (only known fields accepted)
+### Worker → GitHub
+- GitHub App authentication via installation token
+- All credentials stored as Worker env vars (server-side)
+- No client-supplied repository, branch, or path values accepted
+- Worker generates all file paths internally
 
-### Path Traversal
-- **Mitigation:** All IDs are sanitized via `sanitizePathSegment()` — only alphanumeric, dash, underscore, dot allowed
-- **Mitigation:** Double-dot sequences (`..`) rejected
-- **Mitigation:** Leading dots rejected
-- **Mitigation:** Server controls all file paths — client never specifies arbitrary paths
-- **Mitigation:** Only allowed directories: `pending/`, `graves/`
+## Authentication
 
-### Duplicate Submissions
-- **Mitigation:** Idempotency-Key header support on POST /api/graves (Phase 3.5)
-- **Mitigation:** In-memory idempotency cache (1-hour TTL, per Worker isolate)
-- **Mitigation:** Duplicate detection in GitHub Actions validation
-- **Mitigation:** Unique ID enforcement in schema validation
-- **Mitigation:** Crypto-secure ID generation prevents ID collisions
-- **Mitigation:** Android OfflineSubmissionManager uses stable localId as idempotency key for retries
+| Endpoint Type | Auth Method |
+|---------------|------------|
+| Public (GET) | None |
+| Submit (POST) | Rate-limited, no auth |
+| Admin (all) | Bearer token via requireAdmin() |
 
-### Invalid GPS Coordinates
-- **Mitigation:** Latitude range check (-90 to 90)
-- **Mitigation:** Longitude range check (-180 to 180)
-- **Mitigation:** NaN detection via parseFloat + isNaN
+Admin token comparison uses constant-time comparison to prevent timing attacks.
 
-### Invalid Dates
-- **Mitigation:** YYYY-MM-DD format regex validation
-- **Mitigation:** Date parse verification via JavaScript Date
+## Rate Limiting
 
-### Malicious Input
-- **Mitigation:** Input sanitization before storage
-- **Mitigation:** No SQL/NoSQL injection surface (JSON files only)
-- **Mitigation:** GitHub Actions re-validates before publication
-- **Mitigation:** Content-Type validation
-- **Mitigation:** Malformed JSON rejection
+| Tier | Limit | Scope |
+|------|-------|-------|
+| Default | 10 requests/min | Per IP |
+| Search | 60 requests/min | Per IP |
+| Admin | 30 requests/min | Per IP |
 
-### Unauthorized Admin Access
-- **Mitigation:** Bearer token required for all admin endpoints
-- **Mitigation:** Token stored as Cloudflare secret (not in code)
-- **Mitigation:** Constant-time comparison (prevents timing attacks)
-- **Mitigation:** No partial-match information in error responses
-- **Mitigation:** Generic error messages ("Unauthorized" / "Forbidden")
+Rate limiting is in-memory per Worker isolate.
 
-### GitHub Credential Exposure
-- **Mitigation:** Credentials stored only in Cloudflare Worker secrets
-- **Mitigation:** Never logged in error messages (errors sanitized)
-- **Mitigation:** Never sent to Android app
-- **Mitigation:** GitHub App uses short-lived installation tokens (1 hour max)
-- **Mitigation:** Token cached in memory only, never persisted
+## Input Validation
 
-### API Response Leaks
-- **Mitigation:** Error responses return generic messages only
-- **Mitigation:** No GitHub API URLs in client responses
-- **Mitigation:** No stack traces in responses
-- **Mitigation:** No environment variable names in responses
-- **Mitigation:** No GitHub tokens or ADMIN_TOKEN in responses
-- **Mitigation:** Health endpoint reports boolean flags only (githubConfigured, adminConfigured)
+- JSON body parsing with error handling
+- Field length limits (500 chars default, 50KB max request)
+- Coordinate bounds (-90/90 lat, -180/180 lon)
+- Date format validation (YYYY-MM-DD)
+- Country code validation (ISO 3166-1 alpha-2)
+- URL format validation
+- Unexpected fields rejected
 
-## Android Security
+## Secrets Management
 
-The Android app contains NO server credentials:
+All secrets are stored as Cloudflare Worker environment variables:
+- GITHUB_APP_ID
+- GITHUB_PRIVATE_KEY
+- GITHUB_INSTALLATION_ID
+- GITHUB_OWNER
+- GITHUB_REPO
+- GITHUB_BRANCH
+- ADMIN_TOKEN
+- ALLOWED_ORIGIN
 
-| Credential | In Android? | Storage Location |
-|-----------|------------|------------------|
-| GITHUB_APP_ID | ❌ No | Cloudflare secret |
-| GITHUB_PRIVATE_KEY | ❌ No | Cloudflare secret |
-| GITHUB_INSTALLATION_ID | ❌ No | Cloudflare secret |
-| ADMIN_TOKEN | ❌ No | Cloudflare secret |
-| GitHub access token | ❌ No | Runtime only (Worker memory) |
-| Cloudflare API token | ❌ No | Not used by app |
+No secrets are hardcoded in source code, tests, or documentation.
 
-The Android app communicates only with:
-- `https://graveatlas.putraworks-2026.workers.dev` (configurable via Settings)
+## Known Security Considerations
 
-The app does NOT contain credentials in:
-- BuildConfig
-- strings.xml
-- resources/
-- assets/
-- local JSON files
-- obfuscated code
-- SharedPreferences (only the non-secret API base URL is stored)
-
-## Android Permissions
-
-The Android app requests only:
-- `INTERNET` — to communicate with the backend API
-- `ACCESS_FINE_LOCATION` — for GPS when adding graves (user-triggered, optional)
-- `ACCESS_COARSE_LOCATION` — fallback location
-- `RECORD_AUDIO` — AI Chat feature (existing)
-- `POST_NOTIFICATIONS` — for future notification features
-
-No permissions for: contacts, SMS, call logs, camera, storage, or background location.
-
-## Secret Management
-
-| Secret | Stored In | Used By | In Android? |
-|--------|-----------|---------|-------------|
-| GITHUB_APP_ID | Cloudflare secret | Backend Worker | No |
-| GITHUB_PRIVATE_KEY | Cloudflare secret | Backend Worker | No |
-| GITHUB_INSTALLATION_ID | Cloudflare secret | Backend Worker | No |
-| ADMIN_TOKEN | Cloudflare secret | Backend Worker | No |
-| ALLOWED_ORIGIN | Cloudflare secret | Backend Worker | No |
-| API_BASE_URL | Android SharedPreferences | Android App | Not secret |
-
-## Pagination (Phase 3.5)
-
-GET endpoints support `?limit=N&offset=M`:
-- Default limit: 100, Maximum: 500
-- Response includes `total`, `count`, `limit`, `offset`, `hasMore`
-- Prevents unbounded data transfer as dataset grows
-
-## What NOT to Do
-
-- Never put GitHub tokens in Android code
-- Never commit `.env` files with real values
-- Never log secrets or tokens
-- Never expose admin endpoints without authentication
-- Never auto-publish user submissions
-- Never store user passwords (no user auth in Phase 2)
-- Never use `Access-Control-Allow-Origin: *` (CORS is opt-in)
-- Never use `Math.random()` for security-relevant IDs
-- Never use `===` for token comparison (use constant-time)
-- Never allow client-specified file paths
+1. Rate limiting is per-Worker-isolate (not global). A determined attacker could hit different isolates.
+2. Admin token is a static bearer token (no rotation, no expiry). Consider implementing token rotation for production.
+3. No CSRF protection on POST endpoints (API-only, no cookies). Acceptable for current architecture.
