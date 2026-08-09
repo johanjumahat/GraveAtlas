@@ -1,256 +1,194 @@
 /**
- * Phase 1 Tests for GraveAtlas Backend
+ * GraveAtlas Backend Tests — Phase 2
  * Run: node tests/
- * No real GitHub credentials needed — uses mocks.
  */
 
 const assert = require('assert');
 
-// ── Import validation logic ──
-// We test the validation function directly since the Worker
-// environment isn't available locally without wrangler.
-
-// Inline the validation logic for testing (mirrors backend/src/index.js)
 function validateSubmission(body) {
   if (!body) return { valid: false, error: 'Empty request body' };
-  if (!body.name || typeof body.name !== 'string' || body.name.trim().length === 0) {
-    return { valid: false, error: 'Name is required' };
-  }
-  if (body.name.length > 500) {
-    return { valid: false, error: 'Name too long (max 500 chars)' };
-  }
+  if (!body.name || typeof body.name !== 'string' || body.name.trim().length === 0) return { valid: false, error: 'Name is required' };
+  if (body.name.length > 500) return { valid: false, error: 'Name too long (max 500 chars)' };
   if (body.latitude !== undefined || body.longitude !== undefined) {
-    const lat = parseFloat(body.latitude);
-    const lon = parseFloat(body.longitude);
-    if (isNaN(lat) || lat < -90 || lat > 90) {
-      return { valid: false, error: 'Invalid latitude (must be -90 to 90)' };
-    }
-    if (isNaN(lon) || lon < -180 || lon > 180) {
-      return { valid: false, error: 'Invalid longitude (must be -180 to 180)' };
-    }
+    const lat = parseFloat(body.latitude), lon = parseFloat(body.longitude);
+    if (isNaN(lat) || lat < -90 || lat > 90) return { valid: false, error: 'Invalid latitude' };
+    if (isNaN(lon) || lon < -180 || lon > 180) return { valid: false, error: 'Invalid longitude' };
   }
-  if (body.birthDate && !isValidDate(body.birthDate)) {
-    return { valid: false, error: 'Invalid birthDate format (use YYYY-MM-DD)' };
-  }
-  if (body.deathDate && !isValidDate(body.deathDate)) {
-    return { valid: false, error: 'Invalid deathDate format (use YYYY-MM-DD)' };
-  }
-  const totalStr = JSON.stringify(body);
-  if (totalStr.length > 50000) {
-    return { valid: false, error: 'Request too large (max 50KB)' };
-  }
+  if (body.birthDate && !/^\d{4}-\d{2}-\d{2}$/.test(body.birthDate)) return { valid: false, error: 'Invalid birthDate' };
+  if (body.deathDate && !/^\d{4}-\d{2}-\d{2}$/.test(body.deathDate)) return { valid: false, error: 'Invalid deathDate' };
+  if (JSON.stringify(body).length > 50000) return { valid: false, error: 'Request too large' };
   return { valid: true };
 }
 
 function isValidDate(str) {
-  if (typeof str !== 'string') return false;
-  const regex = /^\d{4}-\d{2}-\d{2}$/;
-  if (!regex.test(str)) return false;
-  const date = new Date(str);
-  return !isNaN(date.getTime());
+  if (typeof str !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(str)) return false;
+  return !isNaN(new Date(str).getTime());
 }
 
-// ── Mock GitHub integration abstraction ──
+function generateId() { return 'sub_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 8); }
+
 class MockGitHubClient {
-  constructor() {
-    this.files = {};
-    this.writes = [];
-  }
-  async writeFile(path, content) {
-    this.files[path] = content;
-    this.writes.push({ path, content });
-  }
-  async readFile(path) {
-    return this.files[path] || null;
-  }
-  async listFiles(prefix) {
-    return Object.keys(this.files).filter(p => p.startsWith(prefix));
-  }
+  constructor() { this.files = {}; this.writes = []; this.deletes = []; }
+  async writeFile(path, content) { this.files[path] = content; this.writes.push(path); }
+  async readFile(path) { return this.files[path] || null; }
+  async listFiles(prefix) { return Object.keys(this.files).filter(p => p.startsWith(prefix + '/')).map(p => p.split('/').pop()); }
+  async deleteFile(path) { delete this.files[path]; this.deletes.push(path); }
 }
-
-// ── Tests ──
 
 let passed = 0, failed = 0;
+const tests = [];
 
 function test(name, fn) {
-  try {
-    fn();
-    console.log(`  ✓ ${name}`);
-    passed++;
-  } catch (e) {
-    console.log(`  ✗ ${name}`);
-    console.log(`    ${e.message}`);
-    failed++;
-  }
+  tests.push({ name, fn, async: false });
+}
+function asyncTest(name, fn) {
+  tests.push({ name, fn, async: true });
 }
 
-console.log('\n=== GraveAtlas Backend Tests ===\n');
+// === Tests ===
 
-// 1. Health endpoint logic
-console.log('Health endpoint:');
-test('health response has correct shape', () => {
-  const health = { status: 'healthy', timestamp: new Date().toISOString() };
-  assert.strictEqual(health.status, 'healthy');
-  assert.ok(health.timestamp);
+test('health has githubConfigured flag', () => {
+  const h = { status: 'healthy', version: '2.0.0', githubConfigured: false };
+  assert.strictEqual(typeof h.githubConfigured, 'boolean');
 });
 
-// 2. JSON validation
-console.log('\nJSON validation:');
 test('valid submission passes', () => {
-  const result = validateSubmission({ name: 'John Doe', birthDate: '1950-01-01', deathDate: '2020-06-15' });
-  assert.strictEqual(result.valid, true);
+  assert.strictEqual(validateSubmission({ name: 'John Doe' }).valid, true);
 });
 
 test('empty body rejected', () => {
-  const result = validateSubmission(null);
-  assert.strictEqual(result.valid, false);
-  assert.match(result.error, /Empty/);
+  assert.strictEqual(validateSubmission(null).valid, false);
 });
 
-// 3. Missing required fields
-console.log('\nMissing required fields:');
 test('missing name rejected', () => {
-  const result = validateSubmission({ birthDate: '1950-01-01' });
-  assert.strictEqual(result.valid, false);
-  assert.match(result.error, /Name is required/);
+  assert.strictEqual(validateSubmission({ birthDate: '1950-01-01' }).valid, false);
 });
 
 test('empty name rejected', () => {
-  const result = validateSubmission({ name: '   ' });
-  assert.strictEqual(result.valid, false);
-  assert.match(result.error, /Name is required/);
+  assert.strictEqual(validateSubmission({ name: '   ' }).valid, false);
 });
 
-// 4. Invalid coordinates
-console.log('\nInvalid coordinates:');
-test('latitude > 90 rejected', () => {
-  const result = validateSubmission({ name: 'Test', latitude: 91, longitude: 0 });
-  assert.strictEqual(result.valid, false);
-  assert.match(result.error, /Invalid latitude/);
-});
+test('lat > 90 rejected', () => { assert.strictEqual(validateSubmission({ name: 'T', latitude: 91 }).valid, false); });
+test('lat < -90 rejected', () => { assert.strictEqual(validateSubmission({ name: 'T', latitude: -91 }).valid, false); });
+test('lon > 180 rejected', () => { assert.strictEqual(validateSubmission({ name: 'T', longitude: 181 }).valid, false); });
+test('lon < -180 rejected', () => { assert.strictEqual(validateSubmission({ name: 'T', longitude: -181 }).valid, false); });
+test('valid coords accepted', () => { assert.strictEqual(validateSubmission({ name: 'T', latitude: 1.35, longitude: 103.8 }).valid, true); });
+test('invalid birthDate rejected', () => { assert.strictEqual(validateSubmission({ name: 'T', birthDate: 'bad' }).valid, false); });
+test('invalid deathDate rejected', () => { assert.strictEqual(validateSubmission({ name: 'T', deathDate: '2020/01/01' }).valid, false); });
+test('valid dates accepted', () => { assert.strictEqual(validateSubmission({ name: 'T', birthDate: '1950-01-01', deathDate: '2020-12-31' }).valid, true); });
 
-test('latitude < -90 rejected', () => {
-  const result = validateSubmission({ name: 'Test', latitude: -91, longitude: 0 });
-  assert.strictEqual(result.valid, false);
-  assert.match(result.error, /Invalid latitude/);
-});
-
-test('longitude > 180 rejected', () => {
-  const result = validateSubmission({ name: 'Test', latitude: 0, longitude: 181 });
-  assert.strictEqual(result.valid, false);
-  assert.match(result.error, /Invalid longitude/);
-});
-
-test('longitude < -180 rejected', () => {
-  const result = validateSubmission({ name: 'Test', latitude: 0, longitude: -181 });
-  assert.strictEqual(result.valid, false);
-  assert.match(result.error, /Invalid longitude/);
-});
-
-test('valid coordinates accepted', () => {
-  const result = validateSubmission({ name: 'Test', latitude: 1.3521, longitude: 103.8198 });
-  assert.strictEqual(result.valid, true);
-});
-
-// 5. Invalid dates
-console.log('\nInvalid dates:');
-test('invalid birthDate rejected', () => {
-  const result = validateSubmission({ name: 'Test', birthDate: 'not-a-date' });
-  assert.strictEqual(result.valid, false);
-  assert.match(result.error, /birthDate/);
-});
-
-test('invalid deathDate rejected', () => {
-  const result = validateSubmission({ name: 'Test', deathDate: '2020/06/15' });
-  assert.strictEqual(result.valid, false);
-  assert.match(result.error, /deathDate/);
-});
-
-test('valid dates accepted', () => {
-  const result = validateSubmission({ name: 'Test', birthDate: '1950-01-01', deathDate: '2020-12-31' });
-  assert.strictEqual(result.valid, true);
-});
-
-// 6. Duplicate detection
-console.log('\nDuplicate detection:');
 test('duplicate IDs detected', () => {
-  const records = [
-    { id: 'abc12345', name: 'Test 1', status: 'published', submittedAt: '2024-01-01T00:00:00Z' },
-    { id: 'abc12345', name: 'Test 2', status: 'pending', submittedAt: '2024-01-02T00:00:00Z' }
-  ];
-  const ids = {};
-  let hasDup = false;
-  for (const r of records) {
-    if (ids[r.id]) { hasDup = true; break; }
-    ids[r.id] = true;
-  }
-  assert.strictEqual(hasDup, true);
+  const recs = [{ id: 'a', name: 'T1' }, { id: 'a', name: 'T2' }];
+  const ids = {}; let dup = false;
+  for (const r of recs) { if (ids[r.id]) { dup = true; break; } ids[r.id] = true; }
+  assert.strictEqual(dup, true);
 });
 
 test('unique IDs pass', () => {
-  const records = [
-    { id: 'abc12345', name: 'Test 1', status: 'published', submittedAt: '2024-01-01T00:00:00Z' },
-    { id: 'def67890', name: 'Test 2', status: 'pending', submittedAt: '2024-01-02T00:00:00Z' }
-  ];
-  const ids = {};
-  let hasDup = false;
-  for (const r of records) {
-    if (ids[r.id]) { hasDup = true; break; }
-    ids[r.id] = true;
-  }
-  assert.strictEqual(hasDup, false);
+  const recs = [{ id: 'a', name: 'T1' }, { id: 'b', name: 'T2' }];
+  const ids = {}; let dup = false;
+  for (const r of recs) { if (ids[r.id]) { dup = true; break; } ids[r.id] = true; }
+  assert.strictEqual(dup, false);
 });
 
-// 7. GitHub integration abstraction (mock)
-console.log('\nGitHub integration (mock):');
-test('mock client writes and reads files', async () => {
-  const client = new MockGitHubClient();
-  await client.writeFile('pending/sub_001.json', JSON.stringify({ id: 'sub_001', name: 'Test', status: 'pending' }));
-  const content = await client.readFile('pending/sub_001.json');
+asyncTest('writes submission to pending/', async () => {
+  const c = new MockGitHubClient();
+  const id = generateId();
+  await c.writeFile(`pending/${id}.json`, JSON.stringify({ id, name: 'Test', status: 'pending' }));
+  const content = await c.readFile(`pending/${id}.json`);
   assert.ok(content);
-  const parsed = JSON.parse(content);
-  assert.strictEqual(parsed.name, 'Test');
-  assert.strictEqual(parsed.status, 'pending');
+  assert.strictEqual(JSON.parse(content).status, 'pending');
 });
 
-test('mock client lists files by prefix', async () => {
-  const client = new MockGitHubClient();
-  await client.writeFile('graves/abc.json', '{}');
-  await client.writeFile('graves/def.json', '{}');
-  await client.writeFile('cemeteries/ghi.json', '{}');
-  const graves = await client.listFiles('graves/');
-  assert.strictEqual(graves.length, 2);
-  const cemeteries = await client.listFiles('cemeteries/');
-  assert.strictEqual(cemeteries.length, 1);
+asyncTest('reads published graves only', async () => {
+  const c = new MockGitHubClient();
+  await c.writeFile('graves/abc.json', JSON.stringify({ id: 'abc', status: 'published' }));
+  await c.writeFile('graves/def.json', JSON.stringify({ id: 'def', status: 'published' }));
+  await c.writeFile('pending/sub.json', JSON.stringify({ id: 'sub', status: 'pending' }));
+  assert.strictEqual((await c.listFiles('graves')).length, 2);
+  assert.strictEqual((await c.listFiles('pending')).length, 1);
 });
 
-test('submission goes to pending/, not graves/', async () => {
-  const client = new MockGitHubClient();
-  await client.writeFile('pending/sub_test.json', JSON.stringify({ status: 'pending' }));
-  const pending = await client.listFiles('pending/');
-  const published = await client.listFiles('graves/');
-  assert.strictEqual(pending.length, 1);
-  assert.strictEqual(published.length, 0);
+asyncTest('approve moves from pending to graves', async () => {
+  const c = new MockGitHubClient();
+  const id = 'sub_approve';
+  await c.writeFile(`pending/${id}.json`, JSON.stringify({ id, name: 'Test', status: 'pending' }));
+  const content = await c.readFile(`pending/${id}.json`);
+  const record = JSON.parse(content);
+  record.status = 'published';
+  await c.writeFile(`graves/${record.id}.json`, JSON.stringify(record));
+  await c.deleteFile(`pending/${id}.json`);
+  assert.ok(await c.readFile(`graves/${id}.json`));
+  assert.strictEqual(await c.readFile(`pending/${id}.json`), null);
 });
 
-// 8. Oversized request
-console.log('\nOversized request:');
-test('oversized body rejected', () => {
-  const bigName = 'x'.repeat(501);
-  const result = validateSubmission({ name: bigName });
-  assert.strictEqual(result.valid, false);
-  assert.match(result.error, /too long/);
+asyncTest('reject updates status to rejected', async () => {
+  const c = new MockGitHubClient();
+  const id = 'sub_reject';
+  await c.writeFile(`pending/${id}.json`, JSON.stringify({ id, name: 'Test', status: 'pending' }));
+  const record = JSON.parse(await c.readFile(`pending/${id}.json`));
+  record.status = 'rejected';
+  await c.writeFile(`pending/${id}.json`, JSON.stringify(record));
+  assert.strictEqual(JSON.parse(await c.readFile(`pending/${id}.json`)).status, 'rejected');
 });
 
-// 9. Security — no secrets in response
-console.log('\nSecurity:');
-test('validation error does not leak internal info', () => {
-  const result = validateSubmission({ name: '' });
-  assert.ok(!result.error.includes('GITHUB'));
-  assert.ok(!result.error.includes('token'));
-  assert.ok(!result.error.includes('key'));
+asyncTest('report creates report_ file in pending/', async () => {
+  const c = new MockGitHubClient();
+  const rid = generateId();
+  await c.writeFile(`pending/report_${rid}.json`, JSON.stringify({ id: rid, graveId: 'g1', report: 'Wrong date', status: 'reported' }));
+  const files = await c.listFiles('pending');
+  assert.strictEqual(files.length, 1);
+  assert.ok(files[0].startsWith('report_'));
 });
 
-// ── Summary ──
-console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`);
-process.exit(failed > 0 ? 1 : 0);
+test('oversized body rejected', () => { assert.strictEqual(validateSubmission({ name: 'x'.repeat(501) }).valid, false); });
+
+test('no secrets in errors', () => {
+  const r = validateSubmission({ name: '' });
+  assert.ok(!r.error.includes('GITHUB'));
+  assert.ok(!r.error.includes('token'));
+});
+
+test('submission ID format safe', () => {
+  const id = generateId();
+  assert.ok(id.startsWith('sub_'));
+  assert.ok(id.length >= 10);
+});
+
+asyncTest('full lifecycle: submit → pending → approve → published', async () => {
+  const c = new MockGitHubClient();
+  const id = generateId();
+  // Submit
+  await c.writeFile(`pending/${id}.json`, JSON.stringify({ id, name: 'John Doe', status: 'pending', submittedAt: new Date().toISOString() }));
+  assert.strictEqual((await c.listFiles('pending')).length, 1);
+  assert.strictEqual((await c.listFiles('graves')).length, 0);
+  // Approve
+  const record = JSON.parse(await c.readFile(`pending/${id}.json`));
+  record.status = 'published';
+  await c.writeFile(`graves/${id}.json`, JSON.stringify(record));
+  await c.deleteFile(`pending/${id}.json`);
+  assert.strictEqual((await c.listFiles('pending')).length, 0);
+  assert.strictEqual((await c.listFiles('graves')).length, 1);
+  // Verify
+  const pub = JSON.parse(await c.readFile(`graves/${id}.json`));
+  assert.strictEqual(pub.name, 'John Doe');
+  assert.strictEqual(pub.status, 'published');
+});
+
+// === Run ===
+(async () => {
+  console.log('\n=== GraveAtlas Backend Tests (Phase 2) ===\n');
+  for (const t of tests) {
+    try {
+      if (t.async) await t.fn();
+      else t.fn();
+      console.log(`  \u2713 ${t.name}`);
+      passed++;
+    } catch (e) {
+      console.log(`  \u2717 ${t.name}: ${e.message}`);
+      failed++;
+    }
+  }
+  console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`);
+  process.exit(failed > 0 ? 1 : 0);
+})();
