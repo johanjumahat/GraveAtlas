@@ -1,49 +1,57 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Cemetery Record",
-  "description": "A cemetery location in the GraveAtlas database",
+  "description": "A cemetery location in the GraveAtlas worldwide database",
   "type": "object",
   "required": ["id", "name", "status", "submittedAt"],
   "properties": {
-    "id": {
-      "type": "string",
-      "pattern": "^[a-z0-9]{8,64}$"
+    "id": { "type": "string", "pattern": "^cemetery_[a-z0-9]{16,64}$" },
+    "name": { "type": "string", "maxLength": 2000, "description": "Official cemetery name" },
+    "altNames": {
+      "type": ["array", "null"],
+      "items": { "type": "string", "maxLength": 2000 },
+      "description": "Alternative or local-language names"
     },
-    "name": {
-      "type": "string",
-      "maxLength": 2000,
-      "description": "Cemetery name"
-    },
-    "address": {
+    "localName": { "type": ["string", "null"], "maxLength": 2000, "description": "Name in local language/script" },
+    "transliteration": { "type": ["string", "null"], "maxLength": 2000, "description": "Romanized/transliterated name" },
+    "countryCode": { "type": ["string", "null"], "pattern": "^[A-Z]{2}$", "description": "ISO 3166-1 alpha-2 country code" },
+    "country": { "type": ["string", "null"], "maxLength": 200, "description": "Country name" },
+    "region": { "type": ["string", "null"], "maxLength": 200, "description": "State/province/region" },
+    "city": { "type": ["string", "null"], "maxLength": 200, "description": "City/municipality" },
+    "locality": { "type": ["string", "null"], "maxLength": 200, "description": "Neighborhood/locality" },
+    "address": { "type": ["string", "null"], "maxLength": 2000 },
+    "latitude": { "type": ["number", "null"], "minimum": -90, "maximum": 90 },
+    "longitude": { "type": ["number", "null"], "minimum": -180, "maximum": 180 },
+    "timezone": { "type": ["string", "null"], "maxLength": 100, "description": "IANA timezone (e.g., Asia/Singapore)" },
+    "cemeteryType": {
       "type": ["string", "null"],
-      "maxLength": 2000
+      "enum": ["public", "private", "religious", "military", "national", "historical", "family", "other", null],
+      "description": "Type of cemetery"
     },
-    "latitude": {
-      "type": ["number", "null"],
-      "minimum": -90,
-      "maximum": 90
-    },
-    "longitude": {
-      "type": ["number", "null"],
-      "minimum": -180,
-      "maximum": 180
-    },
-    "description": {
+    "religiousAffiliation": { "type": ["string", "null"], "maxLength": 200, "description": "Religious or cultural classification" },
+    "operatingStatus": {
       "type": ["string", "null"],
-      "maxLength": 5000
+      "enum": ["active", "closed", "abandoned", "unknown", null],
+      "description": "Operating status"
     },
-    "status": {
+    "establishedDate": { "type": ["string", "null"], "pattern": "^\\d{4}(-\\d{2}(-\\d{2})?)?$|^unknown$" },
+    "closedDate": { "type": ["string", "null"], "pattern": "^\\d{4}(-\\d{2}(-\\d{2})?)?$|^unknown$" },
+    "website": { "type": ["string", "null"], "maxLength": 2000, "pattern": "^https?://" },
+    "contactInfo": { "type": ["string", "null"], "maxLength": 2000, "description": "Publicly available contact info" },
+    "description": { "type": ["string", "null"], "maxLength": 5000 },
+    "accessibility": { "type": ["string", "null"], "maxLength": 2000, "description": "Accessibility information" },
+    "sourceRefs": {
+      "type": ["array", "null"],
+      "items": { "type": "string", "pattern": "^source_[a-z0-9]{16,64}$" }
+    },
+    "verificationStatus": {
       "type": "string",
-      "enum": ["published", "pending", "rejected"]
+      "enum": ["unverified", "community_submitted", "under_review", "verified", "rejected"],
+      "default": "unverified"
     },
-    "submittedAt": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "updatedAt": {
-      "type": ["string", "null"],
-      "format": "date-time"
-    }
+    "status": { "type": "string", "enum": ["published", "pending", "rejected"] },
+    "submittedAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": ["string", "null"], "format": "date-time" }
   },
   "additionalProperties": false
 }

@@ -4,6 +4,9 @@ import com.putraworks.graveatlas.data.model.CemeteryRecord;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
+import com.putraworks.graveatlas.data.model.CemeteryRecord;
+import com.putraworks.graveatlas.data.model.PersonRecord;
+import com.putraworks.graveatlas.data.model.SearchResult;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -377,45 +380,281 @@ public class ApiClient {
 
     // ── Parsers ──
 
-    private GraveRecord parseGrave(JSONObject obj) {
-        GraveRecord grave = new GraveRecord();
-        grave.id = obj.optString("id", null);
-        grave.name = obj.optString("name", null);
-        grave.birthDate = obj.optString("birthDate", null);
-        grave.deathDate = obj.optString("deathDate", null);
-        grave.cemetery = obj.optString("cemetery", null);
-        grave.section = obj.optString("section", null);
-        grave.plot = obj.optString("plot", null);
-        grave.latitude = obj.optDouble("latitude", 0);
-        grave.longitude = obj.optDouble("longitude", 0);
-        grave.notes = obj.optString("notes", null);
-        grave.source = obj.optString("source", null);
-        grave.status = obj.optString("status", null);
-        grave.submittedAt = obj.optString("submittedAt", null);
-        grave.updatedAt = obj.optString("updatedAt", null);
+    // ── Phase 4: Search ──
 
-        JSONArray photos = obj.optJSONArray("photoRefs");
-        if (photos != null) {
-            grave.photoRefs = new String[photos.length()];
-            for (int i = 0; i < photos.length(); i++) {
-                grave.photoRefs[i] = photos.optString(i);
+    public void search(String query, final ApiCallback<List<SearchResult>> callback) {
+        search(query, "all", 0, 50, callback);
+    }
+
+    public void search(String query, String type, int offset, int limit, final ApiCallback<List<SearchResult>> callback) {
+        HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/api/search").newBuilder();
+        urlBuilder.addQueryParameter("q", query);
+        if (type != null && !type.equals("all")) urlBuilder.addQueryParameter("type", type);
+        urlBuilder.addQueryParameter("offset", String.valueOf(offset));
+        urlBuilder.addQueryParameter("limit", String.valueOf(limit));
+
+        Request request = new Request.Builder()
+                .url(urlBuilder.build())
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getMessageForException(e));
             }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                String body = response.body() != null ? response.body().string() : "{}";
+                if (response.isSuccessful()) {
+                    try {
+                        JSONObject json = new JSONObject(body);
+                        JSONArray resultsArray = json.optJSONArray("results");
+                        List<SearchResult> results = SearchResult.fromJsonArray(resultsArray != null ? resultsArray : new JSONArray());
+                        callback.onSuccess(results);
+                    } catch (JSONException e) {
+                        callback.onError("Failed to parse search results");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getMessageForCode(response.code()));
+                }
+            }
+        });
+    }
+
+    // ── Phase 4: Person ──
+
+    public void getPerson(String id, final ApiCallback<PersonRecord> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/people/" + id)
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getMessageForException(e));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                String body = response.body() != null ? response.body().string() : "{}";
+                if (response.isSuccessful()) {
+                    try {
+                        JSONObject json = new JSONObject(body);
+                        callback.onSuccess(PersonRecord.fromJson(json));
+                    } catch (JSONException e) {
+                        callback.onError("Failed to parse person record");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getMessageForCode(response.code()));
+                }
+            }
+        });
+    }
+
+    // ── Phase 4: Cemetery Submission ──
+
+    public void submitCemetery(CemeteryRecord cemetery, final ApiCallback<SubmissionResponse> callback) {
+        String idempotencyKey = UUID.randomUUID().toString();
+        try {
+            JSONObject json = new JSONObject();
+            if (cemetery.name != null) json.put("name", cemetery.name);
+            if (cemetery.altNames != null) json.put("altNames", new JSONArray(cemetery.altNames));
+            if (cemetery.localName != null) json.put("localName", cemetery.localName);
+            if (cemetery.transliteration != null) json.put("transliteration", cemetery.transliteration);
+            if (cemetery.countryCode != null) json.put("countryCode", cemetery.countryCode);
+            if (cemetery.country != null) json.put("country", cemetery.country);
+            if (cemetery.region != null) json.put("region", cemetery.region);
+            if (cemetery.city != null) json.put("city", cemetery.city);
+            if (cemetery.locality != null) json.put("locality", cemetery.locality);
+            if (cemetery.address != null) json.put("address", cemetery.address);
+            json.put("latitude", cemetery.latitude);
+            json.put("longitude", cemetery.longitude);
+            if (cemetery.timezone != null) json.put("timezone", cemetery.timezone);
+            if (cemetery.cemeteryType != null) json.put("cemeteryType", cemetery.cemeteryType);
+            if (cemetery.religiousAffiliation != null) json.put("religiousAffiliation", cemetery.religiousAffiliation);
+            if (cemetery.operatingStatus != null) json.put("operatingStatus", cemetery.operatingStatus);
+            if (cemetery.description != null) json.put("description", cemetery.description);
+            if (cemetery.website != null) json.put("website", cemetery.website);
+
+            RequestBody body = RequestBody.create(json.toString(), JSON);
+            Request request = new Request.Builder()
+                    .url(baseUrl + "/api/cemeteries")
+                    .header("Idempotency-Key", idempotencyKey)
+                    .post(body)
+                    .build();
+
+            client.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    callback.onError(ApiErrorHandler.getMessageForException(e));
+                }
+
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    String responseBody = response.body() != null ? response.body().string() : "{}";
+                    try {
+                        JSONObject json = new JSONObject(responseBody);
+                        if (response.isSuccessful()) {
+                            SubmissionResponse resp = new SubmissionResponse();
+                            resp.success = json.optBoolean("success", false);
+                            resp.submissionId = json.optString("submissionId", null);
+                            resp.status = json.optString("status", "error");
+                            callback.onSuccess(resp);
+                        } else {
+                            callback.onError(json.optString("error", "Submission failed"));
+                        }
+                    } catch (JSONException e) {
+                        callback.onError("Failed to parse response");
+                    }
+                }
+            });
+        } catch (JSONException e) {
+            callback.onError("Failed to build request");
         }
-        return grave;
+    }
+
+    // ── Phase 4: Correction Submission ──
+
+    public void submitCorrection(String targetId, String targetType,
+                                 java.util.Map<String, String> corrections,
+                                 String reason, final ApiCallback<SubmissionResponse> callback) {
+        String idempotencyKey = UUID.randomUUID().toString();
+        try {
+            JSONObject json = new JSONObject();
+            json.put("targetId", targetId);
+            json.put("targetType", targetType);
+            JSONObject correctionsJson = new JSONObject();
+            for (java.util.Map.Entry<String, String> entry : corrections.entrySet()) {
+                correctionsJson.put(entry.getKey(), entry.getValue());
+            }
+            json.put("corrections", correctionsJson);
+            if (reason != null) json.put("reason", reason);
+
+            RequestBody body = RequestBody.create(json.toString(), JSON);
+            Request request = new Request.Builder()
+                    .url(baseUrl + "/api/corrections")
+                    .header("Idempotency-Key", idempotencyKey)
+                    .post(body)
+                    .build();
+
+            client.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    callback.onError(ApiErrorHandler.getMessageForException(e));
+                }
+
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    String responseBody = response.body() != null ? response.body().string() : "{}";
+                    try {
+                        JSONObject json = new JSONObject(responseBody);
+                        if (response.isSuccessful()) {
+                            SubmissionResponse resp = new SubmissionResponse();
+                            resp.success = json.optBoolean("success", false);
+                            resp.submissionId = json.optString("correctionId", null);
+                            resp.status = json.optString("status", "error");
+                            callback.onSuccess(resp);
+                        } else {
+                            callback.onError(json.optString("error", "Correction failed"));
+                        }
+                    } catch (JSONException e) {
+                        callback.onError("Failed to parse response");
+                    }
+                }
+            });
+        } catch (JSONException e) {
+            callback.onError("Failed to build request");
+        }
+    }
+
+    // ── Phase 4: Geographic Hierarchy ──
+
+    public void getCountries(final ApiCallback<List<String>> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/countries")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getMessageForException(e));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                String body = response.body() != null ? response.body().string() : "{}";
+                if (response.isSuccessful()) {
+                    try {
+                        JSONObject json = new JSONObject(body);
+                        JSONArray arr = json.optJSONArray("countries");
+                        List<String> countries = new ArrayList<>();
+                        if (arr != null) {
+                            for (int i = 0; i < arr.length(); i++) {
+                                JSONObject c = arr.getJSONObject(i);
+                                countries.add(c.optString("name", ""));
+                            }
+                        }
+                        callback.onSuccess(countries);
+                    } catch (JSONException e) {
+                        callback.onError("Failed to parse countries");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getMessageForCode(response.code()));
+                }
+            }
+        });
+    }
+
+    // ── Phase 4: Correction Status ──
+
+    public void getCorrectionStatus(String correctionId, final ApiCallback<SubmissionStatus> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/corrections/" + correctionId)
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getMessageForException(e));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                String body = response.body() != null ? response.body().string() : "{}";
+                try {
+                    JSONObject json = new JSONObject(body);
+                    if (response.isSuccessful() && json.optBoolean("success", false)) {
+                        SubmissionStatus status = new SubmissionStatus();
+                        status.success = true;
+                        status.id = json.optString("id", null);
+                        status.status = json.optString("status", "pending");
+                        status.submittedAt = json.optString("submittedAt", null);
+                        status.updatedAt = json.optString("updatedAt", null);
+                        callback.onSuccess(status);
+                    } else {
+                        SubmissionStatus status = new SubmissionStatus();
+                        status.success = false;
+                        status.status = "not_found";
+                        callback.onSuccess(status);
+                    }
+                } catch (JSONException e) {
+                    callback.onError("Failed to parse response");
+                }
+            }
+        });
+    }
+
+    private GraveRecord parseGrave(JSONObject obj) {
+        return GraveRecord.fromJson(obj);
     }
 
     private CemeteryRecord parseCemetery(JSONObject obj) {
-        CemeteryRecord cemetery = new CemeteryRecord();
-        cemetery.id = obj.optString("id", null);
-        cemetery.name = obj.optString("name", null);
-        cemetery.address = obj.optString("address", null);
-        cemetery.latitude = obj.optDouble("latitude", 0);
-        cemetery.longitude = obj.optDouble("longitude", 0);
-        cemetery.description = obj.optString("description", null);
-        cemetery.status = obj.optString("status", null);
-        cemetery.submittedAt = obj.optString("submittedAt", null);
-        cemetery.updatedAt = obj.optString("updatedAt", null);
-        return cemetery;
+        return CemeteryRecord.fromJson(obj);
     }
 
     // ── Result types ──

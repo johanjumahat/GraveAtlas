@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Person / Memorial Record",
+  "description": "A person or memorial record in the GraveAtlas worldwide database",
+  "type": "object",
+  "required": ["id", "displayName", "status", "submittedAt"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^person_[a-z0-9]{16,64}$" },
+    "displayName": { "type": "string", "maxLength": 500, "description": "Primary display name" },
+    "givenNames": { "type": ["string", "null"], "maxLength": 500 },
+    "familyName": { "type": ["string", "null"], "maxLength": 500 },
+    "altNames": {
+      "type": ["array", "null"],
+      "items": { "type": "string", "maxLength": 500 }
+    },
+    "localName": { "type": ["string", "null"], "maxLength": 500, "description": "Name in original script/language" },
+    "transliteration": { "type": ["string", "null"], "maxLength": 500 },
+    "birthDate": {
+      "type": ["string", "null"],
+      "pattern": "^\\d{4}(-\\d{2}(-\\d{2})?)?$|^unknown$|^approx_.*",
+      "description": "Full, partial (YYYY-MM), year-only (YYYY), unknown, or approximate"
+    },
+    "deathDate": {
+      "type": ["string", "null"],
+      "pattern": "^\\d{4}(-\\d{2}(-\\d{2})?)?$|^unknown$|^approx_.*"
+    },
+    "birthDateApprox": { "type": ["boolean", "null"], "description": "True if birth date is approximate" },
+    "deathDateApprox": { "type": ["boolean", "null"], "description": "True if death date is approximate" },
+    "biography": { "type": ["string", "null"], "maxLength": 5000 },
+    "memorialNotes": { "type": ["string", "null"], "maxLength": 2000 },
+    "graveId": { "type": ["string", "null"], "pattern": "^grave_[a-z0-9]{16,64}$" },
+    "sourceRefs": {
+      "type": ["array", "null"],
+      "items": { "type": "string", "pattern": "^source_[a-z0-9]{16,64}$" }
+    },
+    "verificationStatus": {
+      "type": "string",
+      "enum": ["unverified", "community_submitted", "under_review", "verified", "rejected"],
+      "default": "unverified"
+    },
+    "status": { "type": "string", "enum": ["published", "pending", "rejected"] },
+    "submittedAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "additionalProperties": false
+}

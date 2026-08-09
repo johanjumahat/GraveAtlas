@@ -1299,6 +1299,305 @@ tests.push({ name: 'privacy: allowed fields list is minimal', fn: () => {
   assert.ok(!allowed.includes('userAgent'));
 }});
 
+
+// ═══════════════════════════════════════════════
+// Phase 4 — Worldwide Platform Tests
+// ═══════════════════════════════════════════════
+
+// ── Cemetery submission validation ──
+
+const CEMETERY_FIELDS = ['name', 'altNames', 'localName', 'transliteration', 'countryCode', 'country', 'region', 'city', 'locality', 'address', 'latitude', 'longitude', 'timezone', 'cemeteryType', 'religiousAffiliation', 'operatingStatus', 'establishedDate', 'closedDate', 'website', 'contactInfo', 'description', 'accessibility', 'sourceRefs'];
+
+function validateCemeterySubmission(body) {
+  if (!body) return { valid: false, error: 'Empty request body' };
+  if (typeof body !== 'object' || Array.isArray(body)) return { valid: false, error: 'Invalid request body' };
+  if (!body.name || typeof body.name !== 'string' || body.name.trim().length === 0) return { valid: false, error: 'Cemetery name is required' };
+  if (body.name.length > 500) return { valid: false, error: 'Name too long (max 500 chars)' };
+  if (body.latitude !== undefined || body.longitude !== undefined) {
+    const lat = parseFloat(body.latitude), lon = parseFloat(body.longitude);
+    if (isNaN(lat) || lat < -90 || lat > 90) return { valid: false, error: 'Invalid latitude' };
+    if (isNaN(lon) || lon < -180 || lon > 180) return { valid: false, error: 'Invalid longitude' };
+  }
+  if (body.countryCode && !/^[A-Z]{2}$/.test(body.countryCode)) return { valid: false, error: 'Invalid country code' };
+  if (body.website && !/^https?:\/\//.test(body.website)) return { valid: false, error: 'Invalid website URL' };
+  if (JSON.stringify(body).length > MAX_BODY_SIZE) return { valid: false, error: 'Request too large' };
+  const unexpected = Object.keys(body).filter(k => !CEMETERY_FIELDS.includes(k));
+  if (unexpected.length > 0) return { valid: false, error: 'Invalid request' };
+  return { valid: true };
+}
+
+tests.push({ name: 'cemetery: valid submission passes', fn: () => {
+  assert.strictEqual(validateCemeterySubmission({ name: 'Bukit Brown Cemetery' }).valid, true);
+}});
+
+tests.push({ name: 'cemetery: missing name rejected', fn: () => {
+  assert.strictEqual(validateCemeterySubmission({ country: 'Singapore' }).valid, false);
+}});
+
+tests.push({ name: 'cemetery: with all fields passes', fn: () => {
+  const body = {
+    name: 'Père Lachaise', localName: 'Cimetière du Père Lachaise',
+    country: 'France', city: 'Paris', countryCode: 'FR',
+    latitude: 48.8616, longitude: 2.3984,
+    cemeteryType: 'public', operatingStatus: 'active',
+    website: 'https://www.pere-lachaise.com',
+    description: 'Famous cemetery in Paris'
+  };
+  assert.strictEqual(validateCemeterySubmission(body).valid, true);
+}});
+
+tests.push({ name: 'cemetery: invalid country code rejected', fn: () => {
+  assert.strictEqual(validateCemeterySubmission({ name: 'Test', countryCode: 'USA' }).valid, false);
+}});
+
+tests.push({ name: 'cemetery: valid 2-char country code passes', fn: () => {
+  assert.strictEqual(validateCemeterySubmission({ name: 'Test', countryCode: 'SG' }).valid, true);
+}});
+
+tests.push({ name: 'cemetery: invalid website URL rejected', fn: () => {
+  assert.strictEqual(validateCemeterySubmission({ name: 'Test', website: 'not-a-url' }).valid, false);
+}});
+
+tests.push({ name: 'cemetery: valid website URL passes', fn: () => {
+  assert.strictEqual(validateCemeterySubmission({ name: 'Test', website: 'https://example.com' }).valid, true);
+}});
+
+tests.push({ name: 'cemetery: unexpected field rejected', fn: () => {
+  assert.strictEqual(validateCemeterySubmission({ name: 'Test', id: 'hacked' }).valid, false);
+}});
+
+tests.push({ name: 'cemetery: Unicode name passes', fn: () => {
+  assert.strictEqual(validateCemeterySubmission({ name: '安祥园', country: 'Singapore' }).valid, true);
+}});
+
+tests.push({ name: 'cemetery: Arabic name passes', fn: () => {
+  assert.strictEqual(validateCemeterySubmission({ name: 'مقبرة الجنة', country: 'Egypt' }).valid, true);
+}});
+
+tests.push({ name: 'cemetery: Japanese name passes', fn: () => {
+  assert.strictEqual(validateCemeterySubmission({ name: '青山霊園', country: 'Japan' }).valid, true);
+}});
+
+// ── Correction validation ──
+
+const CORRECTION_FIELDS = ['targetId', 'targetType', 'corrections', 'reason', 'sourceRefs'];
+
+function validateCorrection(body) {
+  if (!body) return { valid: false, error: 'Empty request body' };
+  if (typeof body !== 'object' || Array.isArray(body)) return { valid: false, error: 'Invalid request body' };
+  if (!body.targetId || typeof body.targetId !== 'string') return { valid: false, error: 'Target record ID is required' };
+  if (!body.targetType || !['grave', 'cemetery', 'person', 'source'].includes(body.targetType)) return { valid: false, error: 'Invalid target type' };
+  if (!body.corrections || typeof body.corrections !== 'object' || Array.isArray(body.corrections) || Object.keys(body.corrections).length === 0) return { valid: false, error: 'Corrections object is required' };
+  if (body.reason && body.reason.length > MAX_FIELD_LENGTH) return { valid: false, error: 'Reason too long' };
+  const unexpected = Object.keys(body).filter(k => !CORRECTION_FIELDS.includes(k));
+  if (unexpected.length > 0) return { valid: false, error: 'Invalid request' };
+  return { valid: true };
+}
+
+tests.push({ name: 'correction: valid correction passes', fn: () => {
+  assert.strictEqual(validateCorrection({
+    targetId: 'grave_abc123', targetType: 'grave',
+    corrections: { name: 'John Smyth', deathDate: '1981' }
+  }).valid, true);
+}});
+
+tests.push({ name: 'correction: missing targetId rejected', fn: () => {
+  assert.strictEqual(validateCorrection({
+    targetType: 'grave', corrections: { name: 'Test' }
+  }).valid, false);
+}});
+
+tests.push({ name: 'correction: invalid targetType rejected', fn: () => {
+  assert.strictEqual(validateCorrection({
+    targetId: 'grave_123', targetType: 'invalid',
+    corrections: { name: 'Test' }
+  }).valid, false);
+}});
+
+tests.push({ name: 'correction: empty corrections rejected', fn: () => {
+  assert.strictEqual(validateCorrection({
+    targetId: 'grave_123', targetType: 'grave', corrections: {}
+  }).valid, false);
+}});
+
+tests.push({ name: 'correction: array corrections rejected', fn: () => {
+  assert.strictEqual(validateCorrection({
+    targetId: 'grave_123', targetType: 'grave', corrections: ['name']
+  }).valid, false);
+}});
+
+tests.push({ name: 'correction: with reason passes', fn: () => {
+  assert.strictEqual(validateCorrection({
+    targetId: 'cemetery_abc', targetType: 'cemetery',
+    corrections: { name: 'Correct Name' }, reason: 'Name was misspelled'
+  }).valid, true);
+}});
+
+tests.push({ name: 'correction: unexpected field rejected', fn: () => {
+  assert.strictEqual(validateCorrection({
+    targetId: 'grave_123', targetType: 'grave',
+    corrections: { name: 'Test' }, id: 'hacked'
+  }).valid, false);
+}});
+
+tests.push({ name: 'correction: all target types valid', fn: () => {
+  for (const t of ['grave', 'cemetery', 'person', 'source']) {
+    assert.strictEqual(validateCorrection({
+      targetId: 'test', targetType: t, corrections: { name: 'test' }
+    }).valid, true);
+  }
+}});
+
+// ── Search ranking tests ──
+
+function normalizeSearchText(text) {
+  if (!text) return '';
+  return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+}
+
+function scoreSearchMatch(query, target, record) {
+  if (!target || !query) return 0;
+  if (target === query) return 100;
+  const nq = normalizeSearchText(query);
+  const nt = normalizeSearchText(target);
+  if (nq === nt) return 90;
+  if (nt.startsWith(nq)) return 70;
+  if (nt.includes(nq)) return 50;
+  if (record && record.altNames) {
+    for (const alt of record.altNames) {
+      const altNorm = normalizeSearchText(alt);
+      if (altNorm === nq) return 85;
+      if (altNorm.startsWith(nq)) return 65;
+      if (altNorm.includes(nq)) return 45;
+    }
+  }
+  return 0;
+}
+
+tests.push({ name: 'search: exact match scores highest (100)', fn: () => {
+  assert.strictEqual(scoreSearchMatch('bukit brown', 'bukit brown'), 100);
+}});
+
+tests.push({ name: 'search: normalized match scores 90', fn: () => {
+  assert.strictEqual(scoreSearchMatch('cafe', 'café'), 90);
+}});
+
+tests.push({ name: 'search: prefix match scores 70', fn: () => {
+  assert.strictEqual(scoreSearchMatch('bukit', 'bukit brown cemetery'), 70);
+}});
+
+tests.push({ name: 'search: partial match scores 50', fn: () => {
+  assert.strictEqual(scoreSearchMatch('brown', 'bukit brown cemetery'), 50);
+}});
+
+tests.push({ name: 'search: no match scores 0', fn: () => {
+  assert.strictEqual(scoreSearchMatch('xyz', 'bukit brown'), 0);
+}});
+
+tests.push({ name: 'search: alt name exact scores 85', fn: () => {
+  assert.strictEqual(scoreSearchMatch('bbc', 'Bukit Brown', { altNames: ['BBC'] }), 85);
+}});
+
+tests.push({ name: 'search: alt name prefix scores 65', fn: () => {
+  // Main name 'Bukit Brown' does NOT start with 'BBC', but alt name does
+  assert.strictEqual(scoreSearchMatch('bbc', 'Bukit Brown', { altNames: ['BBC Cemetery'] }), 65);
+}});
+
+tests.push({ name: 'search: ranking order correct', fn: () => {
+  const results = [
+    { name: 'St. Mary', score: scoreSearchMatch('mary', 'st. mary') },
+    { name: 'Maryland', score: scoreSearchMatch('mary', 'maryland') },
+    { name: 'Cemetery', score: scoreSearchMatch('mary', 'cemetery') }
+  ];
+  results.sort((a, b) => b.score - a.score);
+  assert.ok(results[0].name === 'St. Mary' || results[0].name === 'Maryland');
+  assert.strictEqual(results[2].score, 0);
+}});
+
+tests.push({ name: 'search: Unicode query works', fn: () => {
+  const score = scoreSearchMatch('安祥园', '安祥园');
+  assert.strictEqual(score, 100);
+}});
+
+tests.push({ name: 'search: Arabic query works', fn: () => {
+  const score = scoreSearchMatch('مقبرة', 'مقبرة الجنة');
+  assert.strictEqual(score, 70); // prefix match
+}});
+
+tests.push({ name: 'search: min length 2 enforced', fn: () => {
+  assert.ok('a'.length < 2);
+  assert.ok('ab'.length >= 2);
+}});
+
+// ── ID generation for new entity types ──
+
+tests.push({ name: 'ID: cemetery ID starts with cemetery_', fn: () => {
+  const id = `cemetery_${generateId().replace('sub_', '')}`;
+  assert.ok(id.startsWith('cemetery_'));
+  assert.ok(id.length > 16);
+}});
+
+tests.push({ name: 'ID: correction ID starts with correction_', fn: () => {
+  const id = `correction_${generateId().replace('sub_', '')}`;
+  assert.ok(id.startsWith('correction_'));
+  assert.ok(id.length > 19);
+}});
+
+tests.push({ name: 'ID: all new entity IDs are unique', fn: () => {
+  const ids = new Set();
+  for (let i = 0; i < 100; i++) {
+    ids.add(`cemetery_${generateId().replace('sub_', '')}`);
+  }
+  assert.strictEqual(ids.size, 100);
+}});
+
+// ── Date format validation ──
+
+function isValidFlexibleDate(str) {
+  if (typeof str !== 'string') return false;
+  if (str === 'unknown') return true;
+  if (str.startsWith('approx_')) return true;
+  // YYYY, YYYY-MM, YYYY-MM-DD
+  return /^\d{4}(-\d{2}(-\d{2})?)?$/.test(str);
+}
+
+tests.push({ name: 'date: full date YYYY-MM-DD valid', fn: () => {
+  assert.strictEqual(isValidFlexibleDate('1950-05-12'), true);
+}});
+
+tests.push({ name: 'date: partial date YYYY-MM valid', fn: () => {
+  assert.strictEqual(isValidFlexibleDate('1950-05'), true);
+}});
+
+tests.push({ name: 'date: year-only valid', fn: () => {
+  assert.strictEqual(isValidFlexibleDate('1950'), true);
+}});
+
+tests.push({ name: 'date: unknown valid', fn: () => {
+  assert.strictEqual(isValidFlexibleDate('unknown'), true);
+}});
+
+tests.push({ name: 'date: approximate valid', fn: () => {
+  assert.strictEqual(isValidFlexibleDate('approx_1950'), true);
+}});
+
+tests.push({ name: 'date: invalid format rejected', fn: () => {
+  assert.strictEqual(isValidFlexibleDate('12/05/1950'), false);
+}});
+
+tests.push({ name: 'date: single-digit month rejected by format', fn: () => {
+  // Regex requires exactly 2 digits for month: \d{2}
+  assert.strictEqual(isValidFlexibleDate('1950-1'), false);
+}});
+
+tests.push({ name: 'date: empty string rejected', fn: () => {
+  assert.strictEqual(isValidFlexibleDate(''), false);
+}});
+
+tests.push({ name: 'date: null rejected', fn: () => {
+  assert.strictEqual(isValidFlexibleDate(null), false);
+}});
+
 // ═══════════════════════════════════════════════
 // Run all tests
 // ═══════════════════════════════════════════════

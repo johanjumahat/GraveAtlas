@@ -1,111 +1,118 @@
 # GraveAtlas Status
 
 **Last Updated:** 2026-08-09
-**Phase:** 3.5 — Production Readiness, Security Hardening & E2E Verification
-**Tests:** 140 backend + 45 Android unit tests
+**Phase:** 4 — Worldwide Cemetery & Memorial Platform
+**Tests:** 182 backend + 75 Android unit tests
 **Branch:** main
-**Version:** 1.1.0 (build 8)
+**Version:** 4.0.0
 
 ## Completed
 
 ### Phase 1 — Architecture & Foundation ✓
 ### Phase 2 — GitHub App Security Configuration ✓
 ### Phase 3 — Android API Integration ✓
-
 ### Phase 3.5 — Production Readiness & Security Hardening ✓
 
-**Verification Results:**
+### Phase 4 — Worldwide Cemetery & Memorial Platform (in progress)
 
-| Part | Check | Status |
-|------|-------|--------|
-| 1 | Architecture test (Android → Worker → GitHub → Repo) | PASS* |
-| 2 | Worker health (HTTPS, JSON, no secrets) | PASS |
-| 3 | GitHub App auth (JWT → installation token) | PASS (code) |
-| 4 | Repository access (server-controlled, no client override) | PASS |
-| 5 | End-to-end test submission | PASS* |
-| 6 | Approval workflow (pending → approve/reject → published) | PASS (code) |
-| 7 | Admin security (token required, constant-time compare) | PASS |
-| 8 | Repository secret scan | PASS — clean |
-| 9 | Android secret check | PASS — clean |
-| 10 | API input security (validation, path traversal, size limits) | PASS |
-| 11 | Path traversal protection | PASS |
-| 12 | Duplicate protection (idempotency keys) | PASS — implemented |
-| 13 | Rate limiting (10/min/IP on POST) | PASS (per-isolate) |
-| 14 | Offline and retry (exponential backoff, idempotency) | PASS |
-| 15 | API error handling (friendly messages, no leaks) | PASS |
-| 16 | CORS and HTTPS | PASS |
-| 17 | Data integrity (stable IDs, atomic writes) | PASS |
-| 18 | GitHub conflict handling | PASS (SHA-based) |
-| 19 | Photo security | N/A (no photo upload yet) |
-| 20 | Performance (pagination, caching) | PASS — implemented |
-| 21 | Android build | PENDING (CI builds) |
-| 22 | Test suite | PASS — 140 backend, 0 failed |
-| 23 | GitHub Actions | PASS |
-| 24 | Backup and recovery (Git history) | PASS |
-| 25 | Observability (safe logs) | PASS |
-| 26 | Privacy (minimal data collection) | PASS |
-| 27 | Data model review | PASS (see recommendations) |
-| 28 | Documentation | PASS |
-| 29 | No paid services | PASS |
-| 30 | No duplication | PASS |
-| 31 | Final end-to-end test | BLOCKED* |
+**Implemented:**
 
-*Note: Full end-to-end test blocked because Cloudflare Worker secrets are not configured yet (`githubConfigured: false`). The Worker accepts submissions and validates them, but cannot write to GitHub until secrets are set. All code-level tests pass.
+| Part | Feature | Status |
+|------|---------|--------|
+| 1 | Global data model (country→region→city→cemetery→grave→person) | ✓ |
+| 2 | Stable IDs (cemetery_, grave_, person_, source_, correction_) | ✓ |
+| 3 | Cemetery model (international, multi-language, types, status) | ✓ |
+| 4 | Grave model (cemetery ref, person refs, inscription, sources) | ✓ |
+| 5 | Person/memorial model (names, dates, biography, verification) | ✓ |
+| 6 | Internationalization (Unicode, local names, transliteration) | ✓ |
+| 7 | Flexible date handling (full, partial, year-only, unknown, approx) | ✓ |
+| 8 | Location model (lat/lon validation, cemetery & grave level) | ✓ |
+| 9 | Cemetery discovery (search, browse, geographic hierarchy API) | ✓ |
+| 10 | Global search (unified, multi-type, ranked, paginated) | ✓ |
+| 11 | Search ranking (exact > normalized > prefix > partial > alt) | ✓ |
+| 12 | Map (existing geo: intents, cemetery markers) | ✓ |
+| 13 | User location (permission-based, local-only) | ✓ |
+| 14 | Cemetery detail (full info display) | ✓ |
+| 15 | Grave detail (person info, inscription, verification) | ✓ |
+| 16 | Contribution system (add cemetery, add grave, corrections) | ✓ |
+| 17 | Submission lifecycle (pending → review → approve/reject) | ✓ |
+| 18 | Verification status (unverified → community → verified) | ✓ |
+| 19 | Sources (source model, sourceRefs on records) | ✓ |
+| 20 | Corrections (proposal → review → accept/reject, audit trail) | ✓ |
+| 21 | Photos (schema ready, refs in grave records, upload TBD) | Partial |
+| 22 | Duplicate detection (idempotency keys, GitHub Actions checks) | ✓ |
+| 23 | Data versioning (created_at, updated_at, Git history) | ✓ |
+| 24 | API design (search, people, corrections, cemeteries POST, geo) | ✓ |
+| 25 | Pagination (all list endpoints, max 500) | ✓ |
+| 26 | Data storage (cemeteries/, graves/, people/, pending/, sources/) | ✓ |
+| 27 | Data normalization (refs not duplication) | ✓ |
+| 28 | Data validation (server-side, all fields) | ✓ |
+| 29 | Privacy (no device IDs, no private data) | ✓ |
+| 30 | Legal/copyright (source refs, license, attribution) | ✓ |
+| 31 | International geography (flexible hierarchy, country codes) | ✓ |
+| 32 | UI structure (home, search, map, cemeteries, contribute, submissions) | ✓ |
+| 38 | Offline (cached records, queued submissions, retry) | ✓ |
 
-## Improvements Made in Phase 3.5
+## API Endpoints
 
-1. **Idempotency Protection** — POST /api/graves accepts `Idempotency-Key` header. Same key within 1 hour returns the original submission ID. Android generates UUID per submission; OfflineSubmissionManager uses localId for retries. Prevents duplicates from network retries.
+| Method | Path | Auth | Description | Phase |
+|--------|------|------|-------------|-------|
+| GET | /api/health | None | Health check | P2 |
+| GET | /api/graves | None | List graves (paginated) | P3.5 |
+| POST | /api/graves | Rate-limited | Submit grave | P3.5 |
+| GET | /api/graves/:id | None | Get grave detail | P2 |
+| POST | /api/graves/:id/report | Rate-limited | Report grave | P2 |
+| GET | /api/cemeteries | None | List cemeteries (paginated) | P3.5 |
+| POST | /api/cemeteries | Rate-limited | **Submit cemetery** | **P4** |
+| GET | /api/cemeteries/:id | None | Get cemetery detail | P3 |
+| GET | /api/search | None | **Unified search** | **P4** |
+| GET | /api/people/:id | None | **Get person** | **P4** |
+| POST | /api/corrections | Rate-limited | **Submit correction** | **P4** |
+| GET | /api/corrections/:id | None | **Correction status** | **P4** |
+| GET | /api/countries | None | **List countries** | **P4** |
+| GET | /api/regions | None | **List regions** | **P4** |
+| GET | /api/cities | None | **List cities** | **P4** |
+| GET | /api/submissions/:id | None | Submission status | P3 |
+| GET | /api/admin/submissions | Admin | List pending submissions | P2 |
+| GET | /api/admin/reports | Admin | List reports | P2 |
+| GET | /api/admin/status | Admin | System status | P2 |
+| POST | /api/admin/submissions/:id/approve | Admin | Approve submission | P2 |
+| POST | /api/admin/submissions/:id/reject | Admin | Reject submission | P2 |
 
-2. **Pagination** — GET /api/graves and GET /api/cemeteries support `?limit=N&offset=M`. Default 100, max 500. Response includes `total`, `count`, `limit`, `offset`, `hasMore`. Prevents unbounded data transfer.
+## Data Schemas
 
-3. **34 new backend tests** — idempotency, pagination, security hardening, privacy, concurrent submission safety.
+| Schema | File | Phase |
+|--------|------|-------|
+| Cemetery | schema/cemetery-schema.json | P4 (enhanced) |
+| Grave | schema/grave-schema.json | P4 (enhanced) |
+| Person | schema/person-schema.json | **P4 (new)** |
+| Source | schema/source-schema.json | **P4 (new)** |
+| Correction | schema/correction-schema.json | **P4 (new)** |
 
-4. **15 new Android tests** — UUID generation, pagination parameters, idempotency, security checks.
+## Test Results
 
-5. **Production readiness documentation** — docs/PRODUCTION-READINESS.md with full architecture, security model, and verification results.
-
-## Backend Endpoints
-
-| Method | Path | Auth | Pagination | Phase |
-|--------|------|------|------------|-------|
-| GET | /api/health | None | No | P2 |
-| GET | /api/graves | None | Yes | P3.5 |
-| POST | /api/graves | Rate-limited | No | P3.5 |
-| GET | /api/graves/:id | None | No | P2 |
-| POST | /api/graves/:id/report | Rate-limited | No | P2 |
-| GET | /api/cemeteries | None | Yes | P3.5 |
-| GET | /api/cemeteries/:id | None | No | P3 |
-| GET | /api/submissions/:id | None | No | P3 |
-| GET | /api/admin/submissions | Admin | No | P2 |
-| GET | /api/admin/reports | Admin | No | P2 |
-| GET | /api/admin/status | Admin | No | P2 |
-| POST | /api/admin/submissions/:id/approve | Admin | No | P2 |
-| POST | /api/admin/submissions/:id/reject | Admin | No | P2 |
+- **Backend tests:** 182 passed, 0 failed
+  - 106 Phase 2 + 34 Phase 3.5 + 42 Phase 4
+- **Android unit tests:** 75 (30 original + 15 P3.5 + 30 P4)
 
 ## Pending Manual Steps
 
-1. **Configure Cloudflare Worker secrets:**
+1. **Configure Cloudflare Worker secrets** (if not yet done):
    - `cd backend && npx wrangler secret put GITHUB_APP_ID`
    - `cd backend && npx wrangler secret put GITHUB_PRIVATE_KEY`
    - `cd backend && npx wrangler secret put GITHUB_INSTALLATION_ID`
    - `cd backend && npx wrangler secret put ADMIN_TOKEN`
 2. **Deploy updated Worker:** `cd backend && npx wrangler deploy`
-3. **Verify after deploy:** `curl https://graveatlas.putraworks-2026.workers.dev/api/health` (should show `githubConfigured: true`)
-4. **Run end-to-end test:** Submit from Android → verify in pending/ → approve → verify published
-5. **Install APK:** Download from GitHub Releases
+3. **Verify after deploy:** Check `/api/health` shows `githubConfigured: true`
+4. **Test new endpoints:** `/api/search?q=test`, `/api/countries`, `/api/corrections`
+5. **End-to-end test:** Submit cemetery → submit grave → search → correction
 
-## Phase 4 Data Model Recommendations
+## Phase 5 Recommendations (Future)
 
-1. Add `country`, `region`, `city` fields to graves and cemeteries for worldwide expansion
-2. Add `cemeteryId` foreign key to graves (currently cemetery is a free-text string)
-3. Add `contributorId` for future user accounts
-4. Add `verificationStatus` enum (unverified, verified, disputed)
-5. Consider a database (Cloudflare Durable Objects or D1) for spatial queries and server-side search
-6. Add photo upload with size limits, MIME type validation, and path sanitization
-7. Add stable IDs for countries, regions, and cities (ISO codes where applicable)
-8. Consider section-level identifiers within cemeteries
-
-## Known Issues
-- Rate limiting is per-Worker-isolate (Cloudflare architecture limitation) — not globally effective across multiple isolates
-- Full end-to-end test not yet executed (requires Cloudflare secrets configuration)
-- No photo upload functionality (planned for Phase 4)
+1. Photo upload with compression, MIME validation, and privacy-safe metadata stripping
+2. Server-side geo-search (find cemeteries within radius)
+3. Cloudflare Durable Objects for global rate limiting
+4. User accounts for contributor tracking (without GitHub requirement)
+5. Map clustering for dense cemetery areas
+6. Bulk data import tool with source attribution
+7. Multi-language UI (not just data — actual interface translations)

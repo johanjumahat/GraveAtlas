@@ -2,8 +2,10 @@ package com.putraworks.graveatlas.data.model;
 
 /**
  * Submission request sent to the backend.
+ * Supports both legacy grave submissions and Phase 4 enhanced fields.
  */
 public class GraveSubmission {
+    // Legacy fields (backward compatible)
     public String name;
     public String birthDate;
     public String deathDate;
@@ -13,6 +15,17 @@ public class GraveSubmission {
     public double latitude;
     public double longitude;
     public String notes;
+
+    // Phase 4 enhanced fields
+    public String cemeteryId;
+    public String countryCode;
+    public String country;
+    public String region;
+    public String city;
+    public String locality;
+    public String inscription;
+    public String[] personIds;
+    public String[] sourceRefs;
 
     public GraveSubmission() {}
 

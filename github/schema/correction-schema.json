@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Correction Record",
+  "description": "A user-submitted correction to an existing GraveAtlas record",
+  "type": "object",
+  "required": ["id", "targetId", "targetType", "corrections", "status", "submittedAt"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^correction_[a-z0-9]{16,64}$" },
+    "targetId": { "type": "string", "description": "ID of the record being corrected" },
+    "targetType": {
+      "type": "string",
+      "enum": ["grave", "cemetery", "person", "source"],
+      "description": "Type of record being corrected"
+    },
+    "corrections": {
+      "type": "object",
+      "description": "Field-by-field corrections: { fieldName: suggestedValue }",
+      "additionalProperties": true
+    },
+    "reason": { "type": ["string", "null"], "maxLength": 2000, "description": "Why the correction is needed" },
+    "sourceRefs": {
+      "type": ["array", "null"],
+      "items": { "type": "string", "maxLength": 500 }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "under_review", "accepted", "rejected"],
+      "default": "pending"
+    },
+    "reviewNotes": { "type": ["string", "null"], "maxLength": 2000 },
+    "submittedAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "additionalProperties": false
+}

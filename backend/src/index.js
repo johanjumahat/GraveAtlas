@@ -26,7 +26,11 @@ const MAX_NAME_LENGTH = 500;
 const MAX_REPORT_LENGTH = 5000;
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
 const RATE_LIMIT_MAX_REQUESTS = 10; // per IP per window
-const ALLOWED_FIELDS = ['name', 'birthDate', 'deathDate', 'cemetery', 'section', 'plot', 'latitude', 'longitude', 'notes'];
+const ALLOWED_FIELDS = ['name', 'birthDate', 'deathDate', 'cemetery', 'section', 'plot', 'latitude', 'longitude', 'notes', 'cemeteryId', 'countryCode', 'country', 'region', 'city', 'locality', 'cemeteryType', 'operatingStatus', 'description', 'altNames', 'localName', 'transliteration', 'inscription', 'personIds', 'graveId', 'givenNames', 'familyName', 'biography', 'memorialNotes', 'reason', 'targetId', 'targetType', 'corrections', 'sourceRefs'];
+const CEMETERY_FIELDS = ['name', 'altNames', 'localName', 'transliteration', 'countryCode', 'country', 'region', 'city', 'locality', 'address', 'latitude', 'longitude', 'timezone', 'cemeteryType', 'religiousAffiliation', 'operatingStatus', 'establishedDate', 'closedDate', 'website', 'contactInfo', 'description', 'accessibility', 'sourceRefs'];
+const CORRECTION_FIELDS = ['targetId', 'targetType', 'corrections', 'reason', 'sourceRefs'];
+const SEARCH_MIN_LENGTH = 2;
+const SEARCH_MAX_RESULTS = 50;
 const DEFAULT_PAGE_LIMIT = 100;
 const MAX_PAGE_LIMIT = 500;
 const IDEMPOTENCY_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -117,7 +121,7 @@ async function handleRequest(request, env, ctx) {
     // ── Public routes ──
 
     if (path === '/' && method === 'GET') {
-      return jsonResponse({ name: 'GraveAtlas API', version: '2.0.0', status: 'operational' }, 200, corsHeaders);
+      return jsonResponse({ name: 'GraveAtlas API', version: '4.0.0', status: 'operational' }, 200, corsHeaders);
     }
 
     if (path === '/api/health' && method === 'GET') {
@@ -173,6 +177,64 @@ async function handleRequest(request, env, ctx) {
       const id = path.split('/').pop();
       if (id === 'submissions' || !id) return notFound(corsHeaders);
       return await handleGetSubmissionStatus(id, request, env, corsHeaders);
+    }
+
+    // ── Search route ──
+
+    if (path === '/api/search' && method === 'GET') {
+      return await handleSearch(request, env, corsHeaders);
+    }
+
+    // ── Person routes ──
+
+    if (path.startsWith('/api/people/') && method === 'GET') {
+      const id = path.split('/').pop();
+      if (id === 'people' || !id) return notFound(corsHeaders);
+      return await handleGetPerson(id, request, env, corsHeaders);
+    }
+
+    // ── Cemetery submission route ──
+
+    if (path === '/api/cemeteries' && method === 'POST') {
+      const ip = getClientIp(request);
+      const rl = checkRateLimit(ip);
+      if (!rl.allowed) {
+        return jsonResponse({ success: false, error: 'Too many requests' }, 429, corsHeaders);
+      }
+      return await handleCreateCemetery(request, env, corsHeaders);
+    }
+
+    // ── Correction submission route ──
+
+    if (path === '/api/corrections' && method === 'POST') {
+      const ip = getClientIp(request);
+      const rl = checkRateLimit(ip);
+      if (!rl.allowed) {
+        return jsonResponse({ success: false, error: 'Too many requests' }, 429, corsHeaders);
+      }
+      return await handleCreateCorrection(request, env, corsHeaders);
+    }
+
+    // ── Correction status (public, by correction ID) ──
+
+    if (path.startsWith('/api/corrections/') && method === 'GET') {
+      const id = path.split('/').pop();
+      if (id === 'corrections' || !id) return notFound(corsHeaders);
+      return await handleGetCorrectionStatus(id, request, env, corsHeaders);
+    }
+
+    // ── Countries/Regions/Cities (geographic hierarchy) ──
+
+    if (path === '/api/countries' && method === 'GET') {
+      return await handleGetCountries(request, env, corsHeaders);
+    }
+
+    if (path === '/api/regions' && method === 'GET') {
+      return await handleGetRegions(request, env, corsHeaders);
+    }
+
+    if (path === '/api/cities' && method === 'GET') {
+      return await handleGetCities(request, env, corsHeaders);
     }
 
     // ── Admin routes (auth-protected) ──
@@ -250,7 +312,7 @@ async function handleHealth(request, env, cors) {
   return jsonResponse({
     status: 'ok',
     service: 'GraveAtlas',
-    version: '2.0.0',
+    version: '4.0.0',
     githubConfigured: hasGithubConfig,
     adminConfigured: hasAdminToken,
     timestamp: new Date().toISOString()
@@ -608,6 +670,531 @@ async function handleGetSubmissionStatus(id, request, env, cors) {
   } catch (e) { /* not in pending */ }
 
   return jsonResponse({ success: false, error: 'Submission not found' }, 404, cors);
+}
+
+// ── Search Handler ──
+
+async function handleSearch(request, env, cors) {
+  const url = new URL(request.url);
+  const query = (url.searchParams.get('q') || '').trim();
+  const type = url.searchParams.get('type') || 'all';
+  const { limit, offset } = parsePagination(url);
+
+  if (query.length < SEARCH_MIN_LENGTH) {
+    return jsonResponse({
+      success: true,
+      results: [],
+      message: `Search query must be at least ${SEARCH_MIN_LENGTH} characters`,
+      count: 0
+    }, 200, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, results: [], count: 0, message: 'Search unavailable — GitHub not configured.' }, 200, cors);
+  }
+
+  const results = [];
+  const normalizedQuery = normalizeSearchText(query);
+
+  try {
+    // Search cemeteries
+    if (type === 'all' || type === 'cemetery') {
+      try {
+        const files = await listFiles('cemeteries', env);
+        for (const file of files) {
+          if (!file.endsWith('.json')) continue;
+          const content = await readFile(`cemeteries/${file}`, env);
+          if (!content) continue;
+          try {
+            const record = JSON.parse(content);
+            if (record.status !== 'published') continue;
+            const score = scoreSearchMatch(normalizedQuery, normalizeSearchText(record.name || ''), record);
+            if (score > 0) {
+              results.push({
+                type: 'cemetery',
+                id: record.id,
+                name: record.name,
+                country: record.country || null,
+                region: record.region || null,
+                city: record.city || null,
+                latitude: record.latitude || null,
+                longitude: record.longitude || null,
+                score
+              });
+            }
+          } catch (e) { /* skip */ }
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    // Search graves
+    if (type === 'all' || type === 'grave') {
+      try {
+        const files = await listFiles('graves', env);
+        for (const file of files) {
+          if (!file.endsWith('.json')) continue;
+          const content = await readFile(`graves/${file}`, env);
+          if (!content) continue;
+          try {
+            const record = JSON.parse(content);
+            if (record.status !== 'published') continue;
+            const searchName = record.name || (record.personIds && record.personIds.length > 0 ? record.name : '') || record.graveIdentifier || '';
+            const score = scoreSearchMatch(normalizedQuery, normalizeSearchText(searchName), record);
+            if (score > 0) {
+              results.push({
+                type: 'grave',
+                id: record.id,
+                name: searchName,
+                cemetery: record.cemeteryName || record.cemetery || null,
+                cemeteryId: record.cemeteryId || null,
+                birthDate: record.birthDate || null,
+                deathDate: record.deathDate || null,
+                score
+              });
+            }
+          } catch (e) { /* skip */ }
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    // Sort by score (desc), then name
+    results.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+
+    // Apply pagination
+    const total = results.length;
+    const paged = results.slice(offset, offset + limit);
+    const hasMore = offset + limit < total;
+
+    return jsonResponse({
+      success: true,
+      results: paged,
+      count: paged.length,
+      total,
+      limit,
+      offset,
+      hasMore,
+      query
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: true, results: [], count: 0, message: 'Search temporarily unavailable.' }, 200, cors);
+  }
+}
+
+function normalizeSearchText(text) {
+  if (!text) return '';
+  return text.toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+function scoreSearchMatch(query, target, record) {
+  if (!target || !query) return 0;
+
+  // Exact match = 100
+  if (target === query) return 100;
+
+  // Normalized exact match = 90
+  const nq = normalizeSearchText(query);
+  const nt = normalizeSearchText(target);
+  if (nq === nt) return 90;
+
+  // Prefix match = 70
+  if (nt.startsWith(nq)) return 70;
+
+  // Partial match = 50
+  if (nt.includes(nq)) return 50;
+
+  // Check alt names if available
+  if (record && record.altNames) {
+    for (const alt of record.altNames) {
+      const altNorm = normalizeSearchText(alt);
+      if (altNorm === nq) return 85;
+      if (altNorm.startsWith(nq)) return 65;
+      if (altNorm.includes(nq)) return 45;
+    }
+  }
+
+  // Check local name
+  if (record && record.localName) {
+    const localNorm = normalizeSearchText(record.localName);
+    if (localNorm === nq) return 85;
+    if (localNorm.startsWith(nq)) return 65;
+    if (localNorm.includes(nq)) return 45;
+  }
+
+  // Check transliteration
+  if (record && record.transliteration) {
+    const translNorm = normalizeSearchText(record.transliteration);
+    if (translNorm === nq) return 85;
+    if (translNorm.startsWith(nq)) return 65;
+    if (translNorm.includes(nq)) return 45;
+  }
+
+  // Check city, country, region for cemetery
+  if (record && record.city) {
+    if (normalizeSearchText(record.city).includes(nq)) return 30;
+  }
+  if (record && record.country) {
+    if (normalizeSearchText(record.country).includes(nq)) return 25;
+  }
+
+  return 0;
+}
+
+// ── Person Handler ──
+
+async function handleGetPerson(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid person ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'Person not found' }, 404, cors);
+  }
+
+  try {
+    const content = await readFile(`people/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Person not found' }, 404, cors);
+    }
+
+    const record = JSON.parse(content);
+    return jsonResponse(record, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Person not found' }, 404, cors);
+  }
+}
+
+// ── Cemetery Submission Handler ──
+
+async function handleCreateCemetery(request, env, cors) {
+  const contentLength = parseInt(request.headers.get('Content-Length') || '0', 10);
+  if (contentLength > MAX_BODY_SIZE) {
+    return jsonResponse({ success: false, error: 'Request too large (max 50KB)' }, 413, cors);
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ success: false, error: 'Invalid JSON body' }, 400, cors);
+  }
+
+  const validation = validateCemeterySubmission(body);
+  if (!validation.valid) {
+    return jsonResponse({ success: false, error: validation.error }, 400, cors);
+  }
+
+  const idempotencyKey = request.headers.get('Idempotency-Key');
+  if (idempotencyKey) {
+    const existing = getIdempotencyEntry(idempotencyKey);
+    if (existing) {
+      return jsonResponse({ success: true, submissionId: existing.submissionId, status: 'pending' }, 201, cors);
+    }
+  }
+
+  const submissionId = `cemetery_${generateId().replace('sub_', '')}`;
+  const now = new Date().toISOString();
+
+  const record = {
+    id: submissionId,
+    name: body.name,
+    altNames: body.altNames || null,
+    localName: body.localName || null,
+    transliteration: body.transliteration || null,
+    countryCode: body.countryCode || null,
+    country: body.country || null,
+    region: body.region || null,
+    city: body.city || null,
+    locality: body.locality || null,
+    address: body.address || null,
+    latitude: body.latitude !== undefined ? body.latitude : null,
+    longitude: body.longitude !== undefined ? body.longitude : null,
+    timezone: body.timezone || null,
+    cemeteryType: body.cemeteryType || null,
+    religiousAffiliation: body.religiousAffiliation || null,
+    operatingStatus: body.operatingStatus || null,
+    establishedDate: body.establishedDate || null,
+    closedDate: body.closedDate || null,
+    website: body.website || null,
+    contactInfo: body.contactInfo || null,
+    description: body.description || null,
+    accessibility: body.accessibility || null,
+    sourceRefs: body.sourceRefs || null,
+    verificationStatus: 'community_submitted',
+    status: 'pending',
+    submittedAt: now,
+    updatedAt: null
+  };
+
+  if (env.GITHUB_APP_ID) {
+    try {
+      await writeFile(
+        `pending/${submissionId}.json`,
+        JSON.stringify(record, null, 2),
+        env,
+        `cemetery submission: ${body.name} (pending review)`
+      );
+    } catch (error) {
+      return jsonResponse({ success: false, error: 'Unable to save submission. Please try again later.' }, 502, cors);
+    }
+  }
+
+  if (idempotencyKey) setIdempotencyEntry(idempotencyKey, submissionId);
+
+  return jsonResponse({ success: true, submissionId: submissionId, status: 'pending' }, 201, cors);
+}
+
+function validateCemeterySubmission(body) {
+  if (!body) return { valid: false, error: 'Empty request body' };
+  if (typeof body !== 'object' || Array.isArray(body)) return { valid: false, error: 'Invalid request body' };
+  if (!body.name || typeof body.name !== 'string' || body.name.trim().length === 0) return { valid: false, error: 'Cemetery name is required' };
+  if (body.name.length > MAX_NAME_LENGTH) return { valid: false, error: 'Name too long (max 500 chars)' };
+
+  if (body.latitude !== undefined || body.longitude !== undefined) {
+    const lat = parseFloat(body.latitude);
+    const lon = parseFloat(body.longitude);
+    if (isNaN(lat) || lat < -90 || lat > 90) return { valid: false, error: 'Invalid latitude (must be -90 to 90)' };
+    if (isNaN(lon) || lon < -180 || lon > 180) return { valid: false, error: 'Invalid longitude (must be -180 to 180)' };
+  }
+
+  if (body.countryCode && !/^[A-Z]{2}$/.test(body.countryCode)) return { valid: false, error: 'Invalid country code (use ISO 3166-1 alpha-2)' };
+  if (body.website && !/^https?:\/\/.test(body.website)) return { valid: false, error: 'Invalid website URL' };
+
+  if (JSON.stringify(body).length > MAX_BODY_SIZE) return { valid: false, error: 'Request too large (max 50KB)' };
+
+  const allowed = CEMETERY_FIELDS;
+  const unexpected = Object.keys(body).filter(k => !allowed.includes(k));
+  if (unexpected.length > 0) return { valid: false, error: 'Invalid request' };
+
+  return { valid: true };
+}
+
+// ── Correction Handlers ──
+
+async function handleCreateCorrection(request, env, cors) {
+  const contentLength = parseInt(request.headers.get('Content-Length') || '0', 10);
+  if (contentLength > MAX_BODY_SIZE) {
+    return jsonResponse({ success: false, error: 'Request too large (max 50KB)' }, 413, cors);
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ success: false, error: 'Invalid JSON body' }, 400, cors);
+  }
+
+  const validation = validateCorrection(body);
+  if (!validation.valid) {
+    return jsonResponse({ success: false, error: validation.error }, 400, cors);
+  }
+
+  const idempotencyKey = request.headers.get('Idempotency-Key');
+  if (idempotencyKey) {
+    const existing = getIdempotencyEntry(idempotencyKey);
+    if (existing) {
+      return jsonResponse({ success: true, correctionId: existing.submissionId, status: 'pending' }, 201, cors);
+    }
+  }
+
+  const correctionId = `correction_${generateId().replace('sub_', '')}`;
+  const now = new Date().toISOString();
+
+  const record = {
+    id: correctionId,
+    targetId: sanitizePathSegment(body.targetId) || body.targetId,
+    targetType: body.targetType,
+    corrections: body.corrections,
+    reason: body.reason || null,
+    sourceRefs: body.sourceRefs || null,
+    status: 'pending',
+    submittedAt: now,
+    updatedAt: null
+  };
+
+  if (env.GITHUB_APP_ID) {
+    try {
+      await writeFile(
+        `pending/${correctionId}.json`,
+        JSON.stringify(record, null, 2),
+        env,
+        `correction for ${body.targetType} ${body.targetId} (pending review)`
+      );
+    } catch (error) {
+      return jsonResponse({ success: false, error: 'Unable to save correction. Please try again later.' }, 502, cors);
+    }
+  }
+
+  if (idempotencyKey) setIdempotencyEntry(idempotencyKey, correctionId);
+
+  return jsonResponse({ success: true, correctionId: correctionId, status: 'pending' }, 201, cors);
+}
+
+function validateCorrection(body) {
+  if (!body) return { valid: false, error: 'Empty request body' };
+  if (typeof body !== 'object' || Array.isArray(body)) return { valid: false, error: 'Invalid request body' };
+  if (!body.targetId || typeof body.targetId !== 'string') return { valid: false, error: 'Target record ID is required' };
+  if (!body.targetType || !['grave', 'cemetery', 'person', 'source'].includes(body.targetType)) return { valid: false, error: 'Invalid target type' };
+  if (!body.corrections || typeof body.corrections !== 'object' || Array.isArray(body.corrections) || Object.keys(body.corrections).length === 0) return { valid: false, error: 'Corrections object is required' };
+  if (body.reason && body.reason.length > MAX_FIELD_LENGTH) return { valid: false, error: 'Reason too long (max 2000 chars)' };
+
+  const allowed = CORRECTION_FIELDS;
+  const unexpected = Object.keys(body).filter(k => !allowed.includes(k));
+  if (unexpected.length > 0) return { valid: false, error: 'Invalid request' };
+
+  return { valid: true };
+}
+
+async function handleGetCorrectionStatus(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid correction ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'Correction not found' }, 404, cors);
+  }
+
+  try {
+    const content = await readFile(`pending/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Correction not found' }, 404, cors);
+    }
+    const record = JSON.parse(content);
+    return jsonResponse({
+      success: true,
+      id: safeId,
+      status: record.status || 'pending',
+      targetType: record.targetType || null,
+      submittedAt: record.submittedAt || null,
+      updatedAt: record.updatedAt || null
+    }, 200, cors);
+  } catch (e) {
+    return jsonResponse({ success: false, error: 'Correction not found' }, 404, cors);
+  }
+}
+
+// ── Geographic Hierarchy Handlers ──
+
+async function handleGetCountries(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, countries: [], count: 0, message: 'GitHub not configured.' }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('cemeteries', env);
+    const countries = new Map();
+
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      const content = await readFile(`cemeteries/${file}`, env);
+      if (!content) continue;
+      try {
+        const record = JSON.parse(content);
+        if (record.status !== 'published' || !record.country) continue;
+        if (!countries.has(record.country)) {
+          countries.set(record.country, {
+            name: record.country,
+            code: record.countryCode || null,
+            cemeteryCount: 0
+          });
+        }
+        countries.get(record.country).cemeteryCount++;
+      } catch (e) { /* skip */ }
+    }
+
+    const result = Array.from(countries.values()).sort((a, b) => a.name.localeCompare(b.name));
+    return jsonResponse({ success: true, countries: result, count: result.length }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: true, countries: [], count: 0, message: 'Unable to fetch countries.' }, 200, cors);
+  }
+}
+
+async function handleGetRegions(request, env, cors) {
+  const url = new URL(request.url);
+  const country = url.searchParams.get('country');
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, regions: [], count: 0, message: 'GitHub not configured.' }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('cemeteries', env);
+    const regions = new Map();
+
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      const content = await readFile(`cemeteries/${file}`, env);
+      if (!content) continue;
+      try {
+        const record = JSON.parse(content);
+        if (record.status !== 'published' || !record.region) continue;
+        if (country && normalizeSearchText(record.country) !== normalizeSearchText(country)) continue;
+        const key = `${record.region}`;
+        if (!regions.has(key)) {
+          regions.set(key, {
+            name: record.region,
+            country: record.country || null,
+            cemeteryCount: 0
+          });
+        }
+        regions.get(key).cemeteryCount++;
+      } catch (e) { /* skip */ }
+    }
+
+    const result = Array.from(regions.values()).sort((a, b) => a.name.localeCompare(b.name));
+    return jsonResponse({ success: true, regions: result, count: result.length }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: true, regions: [], count: 0, message: 'Unable to fetch regions.' }, 200, cors);
+  }
+}
+
+async function handleGetCities(request, env, cors) {
+  const url = new URL(request.url);
+  const country = url.searchParams.get('country');
+  const region = url.searchParams.get('region');
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, cities: [], count: 0, message: 'GitHub not configured.' }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('cemeteries', env);
+    const cities = new Map();
+
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      const content = await readFile(`cemeteries/${file}`, env);
+      if (!content) continue;
+      try {
+        const record = JSON.parse(content);
+        if (record.status !== 'published' || !record.city) continue;
+        if (country && normalizeSearchText(record.country) !== normalizeSearchText(country)) continue;
+        if (region && normalizeSearchText(record.region) !== normalizeSearchText(region)) continue;
+        const key = `${record.city}`;
+        if (!cities.has(key)) {
+          cities.set(key, {
+            name: record.city,
+            country: record.country || null,
+            region: record.region || null,
+            cemeteryCount: 0
+          });
+        }
+        cities.get(key).cemeteryCount++;
+      } catch (e) { /* skip */ }
+    }
+
+    const result = Array.from(cities.values()).sort((a, b) => a.name.localeCompare(b.name));
+    return jsonResponse({ success: true, cities: result, count: result.length }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: true, cities: [], count: 0, message: 'Unable to fetch cities.' }, 200, cors);
+  }
 }
 
 // ── Admin Handlers ──

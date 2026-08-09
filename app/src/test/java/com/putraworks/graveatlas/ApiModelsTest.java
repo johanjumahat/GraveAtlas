@@ -370,3 +370,190 @@ public class ApiModelsTest {
         assertFalse(url.contains("secret"));
         assertFalse(url.contains("password"));
     }
+
+
+    // ── Phase 4: Worldwide Platform Models ──
+
+    @Test
+    public void personRecord_formatDate_yearOnly() {
+        assertEquals("1902", PersonRecord.formatDate("1902"));
+    }
+
+    @Test
+    public void personRecord_formatDate_yearMonth() {
+        assertEquals("May 1902", PersonRecord.formatDate("1902-05"));
+    }
+
+    @Test
+    public void personRecord_formatDate_fullDate() {
+        assertEquals("12 May 1902", PersonRecord.formatDate("1902-05-12"));
+    }
+
+    @Test
+    public void personRecord_formatDate_unknown() {
+        assertEquals("Unknown", PersonRecord.formatDate("unknown"));
+        assertEquals("Unknown", PersonRecord.formatDate(null));
+        assertEquals("Unknown", PersonRecord.formatDate(""));
+    }
+
+    @Test
+    public void personRecord_formatDate_approximate() {
+        assertEquals("c. 1902", PersonRecord.formatDate("approx_1902"));
+    }
+
+    @Test
+    public void personRecord_getFullName_combined() {
+        PersonRecord p = new PersonRecord();
+        p.givenNames = "John";
+        p.familyName = "Smith";
+        assertEquals("John Smith", p.getFullName());
+    }
+
+    @Test
+    public void personRecord_getFullName_displayNameFallback() {
+        PersonRecord p = new PersonRecord();
+        p.displayName = "J. Smith";
+        assertEquals("J. Smith", p.getFullName());
+    }
+
+    @Test
+    public void personRecord_getLifeDates_both() {
+        PersonRecord p = new PersonRecord();
+        p.birthDate = "1901";
+        p.deathDate = "1980";
+        assertEquals("1901 – 1980", p.getLifeDates());
+    }
+
+    @Test
+    public void personRecord_getLifeDates_birthOnly() {
+        PersonRecord p = new PersonRecord();
+        p.birthDate = "1901";
+        assertEquals("b. 1901", p.getLifeDates());
+    }
+
+    @Test
+    public void personRecord_getLifeDates_deathOnly() {
+        PersonRecord p = new PersonRecord();
+        p.deathDate = "1980";
+        assertEquals("d. 1980", p.getLifeDates());
+    }
+
+    @Test
+    public void personRecord_getLifeDates_empty() {
+        PersonRecord p = new PersonRecord();
+        assertEquals("", p.getLifeDates());
+    }
+
+    @Test
+    public void cemeteryRecord_getLocationString_allFields() {
+        CemeteryRecord c = new CemeteryRecord();
+        c.city = "Paris";
+        c.region = "Île-de-France";
+        c.country = "France";
+        assertEquals("Paris, Île-de-France, France", c.getLocationString());
+    }
+
+    @Test
+    public void cemeteryRecord_getLocationString_countryOnly() {
+        CemeteryRecord c = new CemeteryRecord();
+        c.country = "Japan";
+        assertEquals("Japan", c.getLocationString());
+    }
+
+    @Test
+    public void cemeteryRecord_getLocationString_empty() {
+        CemeteryRecord c = new CemeteryRecord();
+        assertEquals("", c.getLocationString());
+    }
+
+    @Test
+    public void cemeteryRecord_getDisplayName_usesLocalName() {
+        CemeteryRecord c = new CemeteryRecord();
+        c.name = "Pere Lachaise";
+        c.localName = "Cimetière du Père Lachaise";
+        assertEquals("Cimetière du Père Lachaise", c.getDisplayName());
+    }
+
+    @Test
+    public void cemeteryRecord_getDisplayName_fallbackToName() {
+        CemeteryRecord c = new CemeteryRecord();
+        c.name = "Bukit Brown";
+        assertEquals("Bukit Brown", c.getDisplayName());
+    }
+
+    @Test
+    public void cemeteryRecord_getVerificationLabel_verified() {
+        CemeteryRecord c = new CemeteryRecord();
+        c.verificationStatus = "verified";
+        assertEquals("Verified", c.getVerificationLabel());
+    }
+
+    @Test
+    public void cemeteryRecord_getVerificationLabel_unverified() {
+        CemeteryRecord c = new CemeteryRecord();
+        c.verificationStatus = "unverified";
+        assertEquals("Unverified", c.getVerificationLabel());
+    }
+
+    @Test
+    public void cemeteryRecord_getVerificationLabel_communitySubmitted() {
+        CemeteryRecord c = new CemeteryRecord();
+        c.verificationStatus = "community_submitted";
+        assertEquals("Community Submitted", c.getVerificationLabel());
+    }
+
+    @Test
+    public void graveRecord_getCemeteryName_newField() {
+        GraveRecord g = new GraveRecord();
+        g.cemeteryName = "Bukit Brown";
+        g.cemetery = "Old Bukit Brown";
+        assertEquals("Bukit Brown", g.getCemeteryName());
+    }
+
+    @Test
+    public void graveRecord_getCemeteryName_legacyFallback() {
+        GraveRecord g = new GraveRecord();
+        g.cemetery = "Bukit Brown";
+        assertEquals("Bukit Brown", g.getCemeteryName());
+    }
+
+    @Test
+    public void graveRecord_getLifeDates() {
+        GraveRecord g = new GraveRecord();
+        g.birthDate = "1950-01-01";
+        g.deathDate = "2020-12-31";
+        assertEquals("1 Jan 1950 – 31 Dec 2020", g.getLifeDates());
+    }
+
+    @Test
+    public void graveRecord_getVerificationLabel_underReview() {
+        GraveRecord g = new GraveRecord();
+        g.verificationStatus = "under_review";
+        assertEquals("Under Review", g.getVerificationLabel());
+    }
+
+    @Test
+    public void searchResult_getDisplaySubtitle_cemetery() {
+        SearchResult r = new SearchResult();
+        r.type = "cemetery";
+        r.country = "France";
+        r.city = "Paris";
+        String subtitle = r.getDisplaySubtitle();
+        assertTrue(subtitle.contains("Cemetery"));
+        assertTrue(subtitle.contains("Paris"));
+        assertTrue(subtitle.contains("France"));
+    }
+
+    @Test
+    public void searchResult_getDisplaySubtitle_grave() {
+        SearchResult r = new SearchResult();
+        r.type = "grave";
+        r.cemetery = "Bukit Brown";
+        r.birthDate = "1901";
+        r.deathDate = "1980";
+        String subtitle = r.getDisplaySubtitle();
+        assertTrue(subtitle.contains("Grave"));
+        assertTrue(subtitle.contains("Bukit Brown"));
+        assertTrue(subtitle.contains("1901"));
+        assertTrue(subtitle.contains("1980"));
+    }

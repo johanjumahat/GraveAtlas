@@ -1,88 +1,45 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Grave Record",
-  "description": "A single grave record in the GraveAtlas database",
+  "description": "A single grave/memorial record in the GraveAtlas worldwide database",
   "type": "object",
-  "required": ["id", "name", "status", "submittedAt"],
+  "required": ["id", "status", "submittedAt"],
   "properties": {
-    "id": {
-      "type": "string",
-      "description": "Unique identifier for the grave record",
-      "pattern": "^[a-z0-9]{8,64}$"
+    "id": { "type": "string", "pattern": "^grave_[a-z0-9]{16,64}$" },
+    "cemeteryId": { "type": ["string", "null"], "pattern": "^cemetery_[a-z0-9]{16,64}$", "description": "Reference to cemetery" },
+    "cemeteryName": { "type": ["string", "null"], "maxLength": 2000, "description": "Cemetery name (denormalized for display)" },
+    "sectionId": { "type": ["string", "null"], "pattern": "^section_[a-z0-9]{16,64}$" },
+    "section": { "type": ["string", "null"], "maxLength": 2000, "description": "Section within cemetery" },
+    "plot": { "type": ["string", "null"], "maxLength": 2000, "description": "Plot number or identifier" },
+    "graveIdentifier": { "type": ["string", "null"], "maxLength": 500, "description": "Public grave identifier" },
+    "latitude": { "type": ["number", "null"], "minimum": -90, "maximum": 90 },
+    "longitude": { "type": ["number", "null"], "minimum": -180, "maximum": 180 },
+    "personIds": {
+      "type": ["array", "null"],
+      "items": { "type": "string", "pattern": "^person_[a-z0-9]{16,64}$" },
+      "description": "References to person/memorial records"
     },
-    "name": {
-      "type": "string",
-      "maxLength": 500,
-      "description": "Name of the deceased"
-    },
-    "birthDate": {
-      "type": ["string", "null"],
-      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-      "description": "Birth date in YYYY-MM-DD format (optional)"
-    },
-    "deathDate": {
-      "type": ["string", "null"],
-      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-      "description": "Death date in YYYY-MM-DD format (optional)"
-    },
-    "cemetery": {
-      "type": ["string", "null"],
-      "maxLength": 2000,
-      "description": "Cemetery name (optional)"
-    },
-    "section": {
-      "type": ["string", "null"],
-      "maxLength": 2000,
-      "description": "Section within cemetery (optional)"
-    },
-    "plot": {
-      "type": ["string", "null"],
-      "maxLength": 2000,
-      "description": "Plot number or identifier (optional)"
-    },
-    "latitude": {
-      "type": ["number", "null"],
-      "minimum": -90,
-      "maximum": 90,
-      "description": "GPS latitude (optional)"
-    },
-    "longitude": {
-      "type": ["number", "null"],
-      "minimum": -180,
-      "maximum": 180,
-      "description": "GPS longitude (optional)"
-    },
+    "name": { "type": ["string", "null"], "maxLength": 500, "description": "Primary display name (legacy/compatibility)" },
+    "birthDate": { "type": ["string", "null"], "pattern": "^\\d{4}(-\\d{2}(-\\d{2})?)?$|^unknown$|^approx_.*" },
+    "deathDate": { "type": ["string", "null"], "pattern": "^\\d{4}(-\\d{2}(-\\d{2})?)?$|^unknown$|^approx_.*" },
+    "inscription": { "type": ["string", "null"], "maxLength": 5000, "description": "Grave inscription/transcription" },
     "photoRefs": {
       "type": ["array", "null"],
-      "items": {
-        "type": "string"
-      },
-      "description": "References to photo files in the photos/ directory (optional)"
+      "items": { "type": "string", "pattern": "^photo_[a-z0-9]{16,64}$" }
     },
-    "notes": {
-      "type": ["string", "null"],
-      "maxLength": 2000,
-      "description": "Additional notes (optional)"
+    "notes": { "type": ["string", "null"], "maxLength": 2000 },
+    "sourceRefs": {
+      "type": ["array", "null"],
+      "items": { "type": "string", "pattern": "^source_[a-z0-9]{16,64}$" }
     },
-    "source": {
-      "type": ["string", "null"],
-      "description": "Source of the record — user submission, official record, etc."
-    },
-    "status": {
+    "verificationStatus": {
       "type": "string",
-      "enum": ["published", "pending", "rejected", "reported"],
-      "description": "Current status of the record"
+      "enum": ["unverified", "community_submitted", "under_review", "verified", "rejected"],
+      "default": "unverified"
     },
-    "submittedAt": {
-      "type": "string",
-      "format": "date-time",
-      "description": "ISO timestamp of submission"
-    },
-    "updatedAt": {
-      "type": ["string", "null"],
-      "format": "date-time",
-      "description": "ISO timestamp of last update (optional)"
-    }
+    "status": { "type": "string", "enum": ["published", "pending", "rejected", "reported"] },
+    "submittedAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": ["string", "null"], "format": "date-time" }
   },
   "additionalProperties": false
 }

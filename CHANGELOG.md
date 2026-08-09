@@ -1,5 +1,54 @@
 # CHANGELOG
 
+## v4.0.0 — Phase 4: Worldwide Cemetery & Memorial Platform (2026-08-09)
+
+### Added — Backend
+- GET /api/search — Unified search with ranking (exact > normalized > prefix > partial > alt name)
+- GET /api/people/:id — Person/memorial detail endpoint
+- POST /api/cemeteries — Cemetery submission endpoint with idempotency
+- POST /api/corrections — Correction submission endpoint with idempotency
+- GET /api/corrections/:id — Correction status endpoint
+- GET /api/countries — List countries derived from published cemeteries
+- GET /api/regions — List regions (filterable by country)
+- GET /api/cities — List cities (filterable by country, region)
+- Search ranking: exact (100), normalized (90), prefix (70), partial (50), alt name (85/65/45)
+- Search supports Unicode (Arabic, Chinese, Japanese, Cyrillic, etc.)
+- Cemetery submission validation: country code (ISO 3166-1), website URL, field limits
+- Correction validation: target ID, target type, corrections object, reason
+
+### Added — Schemas
+- github/schema/person-schema.json — Person/memorial data model
+- github/schema/source-schema.json — Source reference model
+- github/schema/correction-schema.json — Correction proposal model
+- Cemetery schema enhanced: altNames, localName, transliteration, countryCode, country, region, city, locality, timezone, cemeteryType, operatingStatus, establishedDate, closedDate, website, contactInfo, accessibility, sourceRefs, verificationStatus
+- Grave schema enhanced: cemeteryId, sectionId, graveIdentifier, personIds, inscription, sourceRefs, verificationStatus
+- Flexible date format: YYYY, YYYY-MM, YYYY-MM-DD, unknown, approx_YYYY
+
+### Added — Android
+- PersonRecord model with date formatting (partial dates, approximate dates)
+- SearchResult model with multi-type results
+- CemeteryRecord enhanced with fromJson/fromJsonArray, getDisplayName, getLocationString, getVerificationLabel
+- GraveRecord enhanced with fromJson/fromJsonArray, getCemeteryName, getLifeDates, getVerificationLabel
+- GraveSubmission enhanced with Phase 4 fields (cemeteryId, countryCode, inscription, etc.)
+- ApiClient.search() — Unified search with type filter and pagination
+- ApiClient.getPerson() — Get person/memorial detail
+- ApiClient.submitCemetery() — Submit new cemetery
+- ApiClient.submitCorrection() — Submit correction proposal
+- ApiClient.getCountries() — List countries
+- ApiClient.getCorrectionStatus() — Check correction status
+
+### Added — Tests
+- 42 new backend tests (182 total): cemetery validation, correction validation, search ranking, ID generation, flexible dates, Unicode support
+- 30 new Android tests (75 total): PersonRecord date formatting, CemeteryRecord display/location, GraveRecord verification, SearchResult subtitle
+
+### Changed
+- Backend version: 2.0.0 → 4.0.0
+- ALLOWED_FIELDS expanded with Phase 4 fields
+- GitHub data README updated with worldwide structure
+- STATUS.md updated with Phase 4 feature matrix
+- docs/SECURITY.md and docs/PRODUCTION-READINESS.md remain current from P3.5
+
+
 ## v2.3.1 — Phase 3.5: Production Readiness & Security Hardening (2026-08-09)
 
 ### Added
