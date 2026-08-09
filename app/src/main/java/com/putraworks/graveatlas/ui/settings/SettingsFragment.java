@@ -23,6 +23,7 @@ import com.putraworks.graveatlas.auth.SecureStorage;
 import com.putraworks.graveatlas.auth.LoginActivity;
 import com.putraworks.graveatlas.ui.about.AboutFragment;
 import android.content.Intent;
+import com.putraworks.graveatlas.R;
 
 /**
  * Settings screen — API health check, API URL config, clear cache, about.
