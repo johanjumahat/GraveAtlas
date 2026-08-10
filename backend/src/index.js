@@ -1248,7 +1248,7 @@ function validateCemeterySubmission(body) {
   }
 
   if (body.countryCode && !/^[A-Z]{2}$/.test(body.countryCode)) return { valid: false, error: 'Invalid country code (use ISO 3166-1 alpha-2)' };
-  if (body.website && !/^https?:\/\/.test(body.website)) return { valid: false, error: 'Invalid website URL' };
+  if (body.website && !/^https?:\/\//.test(body.website)) return { valid: false, error: 'Invalid website URL' };
 
   if (JSON.stringify(body).length > MAX_BODY_SIZE) return { valid: false, error: 'Request too large (max 50KB)' };
 
