@@ -78,4 +78,20 @@
 
 1. **Worker deployment** — ✅ Complete (deployed 2026-08-10 with Unicode + User-Agent fixes)
 2. **GitHub App secrets** — ✅ Configured (githubConfigured: true, write path verified)
-3. **Android APK build** — ⏳ 3 compilation fixes pushed, build triggered — awaiting verification
+3. **Android APK build** — ✅ Build #56 passed (2026-08-10). APK released: GraveAtlas-v7.1.0-release.apk (7.0 MB)
+
+### Build #56 — Compilation Fixes Summary (2026-08-10)
+
+All compilation errors resolved across 9 commits:
+
+| Commit | File | Fix |
+|--------|------|-----|
+| 58f6598 | MainNavActivity.java | Misplaced closing brace — moved to end of file |
+| bf339d1 | github.js (backend) | Unicode-safe base64 + User-Agent header |
+| 60a6158 | index.js (backend) | Unterminated regex in validateCemeterySubmission |
+| 77971d1 | ApiClient.java | Added 5 missing model imports (GlobalSearchResponse, CountryInfo, RegionInfo, CityInfo, RelatedRecords) |
+| 4999a47 | CemeteryFragment.java | Added newInstance(String) factory method |
+| 6c47914 | GlobalSearchResponse.java | Replaced JSONObject.keySet() with keys() iterator (Android compat) |
+| a4733a1 | ApiClient.java | Removed duplicate getCountries method (type erasure name clash) |
+| d53d45d | ApiClient.java | Wrapped URLEncoder.encode in safeEncode() helper (unchecked exception) |
+| 3703fe3 | SearchResult.java | Added type label to getDisplaySubtitle() for cemetery/grave types |
