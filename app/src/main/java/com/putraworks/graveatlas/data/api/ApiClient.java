@@ -548,7 +548,7 @@ public class ApiClient {
      * Get regions for a country.
      */
     public void getRegions(String country, final ApiCallback<java.util.List<RegionInfo>> callback) {
-        HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/api/countries/" + java.net.URLEncoder.encode(country, "UTF-8") + "/regions").newBuilder();
+        HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/api/countries/" + safeEncode(country) + "/regions").newBuilder();
         Request request = new Request.Builder().url(urlBuilder.build()).get().build();
         client.newCall(request).enqueue(new Callback() {
             @Override
@@ -583,8 +583,8 @@ public class ApiClient {
      * Get cities for a country + region.
      */
     public void getCities(String country, String region, final ApiCallback<java.util.List<CityInfo>> callback) {
-        String encodedCountry = java.net.URLEncoder.encode(country, "UTF-8");
-        String encodedRegion = java.net.URLEncoder.encode(region, "UTF-8");
+        String encodedCountry = safeEncode(country);
+        String encodedRegion = safeEncode(region);
         Request request = new Request.Builder()
                 .url(baseUrl + "/api/countries/" + encodedCountry + "/regions/" + encodedRegion + "/cities")
                 .get()
@@ -831,6 +831,14 @@ public class ApiClient {
     }
 
     // ── Callback interface ──
+
+    private static String safeEncode(String value) {
+        try {
+            return java.net.URLEncoder.encode(value, "UTF-8");
+        } catch (java.io.UnsupportedEncodingException e) {
+            return value; // UTF-8 is always available on Android
+        }
+    }
 
     public interface ApiCallback<T> {
         void onSuccess(T result);
