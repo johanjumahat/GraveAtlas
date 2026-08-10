@@ -1,7 +1,7 @@
 # GraveAtlas — Status
 
 **Last updated:** 2026-08-10
-**Version:** 7.1.0 (Phase 7B)
+**Version:** 7.1.1 (Phase 7B)
 **Repository:** putraworks2026/GraveAtlas
 **Data repo:** putraworks2026/graveatlas-data
 **Worker:** graveatlas.putraworks-2026.workers.dev
@@ -47,9 +47,10 @@
 
 ### Build Status
 
-- **Android APK (GitHub Actions):** ✅ Fixed — AndroidManifest.xml duplicate `</intent-filter>` tag removed
-- **Last successful build:** Phase 5.5 merge (build #38)
-- **Failed builds:** Phase 7A (#39) and Phase 7B (#40) — both due to manifest parse error, now fixed
+- **Android APK (GitHub Actions):** ⏳ Fixed — 3 compilation bugs patched (see v7.1.2 changelog), build triggered
+- **Cloudflare Worker:** ✅ Deployed — v7.1.1 live at graveatlas.putraworks-2026.workers.dev
+- **Last successful Worker deploy:** 2026-08-10 (Version ba1c5716)
+- **Last successful APK build:** Phase 5.5 merge (build #38)
 - **Test suite:** 761 tests, all passing
 
 ### Test Results
@@ -73,8 +74,8 @@
 - `GET /api/recommendations/{id}` — Geographic recommendations (deterministic)
 - `GET /api/record/{type}/{id}` — Public record detail for share links
 
-### Remaining Production Blockers
+### Production Status
 
-1. **Worker deployment** — Needs Cloudflare API token + wrangler deploy
-2. **GitHub App secrets** — Need private key for submission pipeline
-3. **Android APK build** — Needs Android SDK + signing keystore
+1. **Worker deployment** — ✅ Complete (deployed 2026-08-10 with Unicode + User-Agent fixes)
+2. **GitHub App secrets** — ✅ Configured (githubConfigured: true, write path verified)
+3. **Android APK build** — ⏳ 3 compilation fixes pushed, build triggered — awaiting verification
