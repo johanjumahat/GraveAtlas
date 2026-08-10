@@ -93,8 +93,9 @@ public class SearchResult {
 
         // For cemeteries, show location info
         if ("cemetery".equals(type)) {
+            sb.append("Cemetery");
             if (cemeteryType != null) {
-                sb.append(cemeteryType);
+                sb.append(" (").append(cemeteryType).append(")");
             }
             if (city != null) {
                 if (sb.length() > 0) sb.append(" • ");
@@ -112,7 +113,11 @@ public class SearchResult {
         }
 
         // For people/graves/memorials
+        if (type != null) {
+            sb.append(type.substring(0, 1).toUpperCase()).append(type.substring(1));
+        }
         if (cemetery != null) {
+            if (sb.length() > 0) sb.append(" • ");
             sb.append(cemetery);
         }
         if (city != null) {
