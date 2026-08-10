@@ -1,5 +1,27 @@
 # CHANGELOG
 
+## v7.1.2 — Build & Worker Fixes: Compilation + Deployment (2026-08-10)
+
+### Fixed — Android Compilation (commit 58f6598)
+- **MainNavActivity.java:** Class closing brace was placed after `onBackPressed()`, leaving `onNewIntent()` and `handleDeepLink()` outside the class body. This caused 12+ "class, interface, enum, or record expected" errors and blocked all APK builds (runs #42-#44). Moved closing brace to end of file.
+
+### Fixed — Backend GitHub API Integration (commit bf339d1)
+- **github.js — Unicode-safe base64:** `btoa(content)` crashes on non-ASCII characters (DOMException). Cemetery names/descriptions frequently contain Unicode (em-dashes, accented names, Arabic/Chinese script). Replaced with `unicodeBtoa`/`unicodeAtob` using `TextEncoder`/`TextDecoder`.
+- **github.js — Missing User-Agent header:** All 7 GitHub API `fetch()` calls lacked a `User-Agent` header. GitHub requires this and intermittently returns 403 without it. Added `'User-Agent': 'GraveAtlas-Worker'` to all calls.
+
+### Fixed — Backend Build Error (commit 60a6158)
+- **index.js — Unterminated regex:** `validateCemeterySubmission` website validation regex `/^https?:\/\/` was missing its closing `/`, causing a build error that blocked `wrangler deploy`. Fixed to `/^https?:\/\//.test(...)`.
+
+### Deployed
+- Cloudflare Worker redeployed via `wrangler deploy` — Version ba1c5716
+- Full roundtrip verified: cemetery submission → file appeared in graveatlas-data repo → cleaned up
+- Unicode submissions (Arabic, Chinese, em-dashes) confirmed working end-to-end
+
+### Remaining
+- Android APK build verification (build triggered, awaiting result)
+
+## v7.1.1 — Build Fix: AndroidManifest.xml (2026-08-10)
+
 ## v7.1.1 — Build Fix: AndroidManifest.xml (2026-08-10)
 
 ### Fixed
