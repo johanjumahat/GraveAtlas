@@ -17,8 +17,24 @@
 - Full roundtrip verified: cemetery submission → file appeared in graveatlas-data repo → cleaned up
 - Unicode submissions (Arabic, Chinese, em-dashes) confirmed working end-to-end
 
-### Remaining
-- Android APK build verification (build triggered, awaiting result)
+### Additional Compilation Fixes (Builds #50-#56)
+
+After the initial 3 fixes, build #50 revealed additional compilation errors. Resolved across 6 more commits:
+
+| Commit | File | Fix |
+|--------|------|-----|
+| 77971d1 | ApiClient.java | Added 5 missing model imports: GlobalSearchResponse, CountryInfo, RegionInfo, CityInfo, RelatedRecords — all referenced but not imported. Also removed duplicate CemeteryRecord import. |
+| 4999a47 | CemeteryFragment.java | MainNavActivity.handleDeepLink() and SavedFragment both call CemeteryFragment.newInstance(id) but the method didn't exist. Added static factory method following the same pattern as GraveDetailFragment. |
+| 6c47914 | GlobalSearchResponse.java | Android's org.json.JSONObject does not have keySet() (that's a Java Map method). Replaced with keys() iterator for Android compatibility. |
+| a4733a1 | ApiClient.java | Phase 4 getCountries(List<String>) and Phase 7A getCountries(List<CountryInfo>) had the same erasure after type erasure. Removed the old Phase 4 version. |
+| d53d45d | ApiClient.java | URLEncoder.encode(x, "UTF-8") throws checked UnsupportedEncodingException that wasn't caught. Added safeEncode() helper. |
+| 3703fe3 | SearchResult.java | getDisplaySubtitle() wasn't including the type label ("Cemetery"/"Grave") that unit tests expected. Now prepends the capitalized type. |
+
+### Build Result
+- **Build #56** — ✅ SUCCESS (2026-08-10 02:07 UTC)
+- APK released: `GraveAtlas-v7.1.0-release.apk` (7.0 MB)
+- Download: https://github.com/putraworks2026/GraveAtlas/releases/download/v7.1.0-b56/GraveAtlas-v7.1.0-release.apk
+- SHA256 checksum included in release
 
 ## v7.1.1 — Build Fix: AndroidManifest.xml (2026-08-10)
 
