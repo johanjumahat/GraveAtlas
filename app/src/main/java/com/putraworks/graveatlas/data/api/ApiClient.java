@@ -763,45 +763,6 @@ public class ApiClient {
         }
     }
 
-    // ── Phase 4: Geographic Hierarchy ──
-
-    public void getCountries(final ApiCallback<List<String>> callback) {
-        Request request = new Request.Builder()
-                .url(baseUrl + "/api/countries")
-                .get()
-                .build();
-
-        client.newCall(request).enqueue(new Callback() {
-            @Override
-            public void onFailure(Call call, IOException e) {
-                callback.onError(ApiErrorHandler.getMessageForException(e));
-            }
-
-            @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                String body = response.body() != null ? response.body().string() : "{}";
-                if (response.isSuccessful()) {
-                    try {
-                        JSONObject json = new JSONObject(body);
-                        JSONArray arr = json.optJSONArray("countries");
-                        List<String> countries = new ArrayList<>();
-                        if (arr != null) {
-                            for (int i = 0; i < arr.length(); i++) {
-                                JSONObject c = arr.getJSONObject(i);
-                                countries.add(c.optString("name", ""));
-                            }
-                        }
-                        callback.onSuccess(countries);
-                    } catch (JSONException e) {
-                        callback.onError("Failed to parse countries");
-                    }
-                } else {
-                    callback.onError(ApiErrorHandler.getMessageForCode(response.code()));
-                }
-            }
-        });
-    }
-
     // ── Phase 4: Correction Status ──
 
     public void getCorrectionStatus(String correctionId, final ApiCallback<SubmissionStatus> callback) {
