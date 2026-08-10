@@ -4,9 +4,13 @@ import com.putraworks.graveatlas.data.model.CemeteryRecord;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
-import com.putraworks.graveatlas.data.model.CemeteryRecord;
 import com.putraworks.graveatlas.data.model.PersonRecord;
 import com.putraworks.graveatlas.data.model.SearchResult;
+import com.putraworks.graveatlas.data.model.GlobalSearchResponse;
+import com.putraworks.graveatlas.data.model.CountryInfo;
+import com.putraworks.graveatlas.data.model.RegionInfo;
+import com.putraworks.graveatlas.data.model.CityInfo;
+import com.putraworks.graveatlas.data.model.RelatedRecords;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
