@@ -34,6 +34,16 @@ import java.util.List;
  */
 public class CemeteryFragment extends Fragment implements ApiClient.ApiCallback<List<CemeteryRecord>> {
 
+    private static final String ARG_CEMETERY_ID = "cemetery_id";
+
+    public static CemeteryFragment newInstance(String cemeteryId) {
+        CemeteryFragment fragment = new CemeteryFragment();
+        Bundle args = new Bundle();
+        args.putString(ARG_CEMETERY_ID, cemeteryId);
+        fragment.setArguments(args);
+        return fragment;
+    }
+
     private static final int DEBOUNCE_MS = 400;
 
     private EditText searchInput;
