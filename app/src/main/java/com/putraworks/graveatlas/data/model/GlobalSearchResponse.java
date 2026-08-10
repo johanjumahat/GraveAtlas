@@ -35,7 +35,9 @@ public class GlobalSearchResponse {
 
         JSONObject catObj = json.optJSONObject("categories");
         if (catObj != null) {
-            for (String key : catObj.keySet()) {
+            java.util.Iterator<String> keys = catObj.keys();
+            while (keys.hasNext()) {
+                String key = keys.next();
                 resp.categories.put(key, catObj.optInt(key, 0));
             }
         }
