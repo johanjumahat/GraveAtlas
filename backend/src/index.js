@@ -178,6 +178,39 @@ function setIdempotencyEntry(key, submissionId) {
   });
 }
 
+
+// Serve a legal page (privacy policy / terms) as HTML for Play Store links
+async function serveLegalPage(title, filename, env) {
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GraveAtlas — ${title}</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 24px; color: #333; line-height: 1.6; }
+  h1 { color: #2c3e50; }
+  h2 { color: #34495e; margin-top: 28px; }
+  a { color: #2980b9; }
+  .footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid #eee; color: #999; font-size: 0.85em; }
+</style>
+</head>
+<body>
+<h1>GraveAtlas — ${title}</h1>
+<p><a href="https://github.com/putraworks2026/GraveAtlas/blob/main/docs/${filename}">View source on GitHub</a></p>
+<p>This page is served from the GraveAtlas API. For the full document, see the link above.</p>
+<p><strong>GraveAtlas</strong> is a community-driven cemetery and grave records platform.</p>
+<p>Privacy policy and terms of use are maintained in the project repository at <a href="https://github.com/putraworks2026/GraveAtlas">github.com/putraworks2026/GraveAtlas</a>.</p>
+<div class="footer">
+  GraveAtlas — Cemetery & Grave Finder<br>
+  Privacy: <a href="https://graveatlas.putraworks-2026.workers.dev/privacy">https://graveatlas.putraworks-2026.workers.dev/privacy</a><br>
+  Terms: <a href="https://graveatlas.putraworks-2026.workers.dev/terms">https://graveatlas.putraworks-2026.workers.dev/terms</a>
+</div>
+</body>
+</html>`;
+  return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+}
+
 export default {
   async fetch(request, env, ctx) {
     return handleRequest(request, env, ctx);
@@ -208,6 +241,14 @@ async function handleRequest(request, env, ctx) {
 
     if (path === '/' && method === 'GET') {
       return jsonResponse({ name: 'GraveAtlas API', version: '7.1.0', status: 'operational' }, 200, corsHeaders);
+    }
+
+    // ── Public legal pages (for Google Play Store links) ──
+    if (path === '/privacy' && method === 'GET') {
+      return serveLegalPage('Privacy Policy', 'PRIVACY.md', env);
+    }
+    if (path === '/terms' && method === 'GET') {
+      return serveLegalPage('Terms of Use', 'TERMS.md', env);
     }
 
     if (path === '/api/health' && method === 'GET') {

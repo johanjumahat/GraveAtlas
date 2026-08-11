@@ -119,7 +119,7 @@ See `docs/TERMS.md`
 
 ## Release Gate Checklist
 
-- [ ] All 346+ tests pass
+- [ ] All 415 tests pass
 - [ ] No secrets in source code
 - [ ] No hardcoded credentials
 - [ ] APK installs cleanly on Android 10/12/14
