@@ -15,9 +15,11 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
+import com.putraworks.graveatlas.MainActivity;
 import com.putraworks.graveatlas.MainNavActivity;
 import com.putraworks.graveatlas.data.api.ApiClient;
 import com.putraworks.graveatlas.data.model.GraveRecord;
+import com.putraworks.graveatlas.ui.evidence.EvidenceStatus;
 
 /**
  * Grave detail screen — shows full information for a single published grave.
