@@ -162,6 +162,44 @@ Before submission, the backend checks for likely duplicates:
 - Flagged duplicates go to moderation for review
 - Legitimate records are not automatically deleted
 
+## Publication Pipeline
+
+Approved submissions go through a safe publication pipeline:
+
+1. **Queued** — Publication record created in `publication-queue/`
+2. **Publishing** — Record written to GitHub repo via API
+3. **Published** — Success, record is now public
+4. **Failed** — All retries exhausted, admin can retry
+
+### Retry Policy
+- Max 3 attempts with exponential backoff (1s, 2s, 4s)
+- Rate limits detected and handled (waits `Retry-After` period)
+- Non-retryable errors fail immediately (404, 403 permission, 422 validation)
+- Failed publications preserve the approved state — never lose data
+
+### Change Diff
+Every publication generates a before/after diff stored in the audit trail:
+- Added fields, modified fields (with old/new values), removed fields
+- Summarized in commit messages
+
+### Merge Conflict Detection
+Before writing, the pipeline checks for concurrent modifications:
+- If existing record has a newer `updatedAt`, write is blocked (conflict)
+- Identical content is treated as idempotent (no-op)
+- Conflicts require moderator intervention
+
+### Mass Change Protection
+- Max 50 records per batch operation
+- Prevents accidental mass overwrites
+
+### Retry Endpoint
+```
+POST /api/admin/publication/{id}/retry
+```
+Retries a failed publication. Only works on `FAILED` state records.
+
+See `docs/PUBLICATION-PIPELINE.md` for full details.
+
 ## Moderation
 
 Moderators (admin-token authenticated, or users with `moderator`/`admin` role) can:

@@ -264,6 +264,14 @@ System status.
 ### POST /api/admin/restore/{id}
 Restore a removed record.
 
+### GET /api/admin/publication/{id}
+Get publication record status (state, attempts, errors, schema version).
+
+### POST /api/admin/publication/{id}/retry
+Retry a failed publication. Only works on records in FAILED state.
+
+Returns: `publicationId`, `attempts`, `success` boolean.
+
 ### GET /api/admin/contributions
 List all contributions (all users).
 

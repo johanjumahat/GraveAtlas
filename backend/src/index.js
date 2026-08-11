@@ -18,6 +18,7 @@
 
 import { getToken, writeFile, readFile, listFiles, deleteFile, sanitizePathSegment } from './github.js';
 import * as Phase6A from './phase6a.js';
+import * as Phase4A from './phase4a.js';
 import * as Phase7A from './phase7a.js';
 
 // ── Constants ──
@@ -60,9 +61,13 @@ const ENTITY_LIFECYCLE = ['ACTIVE', 'ARCHIVED', 'REMOVED_PENDING_REVIEW', 'REMOV
 
 // Valid submission status transitions
 const SUBMISSION_TRANSITIONS = {
-  'pending': ['under_review', 'rejected'],
-  'under_review': ['published', 'rejected'],
+  'pending': ['under_review', 'rejected', 'queued'],
+  'under_review': ['published', 'rejected', 'queued'],
+  'queued': ['publishing', 'failed'],
+  'publishing': ['published', 'failed'],
   'published': [],
+  'failed': ['retrying', 'queued'],
+  'retrying': ['publishing', 'failed'],
   'rejected': []
 };
 
@@ -564,6 +569,16 @@ async function handleRequest(request, env, ctx) {
 
     if (path.match(/^\/api\/admin\/users\/[^/]+\/role$/) && method === 'POST') {
       return await requireAdmin(request, env, corsHeaders, async () => handleSetUserRole(request, env, corsHeaders));
+    }
+
+    if (path.match(/^\/api\/admin\/publication\/[^/]+\/retry$/) && method === 'POST') {
+      const id = path.split('/')[3];
+      return await requireAdmin(request, env, corsHeaders, () => handleRetryPublication(id, request, env, corsHeaders));
+    }
+
+    if (path.match(/^\/api\/admin\/publication\/[^/]+$/) && method === 'GET') {
+      const id = path.split('/')[3];
+      return await requireAdmin(request, env, corsHeaders, () => handleGetPublicationStatus(id, env, corsHeaders));
     }
 
     if (path.match(/^\/api\/admin\/restore\/[^/]+$/) && method === 'POST') {
@@ -1666,29 +1681,53 @@ async function handleApproveSubmission(id, env, cors) {
     record.status = 'published';
     record.verificationStatus = record.verificationStatus || 'community_submitted';
     record.updatedAt = new Date().toISOString();
+    record.schemaVersion = record.schemaVersion || Phase4A.CURRENT_SCHEMA_VERSION;
 
-    // Write to graves/ directory
-    await writeFile(
-      `graves/${record.id}.json`,
-      JSON.stringify(record, null, 2),
-      env,
-      `approve: ${record.name} published`
-    );
+    // Generate change diff for audit trail
+    let existingRecord = null;
+    try {
+      const existingContent = await readFile(`graves/${record.id}.json`, env);
+      if (existingContent) existingRecord = JSON.parse(existingContent);
+    } catch (e) { /* New record */ }
 
-    // Delete from pending/
+    const changeDiff = Phase4A.generateChangeDiff(existingRecord, record);
+    const diffSummary = Phase4A.summarizeDiff(changeDiff);
+
+    // Create publication record for queue tracking
+    const pubRecord = await Phase4A.createPublicationRecord(env, safeId, 'grave', record);
+
+    // Safe publish with retry (max 3 attempts, exponential backoff)
+    const targetPath = `graves/${record.id}.json`;
+    const commitMsg = `approve: ${record.name || safeId} published (${diffSummary})`;
+    const pubResult = await Phase4A.safePublish(env, targetPath, record, commitMsg, pubRecord);
+
+    if (!pubResult.success) {
+      // Publication failed — preserve approved state, return error
+      return jsonResponse({
+        success: false,
+        error: `Publication failed after ${pubResult.attempts} attempts: ${pubResult.error?.message || 'unknown'}`,
+        publicationId: pubRecord.id,
+        retryable: pubResult.error?.type !== 'conflict' && pubResult.error?.type !== 'validation',
+      }, 502, cors);
+    }
+
+    // Delete from pending/ (non-fatal if fails)
     try {
       await deleteFile(`pending/${safeId}.json`, env, `Remove approved submission ${safeId} from pending`);
     } catch (e) { /* Non-fatal */ }
 
-    // Create audit event (Phase 4.5)
+    // Create audit event with change diff
     await createAuditEvent(env, {
       entityId: record.id,
       entityType: 'grave',
       action: 'APPROVE',
       actorType: 'admin',
-      reason: 'Submission approved and published',
+      reason: `Submission approved and published. Changes: ${diffSummary}`,
       previousState: { status: previousStatus, submissionId: safeId },
-      newState: { status: 'published', verificationStatus: record.verificationStatus }
+      newState: { status: 'published', verificationStatus: record.verificationStatus, schemaVersion: record.schemaVersion },
+      changeDiff,
+      publicationId: pubRecord.id,
+      attempts: pubResult.attempts,
     });
 
     // Update contributor stats (Phase 4.5)
@@ -1699,10 +1738,13 @@ async function handleApproveSubmission(id, env, cors) {
     return jsonResponse({
       success: true,
       message: `Submission ${safeId} approved and published`,
-      graveId: record.id
+      graveId: record.id,
+      publicationId: pubRecord.id,
+      attempts: pubResult.attempts,
+      changes: diffSummary,
     }, 200, cors);
   } catch (error) {
-    return jsonResponse({ success: false, error: 'Failed to approve submission' }, 500, cors);
+    return jsonResponse({ success: false, error: 'Failed to approve submission: ' + (error.message || 'unknown') }, 500, cors);
   }
 }
 
@@ -2941,6 +2983,87 @@ async function handleSetUserRole(request, env, cors) {
   await Phase6A.createContributionAuditEvent(env, Phase6A.AUDIT_ACTIONS.ROLE_ASSIGNED, 'admin', targetUserId, { role: body.role });
 
   return jsonResponse({ success: true, userId: targetUserId, role: result.role }, 200, cors);
+}
+
+// ── Publication pipeline handlers ──
+
+async function handleRetryPublication(pubId, request, env, cors) {
+  const safeId = sanitizePathSegment(pubId);
+  if (!safeId || safeId !== pubId) {
+    return jsonResponse({ success: false, error: 'Invalid publication ID' }, 400, cors);
+  }
+
+  try {
+    const content = await readFile(`publication-queue/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Publication record not found' }, 404, cors);
+    }
+
+    const pubRecord = JSON.parse(content);
+
+    if (pubRecord.state !== Phase4A.PUB_STATE_FAILED) {
+      return jsonResponse({ success: false, error: `Cannot retry: current state is ${pubRecord.state}` }, 409, cors);
+    }
+
+    // Retry the publication
+    const record = pubRecord.recordData;
+    const targetPath = pubRecord.recordType === 'grave' ? `graves/${record.id}.json` : `${pubRecord.recordType}s/${record.id}.json`;
+    const commitMsg = `retry: ${record.name || safeId} publication attempt ${pubRecord.attempts + 1}`;
+
+    const result = await Phase4A.safePublish(env, targetPath, record, commitMsg, pubRecord);
+
+    if (!result.success) {
+      return jsonResponse({
+        success: false,
+        error: `Retry failed after ${result.attempts} attempts: ${result.error?.message || 'unknown'}`,
+        publicationId: pubId,
+        attempts: result.attempts,
+      }, 502, cors);
+    }
+
+    return jsonResponse({
+      success: true,
+      message: `Publication ${pubId} succeeded on retry`,
+      publicationId: pubId,
+      attempts: result.attempts,
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to retry publication: ' + (error.message || 'unknown') }, 500, cors);
+  }
+}
+
+async function handleGetPublicationStatus(pubId, env, cors) {
+  const safeId = sanitizePathSegment(pubId);
+  if (!safeId || safeId !== pubId) {
+    return jsonResponse({ success: false, error: 'Invalid publication ID' }, 400, cors);
+  }
+
+  try {
+    const content = await readFile(`publication-queue/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Publication record not found' }, 404, cors);
+    }
+
+    const pubRecord = JSON.parse(content);
+    return jsonResponse({
+      success: true,
+      publication: {
+        id: pubRecord.id,
+        submissionId: pubRecord.submissionId,
+        recordType: pubRecord.recordType,
+        state: pubRecord.state,
+        attempts: pubRecord.attempts,
+        maxAttempts: pubRecord.maxAttempts,
+        createdAt: pubRecord.createdAt,
+        updatedAt: pubRecord.updatedAt,
+        publishedAt: pubRecord.publishedAt,
+        lastError: pubRecord.lastError,
+        schemaVersion: pubRecord.schemaVersion,
+      },
+    }, 200, cors);
+  } catch (e) {
+    return jsonResponse({ success: false, error: 'Failed to read publication record' }, 500, cors);
+  }
 }
 
 async function handleListAllContributions(request, env, cors) {

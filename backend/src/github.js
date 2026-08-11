@@ -194,6 +194,26 @@ async function writeFile(path, content, env, commitMessage) {
   });
 
   if (!resp.ok) {
+    // Check for rate limiting
+    const remaining = resp.headers.get('X-RateLimit-Remaining');
+    const reset = resp.headers.get('X-RateLimit-Reset');
+    if (resp.status === 403 && remaining === '0') {
+      const retryAfter = reset ? Math.max(1, parseInt(reset, 10) - Math.floor(Date.now() / 1000)) : 60;
+      throw new Error(`GitHub API error: 403 (rate limited, retry after ${retryAfter}s)`);
+    }
+    if (resp.status === 429) {
+      const retryAfter = resp.headers.get('Retry-After') || '60';
+      throw new Error(`GitHub API error: 429 (rate limited, retry after ${retryAfter}s)`);
+    }
+    if (resp.status === 404) {
+      throw new Error(`GitHub API error: 404 (not found: ${path})`);
+    }
+    if (resp.status === 403) {
+      throw new Error(`GitHub API error: 403 (permission denied)`);
+    }
+    if (resp.status === 409) {
+      throw new Error(`GitHub API error: 409 (conflict — file changed)`);
+    }
     throw new Error(`GitHub API error: ${resp.status}`);
   }
 
@@ -253,7 +273,13 @@ async function deleteFile(path, env, commitMessage) {
   });
 
   if (!getResp.ok) {
-    throw new Error(`File not found for deletion: ${getResp.status}`);
+    if (getResp.status === 404) {
+      throw new Error(`GitHub API error: 404 (file not found for deletion: ${path})`);
+    }
+    if (getResp.status === 403) {
+      throw new Error(`GitHub API error: 403 (permission denied for deletion)`);
+    }
+    throw new Error(`GitHub API error: ${getResp.status} (deletion lookup failed)`);
   }
 
   const data = await getResp.json();
@@ -274,7 +300,13 @@ async function deleteFile(path, env, commitMessage) {
   });
 
   if (!deleteResp.ok) {
-    throw new Error(`GitHub delete failed: ${deleteResp.status}`);
+    if (deleteResp.status === 403) {
+      throw new Error(`GitHub API error: 403 (permission denied for delete)`);
+    }
+    if (deleteResp.status === 409) {
+      throw new Error(`GitHub API error: 409 (conflict during delete)`);
+    }
+    throw new Error(`GitHub API error: ${deleteResp.status} (delete failed)`);
   }
 
   return true;
