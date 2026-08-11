@@ -17,7 +17,10 @@
 | 7. Reliability, Observability & CI/CD | ✅ COMPLETE | 100% |
 | 8. Production Release & Store Readiness | ✅ COMPLETE | 100% |
 
-**All 8 phases complete. 415 tests passing. Ready for release.**
+**All 8 phases complete. Phase 9 post-launch audit done. 415 tests passing. Ready for release.**
+- Security: Dependabot enabled, SECURITY.md added (2026-08-11)
+- Feedback: in-app "Send Feedback" action added to Settings
+- CI failure rate investigated (40% historical, all compilation errors from unreviewed pushes)
 
 ## Architecture
 
