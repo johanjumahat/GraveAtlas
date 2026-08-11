@@ -184,6 +184,32 @@ public class SettingsFragment extends Fragment {
         }
         layout.addView(accountBtn);
 
+
+        // ── Send Feedback ──
+        TextView feedbackTitle = new TextView(getContext());
+        feedbackTitle.setText("Feedback");
+        feedbackTitle.setTextSize(15);
+        feedbackTitle.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        feedbackTitle.setPadding(0, 16, 0, 8);
+        layout.addView(feedbackTitle);
+
+        TextView feedbackDesc = new TextView(getContext());
+        feedbackDesc.setText("Report a bug or suggest a feature");
+        feedbackDesc.setTextSize(12);
+        feedbackDesc.setTextColor(0xFF5F6368);
+        feedbackDesc.setPadding(0, 0, 0, 8);
+        layout.addView(feedbackDesc);
+
+        Button feedbackBtn = new Button(getContext());
+        feedbackBtn.setText("Send Feedback");
+        feedbackBtn.setAllCaps(false);
+        feedbackBtn.setOnClickListener(v -> {
+            String issueUrl = "https://github.com/putraworks2026/GraveAtlas/issues/new?labels=feedback&template=bug_report.md&title=%5BFeedback%5D+";
+            Intent browserIntent = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(issueUrl));
+            startActivity(browserIntent);
+        });
+        layout.addView(feedbackBtn);
+
         return layout;
     }
 
