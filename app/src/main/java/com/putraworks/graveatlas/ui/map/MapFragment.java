@@ -20,14 +20,24 @@ import com.putraworks.graveatlas.data.api.ApiErrorHandler;
 import com.putraworks.graveatlas.data.api.LocalCache;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Map screen — lists grave locations with coordinates and opens device maps app.
- * No paid map SDK — uses geo: intents to open the device's default map application.
- * Falls back to cached data when offline.
+ * Map screen — displays grave locations with grid-based clustering.
+ *
+ * Features:
+ * - Grid-based clustering: nearby records grouped into clusters
+ * - Cluster cards show count + representative name
+ * - Tapping a cluster opens the device map app at the cluster center
+ * - Tapping a single record opens the device map app at that location
+ * - No paid map SDK — uses geo: intents
+ * - Falls back to cached data when offline
+ * - Empty/error/offline states handled gracefully
  */
 public class MapFragment extends Fragment implements ApiClient.ApiCallback<List<GraveRecord>> {
+
+    private static final double CLUSTER_GRID_SIZE_KM = 1.0; // ~1km grid cells
 
     private LinearLayout contentLayout;
     private ProgressBar progressBar;
@@ -35,7 +45,7 @@ public class MapFragment extends Fragment implements ApiClient.ApiCallback<List<
     private Button retryBtn;
     private ApiClient apiClient;
     private LocalCache cache;
-    private List<GraveRecord> graves = new java.util.ArrayList<>();
+    private List<GraveRecord> graves = new ArrayList<>();
 
     @Nullable
     @Override
@@ -84,14 +94,14 @@ public class MapFragment extends Fragment implements ApiClient.ApiCallback<List<
         // Load cached first
         List<GraveRecord> cached = cache.getCachedGraves();
         if (!cached.isEmpty()) {
-            List<GraveRecord> withCoords = new java.util.ArrayList<>();
+            List<GraveRecord> withCoords = new ArrayList<>();
             for (GraveRecord g : cached) {
                 if (g.hasCoordinates()) withCoords.add(g);
             }
             if (!withCoords.isEmpty()) {
                 graves = withCoords;
                 statusText.setText(withCoords.size() + " locations (cached)");
-                displayLocations(withCoords);
+                displayClusters(withCoords);
             }
         }
 
@@ -107,49 +117,178 @@ public class MapFragment extends Fragment implements ApiClient.ApiCallback<List<
         apiClient.getGraves(this);
     }
 
-    private void displayLocations(List<GraveRecord> graves) {
-        if (graves.isEmpty()) {
-            TextView empty = new TextView(getContext());
-            empty.setText("No locations with coordinates available.");
-            empty.setPadding(0, 24, 0, 24);
-            contentLayout.addView(empty);
+    // ── Grid-based clustering ──
+
+    /**
+     * Groups nearby records into clusters by ~1km grid cells.
+     * Records in the same grid cell are grouped; single records show individually.
+     */
+    private List<Cluster> buildClusters(List<GraveRecord> records) {
+        java.util.Map<String, Cluster> clusterMap = new java.util.HashMap<>();
+
+        for (GraveRecord g : records) {
+            if (!g.hasCoordinates()) continue;
+
+            String cellKey = gridCellKey(g.latitude, g.longitude, CLUSTER_GRID_SIZE_KM);
+            Cluster cluster = clusterMap.get(cellKey);
+            if (cluster == null) {
+                cluster = new Cluster();
+                cluster.cellKey = cellKey;
+                cluster.centerLat = g.latitude;
+                cluster.centerLon = g.longitude;
+                clusterMap.put(cellKey, cluster);
+            }
+            cluster.records.add(g);
+            // Update center as average of all records in the cluster
+            cluster.centerLat = (cluster.centerLat * (cluster.records.size() - 1) + g.latitude) / cluster.records.size();
+            cluster.centerLon = (cluster.centerLon * (cluster.records.size() - 1) + g.longitude) / cluster.records.size();
+        }
+
+        List<Cluster> clusters = new ArrayList<>(clusterMap.values());
+        // Sort by cluster size descending — larger clusters first
+        clusters.sort((a, b) -> Integer.compare(b.records.size(), a.records.size()));
+        return clusters;
+    }
+
+    /**
+     * Maps a lat/lon to a grid cell key based on the given cell size in km.
+     * Uses approximate degree-to-km conversion (1° lat ≈ 111km).
+     */
+    private String gridCellKey(double lat, double lon, double cellSizeKm) {
+        double latStep = cellSizeKm / 111.0;
+        double lonStep = cellSizeKm / (111.0 * Math.cos(Math.toRadians(lat)));
+        int gridLat = (int) Math.floor(lat / latStep);
+        int gridLon = (int) Math.floor(lon / lonStep);
+        return gridLat + ":" + gridLon;
+    }
+
+    private void displayClusters(List<GraveRecord> records) {
+        List<Cluster> clusters = buildClusters(records);
+
+        if (clusters.isEmpty()) {
+            displayEmptyState();
             return;
         }
 
-        for (GraveRecord g : graves) {
-            if (!g.hasCoordinates()) continue;
+        int singleCount = 0;
+        int clusterCount = 0;
 
-            TextView card = new TextView(getContext());
-            StringBuilder sb = new StringBuilder();
-            sb.append(g.name != null ? g.name : "Unknown");
-            if (g.cemetery != null) sb.append("\n").append(g.cemetery);
-            sb.append(String.format("\n📍 %.4f, %.4f", g.latitude, g.longitude));
-            card.setText(sb.toString());
-            card.setPadding(24, 24, 24, 24);
-            card.setTextSize(14);
-            card.setContentDescription("Location: " + (g.name != null ? g.name : "Unknown"));
-
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT);
-            lp.setMargins(0, 0, 0, 12);
-            card.setLayoutParams(lp);
-
-            card.setOnClickListener(v -> {
-                String geoUri = String.format("geo:%f,%f?q=%f,%f(%s)",
-                        g.latitude, g.longitude,
-                        g.latitude, g.longitude,
-                        g.name != null ? g.name : "Grave Location");
-                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(geoUri));
-                startActivity(intent);
-            });
-            contentLayout.addView(card);
+        for (Cluster cluster : clusters) {
+            if (cluster.records.size() > 1) {
+                clusterCount++;
+                displayClusterCard(cluster);
+            } else {
+                singleCount++;
+                displaySingleCard(cluster.records.get(0));
+            }
         }
+
+        statusText.setText(records.size() + " locations — " + clusterCount + " clusters, " + singleCount + " individual");
     }
+
+    private void displayClusterCard(Cluster cluster) {
+        LinearLayout card = new LinearLayout(getContext());
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(24, 24, 24, 24);
+
+        TextView badge = new TextView(getContext());
+        badge.setText(String.valueOf(cluster.records.size()));
+        badge.setTextSize(18);
+        badge.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        badge.setTextColor(0xFF1A73E8);
+        card.addView(badge);
+
+        TextView label = new TextView(getContext());
+        // Use the first record's name as representative
+        GraveRecord rep = cluster.records.get(0);
+        String repName = rep.name != null ? rep.name : "Unknown";
+        if (cluster.records.size() > 1) {
+            label.setText(repName + " and " + (cluster.records.size() - 1) + " more nearby");
+        } else {
+            label.setText(repName);
+        }
+        label.setTextSize(14);
+        label.setPadding(0, 4, 0, 0);
+        card.addView(label);
+
+        TextView coords = new TextView(getContext());
+        coords.setText(String.format("📍 %.4f, %.4f", cluster.centerLat, cluster.centerLon));
+        coords.setTextSize(12);
+        coords.setTextColor(0xFF5F6368);
+        coords.setPadding(0, 4, 0, 0);
+        card.addView(coords);
+
+        card.setContentDescription("Cluster of " + cluster.records.size() + " locations near " + repName);
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, 0, 0, 12);
+        card.setLayoutParams(lp);
+
+        card.setOnClickListener(v -> {
+            // Open map at cluster center with a closer zoom
+            String geoUri = String.format("geo:%f,%f?z=15&q=%f,%f(%d locations)",
+                    cluster.centerLat, cluster.centerLon,
+                    cluster.centerLat, cluster.centerLon,
+                    cluster.records.size());
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(geoUri));
+            startActivity(intent);
+        });
+
+        contentLayout.addView(card);
+    }
+
+    private void displaySingleCard(GraveRecord g) {
+        TextView card = new TextView(getContext());
+        StringBuilder sb = new StringBuilder();
+        sb.append(g.name != null ? g.name : "Unknown");
+        if (g.cemetery != null) sb.append("\n").append(g.cemetery);
+        sb.append(String.format("\n📍 %.4f, %.4f", g.latitude, g.longitude));
+        card.setText(sb.toString());
+        card.setPadding(24, 24, 24, 24);
+        card.setTextSize(14);
+        card.setContentDescription("Location: " + (g.name != null ? g.name : "Unknown"));
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, 0, 0, 12);
+        card.setLayoutParams(lp);
+
+        card.setOnClickListener(v -> {
+            String geoUri = String.format("geo:%f,%f?q=%f,%f(%s)",
+                    g.latitude, g.longitude,
+                    g.latitude, g.longitude,
+                    g.name != null ? g.name : "Grave Location");
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(geoUri));
+            startActivity(intent);
+        });
+        contentLayout.addView(card);
+    }
+
+    private void displayEmptyState() {
+        TextView empty = new TextView(getContext());
+        empty.setText("No locations with coordinates available.\n\nContributed records may not have coordinates yet.");
+        empty.setPadding(0, 24, 0, 24);
+        empty.setTextSize(13);
+        contentLayout.addView(empty);
+    }
+
+    // ── Cluster helper class ──
+
+    private static class Cluster {
+        String cellKey;
+        double centerLat;
+        double centerLon;
+        List<GraveRecord> records = new ArrayList<>();
+    }
+
+    // ── API callbacks ──
 
     @Override
     public void onSuccess(List<GraveRecord> result) {
-        List<GraveRecord> withCoords = new java.util.ArrayList<>();
+        List<GraveRecord> withCoords = new ArrayList<>();
         for (GraveRecord g : result) {
             if (g.hasCoordinates()) withCoords.add(g);
         }
@@ -158,8 +297,12 @@ public class MapFragment extends Fragment implements ApiClient.ApiCallback<List<
         if (getActivity() != null) {
             getActivity().runOnUiThread(() -> {
                 progressBar.setVisibility(View.GONE);
-                statusText.setText(withCoords.size() + " locations");
-                displayLocations(withCoords);
+                if (withCoords.isEmpty()) {
+                    statusText.setText("No locations with coordinates");
+                    displayEmptyState();
+                } else {
+                    displayClusters(withCoords);
+                }
             });
         }
     }
@@ -170,10 +313,10 @@ public class MapFragment extends Fragment implements ApiClient.ApiCallback<List<
             getActivity().runOnUiThread(() -> {
                 progressBar.setVisibility(View.GONE);
                 if (!graves.isEmpty()) {
-                    statusText.setText("Showing cached data (" + graves.size() + " locations)");
-                    displayLocations(graves);
+                    statusText.setText("⚠ Showing cached data (" + graves.size() + " locations)");
+                    displayClusters(graves);
                 } else {
-                    statusText.setText(error);
+                    statusText.setText("Unable to load locations.\n" + error);
                     retryBtn.setVisibility(View.VISIBLE);
                 }
             });
