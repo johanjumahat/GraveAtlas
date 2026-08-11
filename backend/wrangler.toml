@@ -3,7 +3,7 @@ main = "src/index.js"
 compatibility_date = "2024-01-01"
 
 # Environment variables — non-secret values only.
-# Set real secrets via: wrangler secret put SECRET_NAME
+# Set real values via: wrangler secret put SECRET_NAME
 
 [vars]
 GITHUB_OWNER = "putraworks2026"
@@ -16,3 +16,16 @@ GITHUB_BRANCH = "main"
 # GITHUB_INSTALLATION_ID — numeric installation ID
 # ADMIN_TOKEN — admin authentication token
 # ALLOWED_ORIGIN — optional, for web admin UI CORS (e.g., https://admin.example.com)
+
+# ── Staging environment ──
+# Deploy with: wrangler deploy --env staging
+# Uses a separate data repo branch so staging tests never touch production data.
+# Secrets must be set per-environment:
+#   wrangler secret put GITHUB_APP_ID --env staging
+#   wrangler secret put GITHUB_PRIVATE_KEY --env staging
+#   wrangler secret put GITHUB_INSTALLATION_ID --env staging
+#   wrangler secret put ADMIN_TOKEN --env staging
+
+[env.staging]
+name = "graveatlas-staging"
+vars = { GITHUB_OWNER = "putraworks2026", GITHUB_REPO = "graveatlas-data", GITHUB_BRANCH = "staging" }

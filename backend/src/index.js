@@ -1028,6 +1028,13 @@ async function handleSearch(request, env, cors) {
     return jsonResponse({ success: true, results: [], count: 0, message: 'Search unavailable — GitHub not configured.' }, 200, cors);
   }
 
+  // Check response cache first — prevents repeated linear scans for identical queries
+  const cacheKey = `search:${type}:${query}:${limit}:${offset}`;
+  const cached = getCacheEntry(cacheKey);
+  if (cached) {
+    return jsonResponse(cached, 200, cors);
+  }
+
   const results = [];
   const normalizedQuery = normalizeSearchText(query);
 
@@ -1103,7 +1110,7 @@ async function handleSearch(request, env, cors) {
     const paged = results.slice(offset, offset + limit);
     const hasMore = offset + limit < total;
 
-    return jsonResponse({
+    const searchResponse = {
       success: true,
       results: paged,
       count: paged.length,
@@ -1112,7 +1119,9 @@ async function handleSearch(request, env, cors) {
       offset,
       hasMore,
       query
-    }, 200, cors);
+    };
+    setCacheEntry(cacheKey, searchResponse);
+    return jsonResponse(searchResponse, 200, cors);
   } catch (error) {
     return jsonResponse({ success: true, results: [], count: 0, message: 'Search temporarily unavailable.' }, 200, cors);
   }
@@ -1719,6 +1728,9 @@ async function handleApproveSubmission(id, env, cors) {
     try {
       await deleteFile(`pending/${safeId}.json`, env, `Remove approved submission ${safeId} from pending`);
     } catch (e) { /* Non-fatal */ }
+
+    // Invalidate search cache — new published data available
+    clearResponseCache();
 
     // Create audit event with change diff
     await createAuditEvent(env, {
