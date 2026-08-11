@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-08-11
 **Version:** Backend 7.1.0 | Android 1.0.0 | Schema 1.0.0
-**Tests:** 370 passing, 0 failed
+**Tests:** 415 passing, 0 failed
 
 ## Phase Completion
 
@@ -17,12 +17,12 @@
 | 7. Reliability, Observability & CI/CD | ✅ COMPLETE | 100% |
 | 8. Production Release & Store Readiness | ✅ COMPLETE | 100% |
 
-**All 8 phases complete. 370 tests passing. Ready for release.**
+**All 8 phases complete. 415 tests passing. Ready for release.**
 
 ## Architecture
 
 - **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 60+ API routes
-- **Android:** 17 screens with navigation host, OSM map, offline support
+- **Android:** 17 screens with navigation host, external maps handoff (geo: intent), offline support
 - **Data:** GitHub repository (graveatlas-data) with JSON schemas
 - **Auth:** Session tokens, roles (user/moderator/admin), 24h expiry
 - **Publication:** Safe retry, change diff, merge safety, PR option
@@ -31,7 +31,7 @@
 
 - Backend routes: 60+
 - Android screens: 17
-- Tests: 370
+- Tests: 415
 - Documentation: 60+ docs
 - Schemas: 6 (grave, cemetery, person, source, correction, audit-event)
 

@@ -101,7 +101,7 @@ The request specified `/android` as the directory name. The existing project use
 
 ### Not Yet Implemented
 - Fragment-based navigation host in MainActivity
-- Map SDK integration (OSM or Google Maps)
+- External maps handoff (geo: intent — no embedded map SDK)
 - Photo capture and upload
 - GitHub App authentication in backend
 - GitHub API integration (read/write to repo)
