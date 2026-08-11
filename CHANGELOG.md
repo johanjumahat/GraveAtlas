@@ -1,5 +1,26 @@
 # CHANGELOG
 
+## Phase 1 Gap Closure — Audit + Docs + Request IDs (2026-08-11)
+
+### Added
+- **docs/DATA-SCHEMA.md** — All 6 schema entities documented (grave, cemetery, person, source, correction, audit event) with fields, types, constraints, and validation rules
+- **docs/CONTRIBUTION-WORKFLOW.md** — Full contribution→moderation→publication workflow: types, statuses, drafts, duplicate detection, moderation actions, audit trail, abuse protection
+- **docs/DEVELOPMENT.md** — Project structure, prerequisites, env setup, build/deploy commands, CI/CD, development principles
+- **github/schema/audit-event-schema.json** — Formal JSON Schema (draft-07) for audit events. Was implemented in code but had no schema file
+- **backend/src/index.js** — `X-Request-Id` header on all API responses. Either echoes client's `X-Request-Id` or auto-generates `req_<16hex>` for correlation/tracing
+
+### Updated
+- **PHASE-AUDIT.md** — Corrected audit. Previous version understated completion (only checked subset of files). Actual: 346 tests (not 24), 48 docs (not 8), 5 schemas (not 2), 17 Android screens (15 functional), Phase 6a/7a modules, import framework, countries data
+- **STATUS.md** — Updated to reflect Phase 1 gap closure and corrected audit results
+
+### Verified
+- 346 tests passing
+- No secrets exposed in any new or modified files
+- All changes pushed to GitHub main branch
+
+---
+
+
 ## v7.1.2 — Build & Worker Fixes: Compilation + Deployment (2026-08-10)
 
 ### Fixed — Android Compilation (commit 58f6598)

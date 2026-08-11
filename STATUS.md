@@ -1,6 +1,6 @@
 # GraveAtlas — Status
 
-**Last updated:** 2026-08-10
+**Last updated:** 2026-08-11
 **Version:** 7.1.1 (Phase 7B)
 **Repository:** putraworks2026/GraveAtlas
 **Data repo:** putraworks2026/graveatlas-data
@@ -8,7 +8,31 @@
 
 ---
 
-## Current Phase: 7B — Advanced Maps, Nearby & Saved Places
+## Current Phase: Phase 2 Gap Closure (post-audit)
+
+### Phase Audit (2026-08-11)
+
+A full audit was conducted against all 8 phase master prompt specifications. The audit found the codebase is significantly more mature than initially assessed.
+
+| Phase | Title | Completion | Status |
+|-------|-------|------------|--------|
+| 1 | Project Architecture & Foundation | ~100% | ✅ Complete (audit gaps closed 2026-08-11) |
+| 2 | Core Data, Search, Map & Public Discovery | ~75% | In progress |
+| 3 | Contributions, Auth, Moderation & Data Quality | ~80% | Substantially complete |
+| 4 | GitHub Publication, Data Pipeline & Release | ~50% | Partial |
+| 5 | Advanced Search, Discovery & UX | ~75% | Substantially complete |
+| 6 | Security, Privacy & Hardening | ~45% | Partial |
+| 7 | Reliability, Observability, CI/CD & Ops | ~35% | Early stage |
+| 8 | Production Release, Store Readiness & Launch | ~5% | Not started |
+
+### Phase 1 Gap Closure (2026-08-11)
+
+Closed all remaining Phase 1 acceptance gate gaps:
+- `docs/DATA-SCHEMA.md` — all 6 schema entities documented
+- `docs/CONTRIBUTION-WORKFLOW.md` — full contribution/moderation workflow
+- `docs/DEVELOPMENT.md` — project structure, env setup, CI/CD, principles
+- `github/schema/audit-event-schema.json` — formal JSON Schema for audit events
+- `backend/src/index.js` — X-Request-Id header on all API responses for correlation
 
 ### Completed Phases
 
@@ -47,15 +71,15 @@
 
 ### Build Status
 
-- **Android APK (GitHub Actions):** ⏳ Fixed — 3 compilation bugs patched (see v7.1.2 changelog), build triggered
+- **Android APK (GitHub Actions):** ✅ Build #56 passed (2026-08-10). APK released: GraveAtlas-v7.1.0-release.apk (7.0 MB)
 - **Cloudflare Worker:** ✅ Deployed — v7.1.1 live at graveatlas.putraworks-2026.workers.dev
 - **Last successful Worker deploy:** 2026-08-10 (Version ba1c5716)
-- **Last successful APK build:** Phase 5.5 merge (build #38)
-- **Test suite:** 761 tests, all passing
+- **Last successful APK build:** Build #56 (2026-08-10)
+- **Test suite:** 346 tests, all passing (core suite run 2026-08-11)
 
 ### Test Results
 
-- **Total tests:** 761 (346 core + 47 Phase 5 + 64 import + 123 Phase 6A + 105 Phase 7A + 76 Phase 7B)
+- **Total tests:** 346 (core backend suite)
 - **All passing:** ✅
 
 ### Android Components
@@ -73,6 +97,7 @@
 - `GET /api/nearby` — Nearby search by lat/lon/radius
 - `GET /api/recommendations/{id}` — Geographic recommendations (deterministic)
 - `GET /api/record/{type}/{id}` — Public record detail for share links
+- All responses now include `X-Request-Id` header for correlation
 
 ### Production Status
 
@@ -80,18 +105,9 @@
 2. **GitHub App secrets** — ✅ Configured (githubConfigured: true, write path verified)
 3. **Android APK build** — ✅ Build #56 passed (2026-08-10). APK released: GraveAtlas-v7.1.0-release.apk (7.0 MB)
 
-### Build #56 — Compilation Fixes Summary (2026-08-10)
+### Next Steps
 
-All compilation errors resolved across 9 commits:
-
-| Commit | File | Fix |
-|--------|------|-----|
-| 58f6598 | MainNavActivity.java | Misplaced closing brace — moved to end of file |
-| bf339d1 | github.js (backend) | Unicode-safe base64 + User-Agent header |
-| 60a6158 | index.js (backend) | Unterminated regex in validateCemeterySubmission |
-| 77971d1 | ApiClient.java | Added 5 missing model imports (GlobalSearchResponse, CountryInfo, RegionInfo, CityInfo, RelatedRecords) |
-| 4999a47 | CemeteryFragment.java | Added newInstance(String) factory method |
-| 6c47914 | GlobalSearchResponse.java | Replaced JSONObject.keySet() with keys() iterator (Android compat) |
-| a4733a1 | ApiClient.java | Removed duplicate getCountries method (type erasure name clash) |
-| d53d45d | ApiClient.java | Wrapped URLEncoder.encode in safeEncode() helper (unchecked exception) |
-| 3703fe3 | SearchResult.java | Added type label to getDisplaySubtitle() for cemetery/grave types |
+1. Close Phase 2 gaps: 4 missing docs, map clustering, map empty states
+2. Close Phase 3 gaps: session-based auth, moderator role
+3. Close Phase 4 gaps: publication states, retry, queue
+4. Begin Phase 8: release preparation, store readiness
