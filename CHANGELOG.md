@@ -1,5 +1,45 @@
 # CHANGELOG
 
+## Phase 4 Gap Closure — Publication Pipeline, Retry, Change Diff, Rate Limits (2026-08-11)
+
+### Added — Backend (phase4a.js)
+- **Publication states:** QUEUED, PUBLISHING, PUBLISHED, FAILED, RETRYING with valid transitions
+- **Safe retry:** Max 3 attempts, exponential backoff (1s/2s/4s), rate limit awareness
+- **Change diff:** Structured before/after comparison (added/modified/removed/unchanged)
+- **Merge conflict detection:** Blocks writes if existing record has newer updatedAt
+- **Rate limit detection:** Reads X-RateLimit-Remaining, X-RateLimit-Reset, Retry-After headers
+- **Error categorization:** Retryable (5xx, 429, 409) vs non-retryable (404, 403, 422)
+- **Mass change protection:** Max 50 records per batch
+- **Schema versioning:** CURRENT_SCHEMA_VERSION = 1.0.0
+- **Publication queue:** Records stored in publication-queue/{id}.json
+
+### Updated — Backend (index.js)
+- Approve handler uses safePublish with retry, change diff, publication queue tracking
+- POST /api/admin/publication/{id}/retry — retry failed publication
+- GET /api/admin/publication/{id} — get publication status
+- SUBMISSION_TRANSITIONS updated with queued/publishing/failed/retrying
+
+### Updated — Backend (github.js)
+- Better error messages: rate limit detection in writeFile, readFile, deleteFile
+- 403+remaining=0 → rate limit with retry delay
+- 404 → not found with file path
+- 409 → conflict message
+- 429 → rate limit with Retry-After
+
+### Added — Docs
+- docs/PUBLICATION-PIPELINE.md — full pipeline documentation
+- CONTRIBUTION-WORKFLOW.md — publication pipeline section
+- API-PUBLIC.md — publication retry/status endpoints
+
+### Phase Status
+- Phase 1: Complete
+- Phase 2: Complete
+- Phase 3: Nearly complete
+- Phase 4: Nearly complete
+
+---
+
+
 ## Phase 3 Gap Closure — Sessions, Roles, Moderation Notes, Statuses (2026-08-11)
 
 ### Added — Backend (phase6a.js)
