@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Audit Event",
+  "description": "An audit trail event recording a significant action in GraveAtlas",
+  "type": "object",
+  "required": ["id", "action", "entityType", "timestamp"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^audit_[a-z0-9]+$",
+      "description": "Unique identifier for the audit event"
+    },
+    "action": {
+      "type": "string",
+      "enum": ["CREATE", "UPDATE", "DELETE", "APPROVE", "REJECT", "REQUEST_CORRECTION", "VERIFY", "UNVERIFY", "REPORT", "RESTORE"],
+      "description": "The action performed"
+    },
+    "entityType": {
+      "type": "string",
+      "description": "Type of entity affected (grave, cemetery, person, source, correction, submission, report, user)"
+    },
+    "entityId": {
+      "type": ["string", "null"],
+      "description": "ID of the affected entity"
+    },
+    "userId": {
+      "type": ["string", "null"],
+      "description": "ID of the user who performed the action"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of the event"
+    },
+    "details": {
+      "type": ["object", "null"],
+      "description": "Additional context about the action. Must not contain secrets, tokens, or private user data.",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

@@ -184,8 +184,12 @@ async function handleRequest(request, env, ctx) {
   const path = url.pathname;
   const method = request.method;
 
+  // Generate or reuse request ID for correlation/tracing
+  const requestId = request.headers.get('X-Request-Id') || generateRequestId();
+
   // Build CORS headers — configurable via ALLOWED_ORIGIN
   const corsHeaders = buildCorsHeaders(env);
+  corsHeaders['X-Request-Id'] = requestId;
 
   if (method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -2643,7 +2647,17 @@ function generateId() {
   const bytes = new Uint8Array(12);
   crypto.getRandomValues(bytes);
   const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-  return `sub_${hex}`;
+  return `sub_${hex}
+
+// ── Request ID / Correlation ID ──
+
+function generateRequestId() {
+  // Generate a short, URL-safe request ID for tracing
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  return 'req_' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+`;
 }
 
 // ── Admin auth ──
@@ -2686,12 +2700,13 @@ function safeTokenCompare(a, b) {
 // ── Utils ──
 
 function jsonResponse(data, status, cors = {}) {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...cors,
+  };
   return new Response(JSON.stringify(data), {
     status: status,
-    headers: {
-      'Content-Type': 'application/json',
-      ...cors,
-    },
+    headers: headers,
   });
 }
 
