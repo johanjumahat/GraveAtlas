@@ -18,7 +18,7 @@ A full audit was conducted against all 8 phase master prompt specifications. The
 |-------|-------|------------|--------|
 | 1 | Project Architecture & Foundation | ~100% | ✅ Complete (audit gaps closed 2026-08-11) |
 | 2 | Core Data, Search, Map & Public Discovery | ~100% | ✅ Complete (audit gaps closed 2026-08-11) |
-| 3 | Contributions, Auth, Moderation & Data Quality | ~80% | Substantially complete |
+| 3 | Contributions, Auth, Moderation & Data Quality | ~95% | Nearly complete (gaps closed 2026-08-11) |
 | 4 | GitHub Publication, Data Pipeline & Release | ~50% | Partial |
 | 5 | Advanced Search, Discovery & UX | ~75% | Substantially complete |
 | 6 | Security, Privacy & Hardening | ~45% | Partial |
@@ -114,8 +114,16 @@ Closed all remaining Phase 2 acceptance gate gaps:
 - `docs/DATA-VALIDATION.md` — multi-layer validation: client, server, pre-publication, CI
 - `MapFragment.java` — grid-based clustering (~1km cells), empty/offline/error states
 
+### Phase 3 Gap Closure (2026-08-11)
+
+Closed core Phase 3 acceptance gate gaps:
+- Session management: createSession, validateSession, revokeSession (24-hour expiry)
+- User roles: user, moderator, admin with role assignment endpoints
+- Moderation notes: private per-contribution notes for moderator collaboration
+- New submission statuses: UNDER_REVIEW, PUBLISHED, FAILED with retry flow
+- 6 new API endpoints: session, moderation notes, user management, contribution listing
+
 ### Next Steps
 
-1. Close Phase 3 gaps: session-based auth, moderator role, moderation UI
-2. Close Phase 4 gaps: publication states, retry, queue
-3. Begin Phase 8: release preparation, store readiness
+1. Close Phase 4 gaps: publication states, retry, queue, data merge safety
+2. Begin Phase 8: release preparation, store readiness

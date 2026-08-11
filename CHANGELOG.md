@@ -1,5 +1,33 @@
 # CHANGELOG
 
+## Phase 3 Gap Closure — Sessions, Roles, Moderation Notes, Statuses (2026-08-11)
+
+### Added — Backend (phase6a.js)
+- **Session management:** createSession, validateSession, revokeSession — 24-hour sessions with auto-expiry
+- **User roles:** user, moderator, admin — getUserRole, isModerator, isAdmin, setUserRole
+- **Moderation notes:** addModerationNote, getModerationNotes — private per-contribution notes
+- **New submission statuses:** UNDER_REVIEW, PUBLISHED, FAILED with retry flow
+
+### Added — Backend (index.js)
+- POST /api/user/session — create session token
+- DELETE /api/user/session — revoke session (sign-out)
+- GET /api/admin/contributions — list all contributions
+- POST /api/admin/contributions/{id}/notes — add moderation note
+- GET /api/admin/contributions/{id}/notes — list moderation notes
+- GET /api/admin/users — list all users
+- POST /api/admin/users/{id}/role — assign user role
+
+### Updated — Docs
+- CONTRIBUTION-WORKFLOW.md, API-PUBLIC.md, DATA-SCHEMA.md
+
+### Phase Status
+- Phase 1: Complete
+- Phase 2: Complete
+- Phase 3: Nearly complete
+
+---
+
+
 ## Phase 2 Gap Closure — 4 Docs, Map Clustering, Empty States (2026-08-11)
 
 ### Added
