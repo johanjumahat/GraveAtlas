@@ -21,6 +21,7 @@ import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
 import com.putraworks.graveatlas.data.api.ApiClient;
+import com.putraworks.graveatlas.ui.evidence.EvidenceStatus;
 import com.putraworks.graveatlas.data.api.ApiErrorHandler;
 import com.putraworks.graveatlas.data.api.LocalCache;
 import com.putraworks.graveatlas.data.model.CemeteryRecord;

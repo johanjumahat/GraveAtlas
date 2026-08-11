@@ -111,6 +111,17 @@ public class MainActivity extends AppCompatActivity {
         initViews();
         setupSpinners();
         initTextToSpeech();
+
+        // Phase 16: Handle prefill question from AI-native home screen
+        String prefillQuestion = getIntent().getStringExtra("prefill_question");
+        if (prefillQuestion != null && !prefillQuestion.isEmpty()) {
+            etInput.setText(prefillQuestion);
+            etInput.requestFocus();
+            // Auto-send after a brief delay to let the UI settle
+            etInput.postDelayed(() -> {
+                if (btnSend != null) btnSend.performClick();
+            }, 300);
+        }
     }
 
     // ── TTS Setup ──

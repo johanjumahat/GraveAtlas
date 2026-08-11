@@ -67,6 +67,15 @@ public class AIClient {
         }
         body.put("contents", contents);
 
+        // System instruction (Gemini format)
+        JSONObject systemInstruction = new JSONObject();
+        JSONArray sysParts = new JSONArray();
+        JSONObject sysText = new JSONObject();
+        sysText.put("text", AISystemPrompts.RESEARCH_ASSISTANT);
+        sysParts.put(sysText);
+        systemInstruction.put("parts", sysParts);
+        body.put("systemInstruction", systemInstruction);
+
         JSONObject generationConfig = new JSONObject();
         generationConfig.put("temperature", 0.7);
         generationConfig.put("maxOutputTokens", 2048);
@@ -92,8 +101,7 @@ public class AIClient {
 
         JSONObject systemMsg = new JSONObject();
         systemMsg.put("role", "system");
-        systemMsg.put("content", "You are GraveAtlas, a helpful and knowledgeable AI assistant. "
-                + "Be concise, friendly, and helpful. You can assist with any topic.");
+        systemMsg.put("content", AISystemPrompts.RESEARCH_ASSISTANT);
         msgArray.put(systemMsg);
 
         for (ChatMessage msg : messages) {
