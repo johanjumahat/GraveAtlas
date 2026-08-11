@@ -320,6 +320,80 @@ async function moveFile(oldPath, newPath, env, commitMessage) {
   if (!content) throw new Error('Source file not found');
 
   await writeFile(newPath, content, env, commitMessage || `Move ${oldPath}`);
+  await deleteFile(oldPath, env, `Remove moved file ${oldPath}`);
+}
+
+/**
+ * Creates a pull request for review-based publication.
+ * Creates a branch, commits changes, then opens a PR to main.
+ * Returns { prNumber, prUrl, branchName }.
+ */
+async function createPullRequest(env, branchName, title, body, changes) {
+  const token = await getToken(env);
+  const base = getRepoUrl(env).replace('/contents', '');
+  const prUrl = `${base}/pulls`;
+
+  // Create the branch from main
+  const mainRef = await fetch(`${base}/git/refs/heads/${env.GITHUB_BRANCH || 'main'}`, {
+    headers: { 'User-Agent': 'GraveAtlas-Worker', 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json' },
+  });
+
+  if (!mainRef.ok) throw new Error(`Failed to get main ref: ${mainRef.status}`);
+  const mainData = await mainRef.json();
+
+  const createBranchResp = await fetch(`${base}/git/refs`, {
+    method: 'POST',
+    headers: {
+      'User-Agent': 'GraveAtlas-Worker',
+      'Authorization': `token ${token}`,
+      'Accept': 'application/vnd.github+json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      ref: `refs/heads/${branchName}`,
+      sha: mainData.object.sha,
+    }),
+  });
+
+  if (!createBranchResp.ok) {
+    // Branch may already exist — continue
+  }
+
+  // Write all changes to the new branch
+  const branchEnv = { ...env, GITHUB_BRANCH: branchName };
+  for (const change of changes) {
+    await writeFile(change.path, change.content, branchEnv, change.commitMessage);
+  }
+
+  // Create the PR
+  const prResp = await fetch(prUrl, {
+    method: 'POST',
+    headers: {
+      'User-Agent': 'GraveAtlas-Worker',
+      'Authorization': `token ${token}`,
+      'Accept': 'application/vnd.github+json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      title,
+      body,
+      head: branchName,
+      base: env.GITHUB_BRANCH || 'main',
+    }),
+  });
+
+  if (!prResp.ok) {
+    const errText = await prResp.text();
+    throw new Error(`Failed to create PR: ${prResp.status} ${errText}`);
+  }
+
+  const prData = await prResp.json();
+  return {
+    prNumber: prData.number,
+    prUrl: prData.html_url,
+    branchName,
+  };
+}
   await deleteFile(oldPath, env, `Remove ${oldPath} (moved)`);
 }
 

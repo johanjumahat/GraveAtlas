@@ -774,3 +774,50 @@ After the initial 3 fixes, build #50 revealed additional compilation errors. Res
 - 8 documentation files
 - Environment configuration templates
 - 20 backend tests
+
+## [7.2.0] — 2026-08-11 — All Phases Complete
+
+### Added — Phase 2
+- Viewport-based map search endpoint (`GET /api/map/viewport`) with bounding box queries
+
+### Added — Phase 4
+- Pull request creation function (`createPullRequest()`) for review-based publication
+- Branch creation and multi-file commit to PR branch
+
+### Added — Phase 6
+- Security headers on all API responses (HSTS, X-Content-Type-Options, X-Frame-Options, CSP, Referrer-Policy)
+- Security inventory document with severity classification (docs/SECURITY-INVENTORY.md)
+- Data retention policy (docs/DATA-RETENTION.md)
+- 9 IDOR and security tests (P6-1 through P6-9)
+
+### Added — Phase 7
+- Readiness check endpoint (`GET /api/health/ready`) with dependency checks
+- Liveness check endpoint (`GET /api/health/live`)
+- Metrics endpoint (`GET /api/admin/metrics`)
+- Correlation IDs (X-Request-Id) on all requests and responses
+- Operations documentation (docs/OPERATIONS.md)
+- 8 reliability and observability tests (P7-1 through P7-8)
+
+### Added — Phase 8
+- Release configuration (docs/RELEASE-CONFIG.md)
+- Store metadata (docs/STORE-METADATA.md)
+- Content policy (docs/CONTENT-POLICY.md)
+- Data governance (docs/DATA-GOVERNANCE.md)
+- User support documentation (docs/USER-SUPPORT.md)
+- Store-ready privacy policy update
+- Store-ready terms of use update
+- Splash screen theme
+- Comprehensive accessibility strings
+- 7 release readiness tests (P8-1 through P8-7)
+
+### Added — Phase 5
+- Accessibility content descriptions on all Android fragments
+- Comprehensive empty/error/offline state strings in resources
+
+### Changed
+- PHASE-AUDIT.md updated to reflect 100% completion across all 8 phases
+- STATUS.md updated to reflect full completion
+- Test count increased from 346 to 370
+
+### Fixed
+- Syntax error in P8-2 test (fn => corrected to fn: () =>)

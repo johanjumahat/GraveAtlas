@@ -88,6 +88,7 @@ public class SearchFragment extends Fragment implements ApiClient.ApiCallback<Li
         // Progress
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.GONE);
+        progressBar.setContentDescription("Loading");
         layout.addView(progressBar);
 
         // Retry button

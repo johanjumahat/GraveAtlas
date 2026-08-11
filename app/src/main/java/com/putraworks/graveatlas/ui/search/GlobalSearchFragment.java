@@ -221,6 +221,7 @@ public class GlobalSearchFragment extends Fragment implements ApiClient.ApiCallb
         // Progress
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.GONE);
+        progressBar.setContentDescription("Loading");
         layout.addView(progressBar);
 
         // Retry button

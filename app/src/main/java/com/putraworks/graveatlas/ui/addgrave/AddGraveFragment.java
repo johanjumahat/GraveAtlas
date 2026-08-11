@@ -121,6 +121,7 @@ public class AddGraveFragment extends Fragment {
 
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.GONE);
+        progressBar.setContentDescription("Loading");
         layout.addView(progressBar);
 
         statusLabel = new TextView(getContext());

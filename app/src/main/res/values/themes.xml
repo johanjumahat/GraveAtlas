@@ -17,3 +17,10 @@
         <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
     </style>
 </resources>
+
+    <!-- Splash screen theme (Phase 8) -->
+    <style name="Theme.GraveAtlas.Splash" parent="Theme.GraveAtlas">
+        <item name="android:windowBackground">@color/bg_root</item>
+        <item name="android:statusBarColor">@color/bg_root</item>
+    </style>
+</resources>

@@ -136,6 +136,7 @@ public class NearbyFragment extends Fragment {
         // Progress
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.GONE);
+        progressBar.setContentDescription("Loading");
         layout.addView(progressBar);
 
         // Retry

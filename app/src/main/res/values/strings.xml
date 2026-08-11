@@ -3,4 +3,34 @@
     <string name="sign_in_with_google">Sign in with Google</string>
     <string name="sign_out">Sign Out</string>
     <string name="encrypted_data_note">Your data is encrypted and stored securely on your device.</string>
+
+    <!-- Accessibility -->
+    <string name="cd_search_input">Search input field</string>
+    <string name="cd_progress_loading">Loading</string>
+    <string name="cd_map_marker">Grave or cemetery location marker</string>
+    <string name="cd_navigate_back">Navigate back</string>
+    <string name="cd_save_record">Save this record</string>
+    <string name="cd_share_record">Share this record</string>
+    <string name="cd_report_record">Report this record</string>
+    <string name="cd_contribute">Add a new contribution</string>
+    <string name="cd_location_button">Use my location</string>
+    <string name="cd_empty_results">No results found</string>
+    <string name="cd_error_state">An error occurred</string>
+    <string name="cd_offline_indicator">Offline mode — showing saved data</string>
+
+    <!-- Empty states -->
+    <string name="empty_search">No results found.\n\nTry different search terms or filters.</string>
+    <string name="empty_map">No locations with coordinates available.\n\nContributed records may not have coordinates yet.</string>
+    <string name="empty_saved">No saved records yet.\n\nTap the bookmark icon on any record to save it for offline access.</string>
+    <string name="empty_contributions">No contributions yet.\n\nTap \"Add Grave\" to submit your first record.</string>
+    <string name="empty_nearby">No nearby cemeteries found.\n\nTry expanding the search radius or enabling location access.</string>
+
+    <!-- Error states -->
+    <string name="error_network">Network error. Check your connection and try again.</string>
+    <string name="error_server">Server temporarily unavailable. Please try again later.</string>
+    <string name="error_location">Location unavailable. Check that location services are enabled.</string>
+    <string name="error_generic">Something went wrong. Please try again.</string>
+
+    <!-- Offline -->
+    <string name="offline_banner">Offline — showing cached data</string>
 </resources>

@@ -73,6 +73,7 @@ public class MapFragment extends Fragment implements ApiClient.ApiCallback<List<
 
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.GONE);
+        progressBar.setContentDescription("Loading");
         layout.addView(progressBar);
 
         statusText = new TextView(getContext());

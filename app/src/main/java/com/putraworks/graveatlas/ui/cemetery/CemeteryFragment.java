@@ -88,6 +88,7 @@ public class CemeteryFragment extends Fragment implements ApiClient.ApiCallback<
 
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.GONE);
+        progressBar.setContentDescription("Loading");
         layout.addView(progressBar);
 
         retryBtn = new Button(getContext());

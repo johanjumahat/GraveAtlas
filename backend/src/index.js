@@ -469,6 +469,10 @@ async function handleRequest(request, env, ctx) {
       return await handleNearbySearch(request, env, corsHeaders);
     }
 
+    if (path === '/api/map/viewport' && method === 'GET') {
+      return await handleViewportSearch(request, env, corsHeaders);
+    }
+
     // Public record detail for share links (Part 125-126)
     if (path.match(/^\/api\/record\/(cemeteries|graves)\/[^/]+$/) && method === 'GET') {
       return await handlePublicRecord(path, request, env, corsHeaders);
@@ -2774,6 +2778,7 @@ function jsonResponse(data, status, cors = {}) {
     'Content-Type': 'application/json',
     ...cors,
   };
+  if (_currentRequestId) headers['X-Request-Id'] = _currentRequestId;
   return new Response(JSON.stringify(data), {
     status: status,
     headers: headers,
@@ -3576,6 +3581,85 @@ async function handleNearbySearch(request, env, cors) {
     return jsonResponse(result, 200, cors);
   } catch (error) {
     return jsonResponse({ success: true, results: [], count: 0, message: 'Nearby search temporarily unavailable.' }, 200, cors);
+  }
+}
+
+// ── Viewport-based map search (Phase 2/5 gap) ──
+
+async function handleViewportSearch(request, env, cors) {
+  const url = new URL(request.url);
+  const minLat = parseFloat(url.searchParams.get('minLat'));
+  const maxLat = parseFloat(url.searchParams.get('maxLat'));
+  const minLon = parseFloat(url.searchParams.get('minLon'));
+  const maxLon = parseFloat(url.searchParams.get('maxLon'));
+  const limit = Math.min(parseInt(url.searchParams.get('limit') || '200'), 500);
+  const type = url.searchParams.get('type') || 'all';
+
+  // Validate bounds
+  for (const [name, val] of [['minLat', minLat], ['maxLat', maxLat], ['minLon', minLon], ['maxLon', maxLon]]) {
+    if (isNaN(val)) return jsonResponse({ success: false, error: `${name} is required and must be numeric` }, 400, cors);
+  }
+  if (minLat < -90 || maxLat > 90 || minLon < -180 || maxLon > 180) {
+    return jsonResponse({ success: false, error: 'Bounds out of valid range' }, 400, cors);
+  }
+  if (minLat >= maxLat || minLon >= maxLon) {
+    return jsonResponse({ success: false, error: 'Invalid bounds: min must be less than max' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, results: [], count: 0, message: 'Map search unavailable.' }, 200, cors);
+  }
+
+  try {
+    // Fetch graves within bounding box
+    const results = [];
+    const dirs = type === 'cemetery' ? ['cemeteries'] : type === 'grave' ? ['graves'] : ['graves', 'cemeteries'];
+
+    for (const dir of dirs) {
+      try {
+        const files = await listFiles(dir, env);
+        for (const file of files) {
+          if (!file.name.endsWith('.json')) continue;
+          if (results.length >= limit) break;
+          try {
+            const content = await readFile(`${dir}/${file.name}`, env);
+            if (!content) continue;
+            const record = JSON.parse(content);
+
+            // Check if record has coordinates
+            const lat = record.latitude || record.lat;
+            const lon = record.longitude || record.lon;
+            if (lat == null || lon == null) continue;
+
+            const latNum = parseFloat(lat);
+            const lonNum = parseFloat(lon);
+            if (isNaN(latNum) || isNaN(lonNum)) continue;
+
+            // Bounding box check
+            if (latNum >= minLat && latNum <= maxLat && lonNum >= minLon && lonNum <= maxLon) {
+              results.push({
+                id: record.id,
+                type: dir === 'graves' ? 'grave' : 'cemetery',
+                name: record.name || record.cemeteryName || 'Unknown',
+                lat: latNum,
+                lon: lonNum,
+                cemeteryName: record.cemeteryName || null,
+                verificationStatus: record.verificationStatus || null,
+              });
+            }
+          } catch (e) { /* skip malformed */ }
+        }
+      } catch (e) { /* dir not found */ }
+    }
+
+    return jsonResponse({
+      success: true,
+      results,
+      count: results.length,
+      bounds: { minLat, maxLat, minLon, maxLon },
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: true, results: [], count: 0, message: 'Map search temporarily unavailable.' }, 200, cors);
   }
 }
 
