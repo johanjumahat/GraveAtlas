@@ -31,23 +31,32 @@ const SUBMISSION_STATUS_CHANGES_REQUESTED = 'CHANGES_REQUESTED';
 const SUBMISSION_STATUS_APPROVED = 'APPROVED';
 const SUBMISSION_STATUS_REJECTED = 'REJECTED';
 const SUBMISSION_STATUS_CANCELLED = 'CANCELLED';
+const SUBMISSION_STATUS_UNDER_REVIEW = 'UNDER_REVIEW';
+const SUBMISSION_STATUS_PUBLISHED = 'PUBLISHED';
+const SUBMISSION_STATUS_FAILED = 'FAILED';
 
 const VALID_SUBMISSION_STATUSES = [
   SUBMISSION_STATUS_DRAFT,
   SUBMISSION_STATUS_PENDING_REVIEW,
+  SUBMISSION_STATUS_UNDER_REVIEW,
   SUBMISSION_STATUS_CHANGES_REQUESTED,
   SUBMISSION_STATUS_APPROVED,
+  SUBMISSION_STATUS_PUBLISHED,
   SUBMISSION_STATUS_REJECTED,
   SUBMISSION_STATUS_CANCELLED,
+  SUBMISSION_STATUS_FAILED,
 ];
 
 const VALID_SUBMISSION_TRANSITIONS = {
   [SUBMISSION_STATUS_DRAFT]: [SUBMISSION_STATUS_PENDING_REVIEW, SUBMISSION_STATUS_CANCELLED],
-  [SUBMISSION_STATUS_PENDING_REVIEW]: [SUBMISSION_STATUS_CHANGES_REQUESTED, SUBMISSION_STATUS_APPROVED, SUBMISSION_STATUS_REJECTED, SUBMISSION_STATUS_CANCELLED],
+  [SUBMISSION_STATUS_PENDING_REVIEW]: [SUBMISSION_STATUS_UNDER_REVIEW, SUBMISSION_STATUS_CHANGES_REQUESTED, SUBMISSION_STATUS_APPROVED, SUBMISSION_STATUS_REJECTED, SUBMISSION_STATUS_CANCELLED],
+  [SUBMISSION_STATUS_UNDER_REVIEW]: [SUBMISSION_STATUS_CHANGES_REQUESTED, SUBMISSION_STATUS_APPROVED, SUBMISSION_STATUS_REJECTED, SUBMISSION_STATUS_CANCELLED],
   [SUBMISSION_STATUS_CHANGES_REQUESTED]: [SUBMISSION_STATUS_PENDING_REVIEW, SUBMISSION_STATUS_CANCELLED],
-  [SUBMISSION_STATUS_APPROVED]: [],
+  [SUBMISSION_STATUS_APPROVED]: [SUBMISSION_STATUS_PUBLISHED, SUBMISSION_STATUS_FAILED],
+  [SUBMISSION_STATUS_PUBLISHED]: [],
   [SUBMISSION_STATUS_REJECTED]: [],
   [SUBMISSION_STATUS_CANCELLED]: [],
+  [SUBMISSION_STATUS_FAILED]: [SUBMISSION_STATUS_PENDING_REVIEW], // retry after failure
 };
 
 const IMAGE_RIGHTS_OWN_WORK = 'OWN_WORK';
@@ -88,7 +97,25 @@ const AUDIT_ACTIONS = {
   USER_REGISTERED: 'USER_REGISTERED',
   USER_PROFILE_UPDATED: 'USER_PROFILE_UPDATED',
   USER_STATUS_CHANGED: 'USER_STATUS_CHANGED',
+  SESSION_CREATED: 'SESSION_CREATED',
+  SESSION_EXPIRED: 'SESSION_EXPIRED',
+  SESSION_REVOKED: 'SESSION_REVOKED',
+  MODERATION_DECISION: 'MODERATION_DECISION',
+  MODERATION_NOTE_ADDED: 'MODERATION_NOTE_ADDED',
+  ROLE_ASSIGNED: 'ROLE_ASSIGNED',
 };
+
+// ── User roles ──
+
+const USER_ROLE_USER = 'user';
+const USER_ROLE_MODERATOR = 'moderator';
+const USER_ROLE_ADMIN = 'admin';
+const VALID_USER_ROLES = [USER_ROLE_USER, USER_ROLE_MODERATOR, USER_ROLE_ADMIN];
+
+// ── Session management ──
+
+const SESSION_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
+const SESSION_ID_PREFIX = 'sess_';
 
 // ── ID generation ──
 
@@ -783,6 +810,193 @@ function isValidDate(dateStr) {
   return false;
 }
 
+// ── Session management ──
+
+function generateSessionId() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return SESSION_ID_PREFIX + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Creates a session for a user. Stores session file in sessions/ directory.
+ * Session contains: id, userId, role, createdAt, expiresAt.
+ * Returns the session object (without internal metadata).
+ */
+async function createSession(env, userId, role = USER_ROLE_USER) {
+  const sessionId = generateSessionId();
+  const now = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + SESSION_DURATION_MS).toISOString();
+
+  const session = {
+    id: sessionId,
+    userId,
+    role,
+    createdAt: now,
+    expiresAt,
+    revoked: false,
+  };
+
+  await writeFile(env, `sessions/${sessionId}.json`, JSON.stringify(session, null, 2));
+
+  return {
+    sessionId,
+    userId,
+    role,
+    expiresAt,
+  };
+}
+
+/**
+ * Validates a session token. Returns { valid, userId, role } or { valid: false }.
+ * Checks: session exists, not revoked, not expired.
+ * Expired sessions are marked as revoked.
+ */
+async function validateSession(env, sessionId) {
+  if (!sessionId || typeof sessionId !== 'string' || !sessionId.startsWith(SESSION_ID_PREFIX)) {
+    return { valid: false };
+  }
+
+  try {
+    const content = await readFile(env, `sessions/${sessionId}.json`);
+    if (!content) return { valid: false };
+
+    const session = JSON.parse(content);
+    if (session.revoked) return { valid: false };
+
+    const now = Date.now();
+    const expiresAt = new Date(session.expiresAt).getTime();
+    if (now > expiresAt) {
+      // Mark as revoked (expired)
+      session.revoked = true;
+      await writeFile(env, `sessions/${sessionId}.json`, JSON.stringify(session, null, 2));
+      return { valid: false, reason: 'expired' };
+    }
+
+    return {
+      valid: true,
+      userId: session.userId,
+      role: session.role || USER_ROLE_USER,
+      sessionId: session.id,
+    };
+  } catch (e) {
+    return { valid: false };
+  }
+}
+
+/**
+ * Revokes a session (sign-out). Marks the session as revoked.
+ */
+async function revokeSession(env, sessionId) {
+  try {
+    const content = await readFile(env, `sessions/${sessionId}.json`);
+    if (!content) return false;
+
+    const session = JSON.parse(content);
+    session.revoked = true;
+    session.revokedAt = new Date().toISOString();
+    await writeFile(env, `sessions/${sessionId}.json`, JSON.stringify(session, null, 2));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// ── Role management ──
+
+/**
+ * Gets the user's role from their user record.
+ * Defaults to 'user' if no role is set.
+ */
+async function getUserRole(env, userId) {
+  const user = await getUser(env, userId);
+  if (!user) return USER_ROLE_USER;
+  return user.role || USER_ROLE_USER;
+}
+
+/**
+ * Checks if a user has at least moderator privileges.
+ */
+async function isModerator(env, userId) {
+  const role = await getUserRole(env, userId);
+  return role === USER_ROLE_MODERATOR || role === USER_ROLE_ADMIN;
+}
+
+/**
+ * Checks if a user has admin privileges.
+ */
+async function isAdmin(env, userId) {
+  const role = await getUserRole(env, userId);
+  return role === USER_ROLE_ADMIN;
+}
+
+/**
+ * Assigns a role to a user. Only admins can assign roles.
+ */
+async function setUserRole(env, userId, newRole) {
+  if (!VALID_USER_ROLES.includes(newRole)) {
+    return { success: false, error: 'Invalid role' };
+  }
+
+  const user = await getUser(env, userId);
+  if (!user) return { success: false, error: 'User not found' };
+
+  user.role = newRole;
+  user.updatedAt = new Date().toISOString();
+  await writeFile(env, `users/${userId}.json`, JSON.stringify(user, null, 2));
+
+  return { success: true, role: newRole };
+}
+
+// ── Moderation notes ──
+
+/**
+ * Adds a moderation note to a contribution.
+ * Moderation notes are stored separately from the contribution data,
+ * in moderation-notes/{contributionId}.json as an array.
+ * Notes are private — never exposed through public endpoints.
+ */
+async function addModerationNote(env, contributionId, moderatorId, note) {
+  if (!note || typeof note !== 'string' || note.length > 2000) {
+    return { success: false, error: 'Note must be 1-2000 characters' };
+  }
+
+  const noteFile = `moderation-notes/${contributionId}.json`;
+  let notes = [];
+  try {
+    const content = await readFile(env, noteFile);
+    if (content) notes = JSON.parse(content);
+  } catch (e) {
+    // No existing notes
+  }
+
+  const noteEntry = {
+    id: generateAuditEventId(),
+    moderatorId,
+    note,
+    timestamp: new Date().toISOString(),
+  };
+
+  notes.push(noteEntry);
+  await writeFile(env, noteFile, JSON.stringify(notes, null, 2));
+
+  return { success: true, noteId: noteEntry.id };
+}
+
+/**
+ * Lists moderation notes for a contribution.
+ * Only accessible by moderators/admins.
+ */
+async function getModerationNotes(env, contributionId) {
+  try {
+    const content = await readFile(env, `moderation-notes/${contributionId}.json`);
+    if (!content) return [];
+    return JSON.parse(content);
+  } catch (e) {
+    return [];
+  }
+}
+
 // ── Export all ──
 
 export {
@@ -819,4 +1033,13 @@ export {
   authorizeContributionAccess, authorizeDraftAccess,
   // Duplicate check
   checkDuplicateSubmission, haversineDistance,
+  // Session management
+  createSession, validateSession, revokeSession, generateSessionId,
+  // Role management
+  getUserRole, isModerator, isAdmin, setUserRole,
+  USER_ROLE_USER, USER_ROLE_MODERATOR, USER_ROLE_ADMIN, VALID_USER_ROLES,
+  // Moderation notes
+  addModerationNote, getModerationNotes,
+  // New statuses
+  SUBMISSION_STATUS_UNDER_REVIEW, SUBMISSION_STATUS_PUBLISHED, SUBMISSION_STATUS_FAILED,
 };

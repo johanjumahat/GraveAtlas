@@ -151,6 +151,23 @@ Check correction status (public — by correction ID).
 ### POST /api/user/register
 Register/update user account (display name, profile).
 
+### POST /api/user/session
+Create a session token (24-hour expiry).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| (header) X-User-Id | string | yes | User ID |
+
+Returns `sessionId`, `userId`, `role`, `expiresAt`.
+
+### DELETE /api/user/session
+Revoke a session (sign-out).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| (header) X-User-Id | string | yes | User ID |
+| sessionId | string | yes (body) | Session ID to revoke |
+
 ### GET /api/user/profile
 Get own profile (requires X-User-Id header).
 
@@ -246,6 +263,29 @@ System status.
 
 ### POST /api/admin/restore/{id}
 Restore a removed record.
+
+### GET /api/admin/contributions
+List all contributions (all users).
+
+### POST /api/admin/contributions/{id}/notes
+Add a private moderation note to a contribution.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| note | string | yes | Note text (1-2000 chars) |
+
+### GET /api/admin/contributions/{id}/notes
+List moderation notes for a contribution (moderator/admin only).
+
+### GET /api/admin/users
+List all registered users (public profiles only).
+
+### POST /api/admin/users/{id}/role
+Assign a role to a user.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| role | string | yes | Enum: user, moderator, admin |
 
 ## Rate Limits
 

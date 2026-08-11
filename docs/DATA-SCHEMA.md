@@ -123,6 +123,42 @@ Required fields: `id`, `action`, `entityType`, `entityId`, `timestamp`
 | timestamp | string | yes | ISO 8601 datetime |
 | details | object\|null | no | Additional context (no secrets) |
 
+## User Roles
+
+| Role | Description |
+|---|---|
+| `user` | Default — can submit contributions, drafts, corrections |
+| `moderator` | Can review submissions, add moderation notes, approve/reject |
+| `admin` | Full access — all moderator powers + user management |
+
+## Session Record
+
+Stored in `sessions/` directory.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| id | string | yes | Pattern: `^sess_[a-f0-9]{32}$` |
+| userId | string | yes | User ID for this session |
+| role | string | yes | Enum: user, moderator, admin |
+| createdAt | string | yes | ISO 8601 timestamp |
+| expiresAt | string | yes | ISO 8601 timestamp (24 hours after creation) |
+| revoked | boolean | yes | True if session is revoked/expired |
+| revokedAt | string\|null | no | ISO 8601 timestamp of revocation |
+
+## Contribution Statuses
+
+| Status | Description |
+|---|---|
+| DRAFT | Saved but not submitted |
+| PENDING_REVIEW | Submitted — awaiting moderator review |
+| UNDER_REVIEW | Moderator has picked up for review |
+| CHANGES_REQUESTED | Moderator requested corrections |
+| APPROVED | Approved — pending publication |
+| PUBLISHED | Published to public repository |
+| REJECTED | Rejected by moderator |
+| CANCELLED | Cancelled by contributor |
+| FAILED | Publication failed — can be retried |
+
 ## Validation Rules
 
 1. **All records** are validated against their schema before submission acceptance.

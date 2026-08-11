@@ -326,6 +326,14 @@ async function handleRequest(request, env, ctx) {
       return await handleUserRegister(request, env, corsHeaders);
     }
 
+    if (path === '/api/user/session' && method === 'POST') {
+      return await handleCreateSession(request, env, corsHeaders);
+    }
+
+    if (path === '/api/user/session' && method === 'DELETE') {
+      return await handleRevokeSession(request, env, corsHeaders);
+    }
+
     if (path === '/api/user/profile' && method === 'GET') {
       return await handleGetOwnProfile(request, env, corsHeaders);
     }
@@ -536,6 +544,26 @@ async function handleRequest(request, env, ctx) {
     if (path.match(/^\/api\/admin\/reports\/[^/]+\/reject$/) && method === 'POST') {
       const id = path.split('/')[4];
       return await requireAdmin(request, env, corsHeaders, () => handleRejectReport(id, request, env, corsHeaders));
+    }
+
+    if (path === '/api/admin/contributions' && method === 'GET') {
+      return await requireAdmin(request, env, corsHeaders, async () => handleListAllContributions(request, env, corsHeaders));
+    }
+
+    if (path.match(/^\/api\/admin\/contributions\/[^/]+\/notes$/) && method === 'POST') {
+      return await requireAdmin(request, env, corsHeaders, async () => handleAddModerationNote(request, env, corsHeaders));
+    }
+
+    if (path.match(/^\/api\/admin\/contributions\/[^/]+\/notes$/) && method === 'GET') {
+      return await requireAdmin(request, env, corsHeaders, async () => handleGetModerationNotes(request, env, corsHeaders));
+    }
+
+    if (path === '/api/admin/users' && method === 'GET') {
+      return await requireAdmin(request, env, corsHeaders, async () => handleListUsers(request, env, corsHeaders));
+    }
+
+    if (path.match(/^\/api\/admin\/users\/[^/]+\/role$/) && method === 'POST') {
+      return await requireAdmin(request, env, corsHeaders, async () => handleSetUserRole(request, env, corsHeaders));
     }
 
     if (path.match(/^\/api\/admin\/restore\/[^/]+$/) && method === 'POST') {
@@ -2791,6 +2819,156 @@ async function handleGetPublicProfile(userId, env, cors) {
   }
 
   return jsonResponse({ success: true, profile: Phase6A.getPublicProfile(user) }, 200, cors);
+}
+
+// ── Session handlers ──
+
+async function handleCreateSession(request, env, cors) {
+  const userId = getUserIdFromRequest(request);
+  if (!userId) return jsonResponse({ success: false, error: 'X-User-Id header required' }, 400, cors);
+
+  // Check if user exists
+  const user = await Phase6A.getUser(env, userId);
+  if (!user) return jsonResponse({ success: false, error: 'User not registered. Call /api/user/register first.' }, 404, cors);
+  if (user.accountStatus === 'SUSPENDED') return jsonResponse({ success: false, error: 'Account suspended' }, 403, cors);
+  if (user.accountStatus === 'DEACTIVATED') return jsonResponse({ success: false, error: 'Account deactivated' }, 403, cors);
+
+  const role = user.role || Phase6A.USER_ROLE_USER;
+  const session = await Phase6A.createSession(env, userId, role);
+
+  await Phase6A.createContributionAuditEvent(env, Phase6A.AUDIT_ACTIONS.SESSION_CREATED, userId, session.sessionId, { role });
+
+  return jsonResponse({ success: true, ...session }, 200, cors);
+}
+
+async function handleRevokeSession(request, env, cors) {
+  const userId = getUserIdFromRequest(request);
+  if (!userId) return jsonResponse({ success: false, error: 'X-User-Id header required' }, 400, cors);
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ success: false, error: 'Invalid JSON' }, 400, cors);
+  }
+
+  if (!body.sessionId) return jsonResponse({ success: false, error: 'sessionId required' }, 400, cors);
+
+  const revoked = await Phase6A.revokeSession(env, body.sessionId);
+  if (!revoked) return jsonResponse({ success: false, error: 'Session not found' }, 404, cors);
+
+  await Phase6A.createContributionAuditEvent(env, Phase6A.AUDIT_ACTIONS.SESSION_REVOKED, userId, body.sessionId, {});
+
+  return jsonResponse({ success: true }, 200, cors);
+}
+
+// ── Moderation note handlers ──
+
+async function handleAddModerationNote(request, env, cors) {
+  const match = request.url.match(/\/api\/admin\/contributions\/([^/]+)\/notes/);
+  if (!match) return jsonResponse({ success: false, error: 'Invalid path' }, 400, cors);
+  const contributionId = match[1];
+
+  const moderatorId = getUserIdFromRequest(request) || 'admin';
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ success: false, error: 'Invalid JSON' }, 400, cors);
+  }
+
+  if (!body.note) return jsonResponse({ success: false, error: 'note required' }, 400, cors);
+
+  const result = await Phase6A.addModerationNote(env, contributionId, moderatorId, body.note);
+  if (!result.success) return jsonResponse({ success: false, error: result.error }, 400, cors);
+
+  await Phase6A.createContributionAuditEvent(env, Phase6A.AUDIT_ACTIONS.MODERATION_NOTE_ADDED, moderatorId, contributionId, { noteId: result.noteId });
+
+  return jsonResponse({ success: true, noteId: result.noteId }, 201, cors);
+}
+
+async function handleGetModerationNotes(request, env, cors) {
+  const match = request.url.match(/\/api\/admin\/contributions\/([^/]+)\/notes/);
+  if (!match) return jsonResponse({ success: false, error: 'Invalid path' }, 400, cors);
+  const contributionId = match[1];
+
+  const notes = await Phase6A.getModerationNotes(env, contributionId);
+  return jsonResponse({ success: true, notes }, 200, cors);
+}
+
+// ── Admin user management handlers ──
+
+async function handleListUsers(request, env, cors) {
+  try {
+    const files = await listFiles(env, 'users');
+    const users = [];
+    for (const file of files) {
+      if (!file.name.endsWith('.json')) continue;
+      try {
+        const content = await readFile(env, `users/${file.name}`);
+        if (content) {
+          const user = JSON.parse(content);
+          users.push(Phase6A.getPublicProfile(user));
+        }
+      } catch (e) {
+        // Skip malformed files
+      }
+    }
+    return jsonResponse({ success: true, users, count: users.length }, 200, cors);
+  } catch (e) {
+    return jsonResponse({ success: false, error: 'Failed to list users' }, 500, cors);
+  }
+}
+
+async function handleSetUserRole(request, env, cors) {
+  const match = request.url.match(/\/api\/admin\/users\/([^/]+)\/role/);
+  if (!match) return jsonResponse({ success: false, error: 'Invalid path' }, 400, cors);
+  const targetUserId = match[1];
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ success: false, error: 'Invalid JSON' }, 400, cors);
+  }
+
+  if (!body.role) return jsonResponse({ success: false, error: 'role required' }, 400, cors);
+
+  const result = await Phase6A.setUserRole(env, targetUserId, body.role);
+  if (!result.success) return jsonResponse({ success: false, error: result.error }, 400, cors);
+
+  await Phase6A.createContributionAuditEvent(env, Phase6A.AUDIT_ACTIONS.ROLE_ASSIGNED, 'admin', targetUserId, { role: body.role });
+
+  return jsonResponse({ success: true, userId: targetUserId, role: result.role }, 200, cors);
+}
+
+async function handleListAllContributions(request, env, cors) {
+  try {
+    const files = await listFiles(env, 'contributions');
+    const contributions = [];
+    for (const file of files) {
+      if (!file.name.endsWith('.json')) continue;
+      try {
+        const content = await readFile(env, `contributions/${file.name}`);
+        if (content) {
+          const c = JSON.parse(content);
+          contributions.push({
+            id: c.id,
+            userId: c.userId,
+            type: c.type,
+            status: c.status,
+            createdAt: c.createdAt,
+          });
+        }
+      } catch (e) {
+        // Skip malformed
+      }
+    }
+    return jsonResponse({ success: true, contributions, count: contributions.length }, 200, cors);
+  } catch (e) {
+    return jsonResponse({ success: false, error: 'Failed to list contributions' }, 500, cors);
+  }
 }
 
 async function handleCreateContribution(request, env, cors) {
