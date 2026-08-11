@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## Phase 2 Gap Closure — 4 Docs, Map Clustering, Empty States (2026-08-11)
+
+### Added
+- **docs/PUBLIC-DATA.md** — Public data repository structure, publication boundary, data freshness, geographic coverage, no-fabricated-data policy, privacy in public data
+- **docs/MAP.md** — Map architecture (no paid SDK, geo: intents), clustering design, nearby fragment, location privacy, offline behavior, empty states
+- **docs/API-PUBLIC.md** — Complete API reference: all public, submission, user, contribution, and admin endpoints with parameters, rate limits, error format
+- **docs/DATA-VALIDATION.md** — Multi-layer validation: client, server, pre-publication, CI. Field constraints, path sanitization, ID format, date/coordinate validation, duplicate detection, idempotency
+
+### Updated
+- **MapFragment.java** — Grid-based clustering (~1km grid cells) groups nearby records into clusters. Cluster cards show count + representative name. Single records show individually. Empty state, offline state, error state all handled gracefully. Content descriptions for accessibility.
+
+### Phase Status
+- Phase 1: ✅ Complete (gaps closed)
+- Phase 2: ✅ Complete (gaps closed)
+
+---
+
+
 ## Phase 1 Gap Closure — Audit + Docs + Request IDs (2026-08-11)
 
 ### Added

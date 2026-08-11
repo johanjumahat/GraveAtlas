@@ -17,7 +17,7 @@ A full audit was conducted against all 8 phase master prompt specifications. The
 | Phase | Title | Completion | Status |
 |-------|-------|------------|--------|
 | 1 | Project Architecture & Foundation | ~100% | ✅ Complete (audit gaps closed 2026-08-11) |
-| 2 | Core Data, Search, Map & Public Discovery | ~75% | In progress |
+| 2 | Core Data, Search, Map & Public Discovery | ~100% | ✅ Complete (audit gaps closed 2026-08-11) |
 | 3 | Contributions, Auth, Moderation & Data Quality | ~80% | Substantially complete |
 | 4 | GitHub Publication, Data Pipeline & Release | ~50% | Partial |
 | 5 | Advanced Search, Discovery & UX | ~75% | Substantially complete |
@@ -105,9 +105,17 @@ Closed all remaining Phase 1 acceptance gate gaps:
 2. **GitHub App secrets** — ✅ Configured (githubConfigured: true, write path verified)
 3. **Android APK build** — ✅ Build #56 passed (2026-08-10). APK released: GraveAtlas-v7.1.0-release.apk (7.0 MB)
 
+### Phase 2 Gap Closure (2026-08-11)
+
+Closed all remaining Phase 2 acceptance gate gaps:
+- `docs/PUBLIC-DATA.md` — public data repository structure, publication boundary, freshness, privacy
+- `docs/MAP.md` — map architecture, clustering, nearby fragment, location privacy, offline behavior
+- `docs/API-PUBLIC.md` — complete API reference for all public + submission + user + admin endpoints
+- `docs/DATA-VALIDATION.md` — multi-layer validation: client, server, pre-publication, CI
+- `MapFragment.java` — grid-based clustering (~1km cells), empty/offline/error states
+
 ### Next Steps
 
-1. Close Phase 2 gaps: 4 missing docs, map clustering, map empty states
-2. Close Phase 3 gaps: session-based auth, moderator role
-3. Close Phase 4 gaps: publication states, retry, queue
-4. Begin Phase 8: release preparation, store readiness
+1. Close Phase 3 gaps: session-based auth, moderator role, moderation UI
+2. Close Phase 4 gaps: publication states, retry, queue
+3. Begin Phase 8: release preparation, store readiness
