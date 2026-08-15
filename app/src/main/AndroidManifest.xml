@@ -33,7 +33,7 @@
             </intent-filter>
         </activity>
 
-        <!-- LoginActivity — optional sign-in, launched from Settings -->
+        <!-- LoginActivity — Google sign-in, required before submitting records -->
         <activity
             android:name=".auth.LoginActivity"
             android:exported="false"

@@ -20,6 +20,8 @@ import com.putraworks.graveatlas.data.api.ApiErrorHandler;
 import com.putraworks.graveatlas.data.api.OfflineSubmissionManager;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
+import com.putraworks.graveatlas.auth.LoginActivity;
+import com.putraworks.graveatlas.auth.SecureStorage;
 
 /**
  * Add grave screen — form for submitting new grave records.
@@ -153,6 +155,14 @@ public class AddGraveFragment extends Fragment {
     }
 
     private void showReview() {
+        // Require Google login before submitting
+        SecureStorage.init(getContext());
+        if (!SecureStorage.canSubmit(getContext())) {
+            Toast.makeText(getContext(), "Please sign in with Google to add records.", Toast.LENGTH_LONG).show();
+            LoginActivity.launch(getActivity());
+            return;
+        }
+
         GraveSubmission submission = collectFormData();
         if (submission == null) return; // validation failed
 

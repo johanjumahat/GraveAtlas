@@ -57,6 +57,7 @@ public class MainNavActivity extends AppCompatActivity {
         // Login is optional — app works without it.
         // Login unlocks per-user encrypted storage (chat history, API keys).
         SecureStorage.init(this);
+        ApiClient.setSessionContext(this);
 
         loadSavedApiUrl();
 

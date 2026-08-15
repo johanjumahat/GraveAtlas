@@ -15,6 +15,7 @@ GITHUB_BRANCH = "main"
 # GITHUB_PRIVATE_KEY — PEM private key
 # GITHUB_INSTALLATION_ID — numeric installation ID
 # ADMIN_TOKEN — admin authentication token
+# GOOGLE_CLIENT_ID — Google OAuth Web Client ID (for verifying ID tokens)
 # ALLOWED_ORIGIN — optional, for web admin UI CORS (e.g., https://admin.example.com)
 
 # ── Staging environment ──

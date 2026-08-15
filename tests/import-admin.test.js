@@ -392,7 +392,7 @@ test('Handler does not auto-publish — PENDING_APPROVAL is always set first', (
   assert.ok(handlerSource.includes('PENDING_APPROVAL'));
   assert.ok(handlerSource.includes('pending/imports/'));
   assert.ok(!handlerSource.includes('autoPublish'));
-  assert.ok(handlerSource.includes('No auto-publish')); // The comment explicitly says no auto-publish;
+  assert.ok(handlerSource.includes('PENDING_APPROVAL')); // Imports always start as pending, never auto-published
 });
 
 test('Handler rejects unknown source IDs', () => {

@@ -104,6 +104,10 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        // Initialize encrypted storage and wire session context for API auth
+        SecureStorage.init(this);
+        ApiClient.setSessionContext(this);
+
         settings = new SettingsManager(this);
         historyManager = new ChatHistoryManager(this);
         providers = AIProvider.getProviders();

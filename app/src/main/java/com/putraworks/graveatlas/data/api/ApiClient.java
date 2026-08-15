@@ -20,6 +20,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+
+import android.content.Context;
+import com.putraworks.graveatlas.auth.SecureStorage;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.Call;
@@ -47,6 +50,34 @@ public class ApiClient {
     private final String baseUrl;
 
     private static String configuredUrl = null;
+    private static Context sessionContext = null;
+
+    /**
+     * Set the application context for retrieving the session token.
+     * Call this from Application.onCreate() or MainActivity.
+     */
+    public static void setSessionContext(Context context) {
+        sessionContext = context.getApplicationContext();
+        SecureStorage.init(context);
+    }
+
+    /**
+     * Get the Authorization header value for authenticated requests.
+     * Returns "Bearer <sessionToken>" or null if not logged in.
+     */
+    private String getAuthHeader() {
+        if (sessionContext == null) return null;
+        String token = SecureStorage.getSessionToken(sessionContext);
+        if (token == null) return null;
+        return "Bearer " + token;
+    }
+
+    /**
+     * Check if the user is authenticated and can submit records.
+     */
+    public boolean isAuthenticated() {
+        return getAuthHeader() != null;
+    }
 
     public ApiClient() {
         this.client = new OkHttpClient.Builder()
@@ -272,11 +303,12 @@ public class ApiClient {
             if (submission.notes != null) json.put("notes", submission.notes);
 
             RequestBody body = RequestBody.create(json.toString(), JSON);
-            Request request = new Request.Builder()
+            Request.Builder reqBuilder = new Request.Builder()
                     .url(baseUrl + "/api/graves")
-                    .header("Idempotency-Key", idempotencyKey)
-                    .post(body)
-                    .build();
+                    .header("Idempotency-Key", idempotencyKey);
+            String auth = getAuthHeader();
+            if (auth != null) reqBuilder.header("Authorization", auth);
+            Request request = reqBuilder.post(body).build();
 
             client.newCall(request).enqueue(new Callback() {
                 @Override
@@ -673,11 +705,12 @@ public class ApiClient {
             if (cemetery.website != null) json.put("website", cemetery.website);
 
             RequestBody body = RequestBody.create(json.toString(), JSON);
-            Request request = new Request.Builder()
+            Request.Builder reqBuilder = new Request.Builder()
                     .url(baseUrl + "/api/cemeteries")
-                    .header("Idempotency-Key", idempotencyKey)
-                    .post(body)
-                    .build();
+                    .header("Idempotency-Key", idempotencyKey);
+            String auth = getAuthHeader();
+            if (auth != null) reqBuilder.header("Authorization", auth);
+            Request request = reqBuilder.post(body).build();
 
             client.newCall(request).enqueue(new Callback() {
                 @Override
@@ -727,11 +760,12 @@ public class ApiClient {
             if (reason != null) json.put("reason", reason);
 
             RequestBody body = RequestBody.create(json.toString(), JSON);
-            Request request = new Request.Builder()
+            Request.Builder reqBuilder = new Request.Builder()
                     .url(baseUrl + "/api/corrections")
-                    .header("Idempotency-Key", idempotencyKey)
-                    .post(body)
-                    .build();
+                    .header("Idempotency-Key", idempotencyKey);
+            String auth = getAuthHeader();
+            if (auth != null) reqBuilder.header("Authorization", auth);
+            Request request = reqBuilder.post(body).build();
 
             client.newCall(request).enqueue(new Callback() {
                 @Override

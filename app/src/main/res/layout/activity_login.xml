@@ -23,7 +23,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:text="Explore the haunted unknown"
+        android:text="Sign in to add and contribute records"
         android:textSize="14sp"
         android:textColor="@color/text_secondary_dark" />
 
@@ -76,7 +76,7 @@
         android:layout_width="wrap_content"
         android:layout_height="40dp"
         android:layout_marginTop="16dp"
-        android:text="Continue without signing in"
+        android:text="Browse without signing in"
         android:textSize="12sp"
         android:textColor="@color/text_secondary_dark"
         app:backgroundTint="@android:color/transparent"
@@ -87,7 +87,8 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="48dp"
-        android:text="Your data is encrypted and stored securely on your device."
+        android:text="Login required to submit records. Your Google account is verified server-side.
+Your IP and device info are logged for abuse prevention."
         android:textSize="11sp"
         android:textColor="@color/text_muted_dark"
         android:gravity="center" />

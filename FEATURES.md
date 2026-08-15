@@ -402,3 +402,38 @@ Users must log in with a Google account before they can submit records.
 | GET | /api/admin/abuse/log | Get submission audit log (filter by user, Google sub, IP) |
 | GET | /api/admin/abuse/stats | Get abuse statistics |
 | POST | /api/admin/abuse/ban/:sub | Ban a Google account (requires reason) |
+
+## Android Google Auth Integration
+
+The Android app now requires Google login before submitting records. Browsing and searching remain open.
+
+### Android-Side Auth Flow
+
+1. User taps "Add a Grave" or any submit action
+2. App checks `SecureStorage.canSubmit()` — if false, launches LoginActivity
+3. User signs in with Google (GoogleSignIn SDK)
+4. App gets Google ID token and sends it to `POST /api/auth/google/verify`
+5. Backend verifies token with Google's servers
+6. Backend returns session token (7-day validity)
+7. App stores session token in EncryptedSharedPreferences
+8. All subsequent submissions include `Authorization: Bearer <token>` header
+
+### Android Auth Components
+
+| Component | File | Role |
+|-----------|------|------|
+| SecureStorage | auth/SecureStorage.java | Encrypted session token storage, 7-day expiry |
+| LoginActivity | auth/LoginActivity.java | Google Sign-In, ID token → backend verification |
+| ApiClient | data/api/ApiClient.java | Auth header injection on all submissions |
+| AddGraveFragment | ui/addgrave/AddGraveFragment.java | Login gate before submission form |
+| MainActivity | MainActivity.java | Session context initialization |
+| MainNavActivity | MainNavActivity.java | Session context initialization |
+
+### Android Security Measures
+
+- ID tokens verified server-side (never trust client claims)
+- Session tokens in EncryptedSharedPreferences (AES-256)
+- Client-side token expiry check (7 days, matching backend)
+- Login gate on all submission entry points
+- Browsing/searching works without login (read-only)
+- Banned accounts see banReason in error message
