@@ -1,3 +1,23 @@
+## [7.2.2] — 2026-08-15
+
+### Fixed
+- **AI chat search compiled results from GraveAtlas DB AND external official APIs (not either/or)**
+  - `AIDataInterceptor` previously routed a search query to EITHER the internal GraveAtlas
+    database OR the external sources gateway (OpenStreetMap, Wikidata, Singapore government
+    data), based on mutually-exclusive keyword matching. A query like "Find graves of people
+    born before 1850" only matched internal-search keywords, so external official APIs were
+    never queried — producing a false "no records found" without ever checking external data.
+  - Every search-intent query now queries the internal DB and all external official sources
+    IN PARALLEL via a new `CombinedResultCollector`, merging both into a single
+    `[COMPILED CONTEXT]` block with clearly labeled `GRAVEATLAS DATABASE` and
+    `EXTERNAL OFFICIAL SOURCES` sections.
+  - `AISystemPrompts` updated: the AI must never report "no records found" based on the
+    internal DB section alone — it must check the external sources section too, and cannot
+    claim to have searched a source it did not actually query.
+  - `tests/phase16.test.js` extended with regression guards against reverting to single-source
+    search. All 47 Phase 16.1 tests pass.
+  - PR #25, merged to `main` as `c678e4f`.
+
 ## [7.2.0] — 2026-08-15
 
 ### Added

@@ -1,8 +1,8 @@
 # GraveAtlas — Project Status
 
-**Last updated:** 2026-08-15 (Phase 16.3 complete)
-**Version:** Backend 7.1.0 | Android 1.0.0 | Schema 1.0.0
-**Tests:** 1562 passing, 0 failed
+**Last updated:** 2026-08-15 (AI search compiled-sources fix, v7.2.2)
+**Version:** Backend 7.1.0 | Android 7.2.2 | Schema 1.0.0
+**Tests:** 1562 passing, 0 failed (pre-existing unrelated failures in import-admin/phase16-3/phase16-5 tracked separately)
 
 ## Phase Completion
 
@@ -26,6 +26,8 @@
 **All 8 core phases complete. Phase 16 AI-native features complete. 1477 tests passing.**
 
 ## Recent Milestones
+
+0. **Fix — AI search now compiles GraveAtlas DB + external official sources together** ✅ Fixed `AIDataInterceptor` mutually-exclusive routing bug; every search query now queries internal DB and all external sources (OSM, Wikidata, Singapore gov) in parallel and compiles both into one `[COMPILED CONTEXT]` block. PR #25, merged as `c678e4f`, v7.2.2.
 
 1a. ~~Phase 16.1 — AI Database RAG Integration~~ ✅ AIDataInterceptor, evidence badges, NEA + OSM importers, 44 tests
 1b. ~~Phase 16.2 — Evidence badges in search~~ ✅ KNOWN/SOURCE-BACKED badges in global search, transparency feature, 29 tests
