@@ -134,7 +134,7 @@ export class BaseConnector {
    * Step 10: Execute the full pipeline for a query.
    * This is the main entry point for using a connector.
    */
-  async execute(query) {
+  async execute(query, env) {
     const cacheKey = `${this.sourceId}:${JSON.stringify(query)}`;
 
     // Try cache first
@@ -155,7 +155,7 @@ export class BaseConnector {
       await this.authenticate();
       await this.rateLimiter.waitForNextSlot();
 
-      const rawResponse = await this.request(query);
+      const rawResponse = await this.request(query, env);
       this.validate(rawResponse);
 
       // Detect schema changes
