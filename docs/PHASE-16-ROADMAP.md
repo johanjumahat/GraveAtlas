@@ -10,15 +10,16 @@
 - Contextual actions on grave records (Explain, Show Sources, Find Related, View on Map, Check Provenance, Report)
 - Prefill question from home screen to AI chat
 - Design system updated with evidence colors and AI UI tokens
+- Integrate AI with backend search (AIDataInterceptor RAG layer)
+- Evidence badges in search results (SearchFragment + GlobalSearchFragment)
+- "Why am I seeing this?" transparency feature on search results
+- Persistent AI command bar across all screens (AICommandBar)
+- Research session persistence (ResearchSessionManager)
 
 ## NEXT
-- Integrate AI with backend search (AI can query GraveAtlas API for records)
-- Add evidence badges to search results
 - Perform TalkBack screen reader testing
 - Test with large text settings
-- Add "Why am I seeing this?" transparency feature
-- Make AI command bar persistent across all screens
-- Add research session persistence (save investigations)
+- Improve research session UI (list saved sessions, resume investigation)
 
 ## LATER
 - Research canvas (visual graph: PERSON → CEMETERY → RECORD → SOURCE)
