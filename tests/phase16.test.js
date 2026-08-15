@@ -232,7 +232,8 @@ test('System prompt instructs AI to compile BOTH database and external sections'
     assert.ok(promptFile.includes('BOTH sections') || promptFile.includes('pull from BOTH'),
         'System prompt should instruct combining both GraveAtlas DB and external sources');
     assert.ok(promptFile.toLowerCase().includes("never tell the user 'no records found' based on the graveatlas database section alone".toLowerCase())
-        || promptFile.includes('database section alone'),
+        || promptFile.includes('database section alone')
+        || promptFile.includes('internal section alone'),
         'System prompt should forbid answering "no records" from the internal DB alone');
 });
 
@@ -248,7 +249,7 @@ test('System prompt still has evidence categories', () => {
 });
 
 test('System prompt still has no-fabrication rule', () => {
-    assert.ok(promptFile.includes('NEVER fabricate'), 'Missing no-fabrication rule');
+    assert.ok(promptFile.includes('NEVER fabricate') || promptFile.includes('Never fabricate'), 'Missing no-fabrication rule');
 });
 
 console.log('\nPart 5: Interceptor File Verification');

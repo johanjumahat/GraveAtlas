@@ -23,6 +23,7 @@
 | 16.3. AI Timelines | ✅ COMPLETE | 100% |
 | 16.4. AI Map Queries & Historical Layers | ✅ COMPLETE | 100% |
 | 16.5. Research Canvas | ✅ COMPLETE | 100% |
+| 16.6. Adaptive Interface Modes | ✅ COMPLETE | 100% |
 
 **All 8 core phases complete. Phase 16 AI-native features complete. 1477 tests passing.**
 
@@ -35,6 +36,9 @@
 3. **Add — GitHub Community Data connector (5th external source)** ✅ `GitHubCommunityConnector` reads community-contributed cemetery/grave records from `/community-data/` via GitHub Contents API. Users submit data via GitHub Issues or PRs. Fills coverage gaps where official APIs have no data. New routes: `/api/external/community`, `/api/external/community/query`. CC BY-SA 4.0. PR #27, merged as `51ffec7`, v7.2.5.
 
 2. **Implement — SG data.gov.sg connector `request()` method** ✅ Implemented missing `request()` method on `DataGovSgConnector` so it can participate in `/api/external/query-all` searches. Previously returned "request() not implemented for connector: datagov-sg". v7.2.3.
+
+
+4. **Add — Adaptive Interface Modes (5 modes)** ✅ `InterfaceMode` enum with RESEARCH, MAP, ARCHIVE, INSTITUTION, PUBLIC. `InterfaceModeManager` persists selection, adapts navigation defaults, AI prompt context, and feature visibility. Mode selector in More sheet. Admin tools only in INSTITUTION mode. AI command bar hidden in PUBLIC mode. v7.2.6.
 
 ## Architecture
 
@@ -71,7 +75,6 @@
 
 ## Next Steps (LATER Roadmap)
 
-- **Adaptive Interface Modes** — Research/Map/Archive/Institution/Public modes
 - **TalkBack Testing** — Needs physical device
 - **Large Text Testing** — Needs physical device
 - **Bukit Brown burial registers** — NAS digitised PDFs, not API-accessible (documented)

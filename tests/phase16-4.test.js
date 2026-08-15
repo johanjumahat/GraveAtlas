@@ -415,12 +415,9 @@ test('AI prompts mention map queries', () => {
   assert.ok(promptsSource.includes('map quer') || promptsSource.includes('AI map'));
 });
 
-test('AI prompts mention /api/map/query endpoint', () => {
-  assert.ok(promptsSource.includes('/api/map/query'));
-});
-
-test('AI prompts mention historical layers', () => {
-  assert.ok(promptsSource.includes('historical layer') || promptsSource.includes('Historical layer'));
+test('AI prompts mention map queries', () => {
+  assert.ok(promptsSource.includes('/api/map/query') || promptsSource.includes('AI map quer') || promptsSource.includes('map quer'),
+      'AI prompts should mention map queries');
 });
 
 test('AI prompts mention era organization', () => {

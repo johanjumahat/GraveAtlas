@@ -20,6 +20,8 @@ package com.putraworks.graveatlas.chat;
  * the user's message. The AI must never answer a search query using only the
  * GraveAtlas database section — it must check and compile both sections.
  */
+import com.putraworks.graveatlas.ui.navigation.InterfaceModeManager;
+
 public final class AISystemPrompts {
 
     private AISystemPrompts() {}
@@ -58,7 +60,8 @@ public final class AISystemPrompts {
         + "- Do not append a 'Next steps' section, a feature-suggestion list, or related-tool pitches after every answer. Offer ONE suggestion, in one line, only when it is genuinely the most useful next action — and only sometimes, not every reply.\n"
         + "- No decorative dividers (no '—' or '###' used as spacers). No headers for a single short answer.\n"
         + "- Default to the shortest response that fully answers the question.\n\n"
-        + "TONE: Professional, direct, research-oriented — like a knowledgeable archivist who respects your time. Evidence first, brevity always.";
+        + "TONE: Professional, direct, research-oriented — like a knowledgeable archivist who respects your time. Evidence first, brevity always."
+    + "\n\nINTERFACE MODE: " + InterfaceModeManager.getCurrentAIContextHint();
 
     /**
      * Contextual prompt for grave record analysis.

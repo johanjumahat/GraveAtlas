@@ -23,6 +23,8 @@ import com.putraworks.graveatlas.ui.contribute.ContributeFragment;
 import com.putraworks.graveatlas.auth.SecureStorage;
 import com.putraworks.graveatlas.ui.ai.AICommandBar;
 import com.putraworks.graveatlas.ui.ai.ResearchSessionManager;
+import com.putraworks.graveatlas.ui.navigation.InterfaceMode;
+import com.putraworks.graveatlas.ui.navigation.InterfaceModeManager;
 import com.putraworks.graveatlas.ui.home.HomeFragment;
 import com.putraworks.graveatlas.ui.map.MapFragment;
 import com.putraworks.graveatlas.ui.search.SearchFragment;
@@ -64,6 +66,9 @@ public class MainNavActivity extends AppCompatActivity {
         SecureStorage.init(this);
         ApiClient.setSessionContext(this);
 
+        // Phase 16.6: Initialize adaptive interface mode
+        InterfaceModeManager.init(this);
+
         loadSavedApiUrl();
 
         // Phase 16.2: Initialize research session manager
@@ -75,11 +80,14 @@ public class MainNavActivity extends AppCompatActivity {
         bottomNav = findViewById(R.id.bottom_navigation);
 
         if (savedInstanceState == null) {
-            loadFragment(new HomeFragment());
+            loadFragment(getDefaultFragmentForMode());
         }
 
-        // Phase 16.2: Persistent AI command bar
+        // Phase 16.2: Persistent AI command bar (hidden in PUBLIC mode)
         aiCommandBar = findViewById(R.id.aiCommandBar);
+        if (!InterfaceModeManager.showAICommandBar()) {
+            aiCommandBar.setVisibility(View.GONE);
+        }
 
         bottomNav.setOnItemSelectedListener(item -> {
             if (suppressNavListener) return true;
@@ -169,6 +177,26 @@ public class MainNavActivity extends AppCompatActivity {
             selectHomeTabSilently();
         });
 
+        // Phase 16.6: Interface Mode selector
+        try {
+            sheetView.findViewById(R.id.moreInterfaceMode).setOnClickListener(v -> {
+                dialog.dismiss();
+                showInterfaceModeSelector();
+            });
+        } catch (Exception e) { /* ID not in layout yet — skip */ }
+
+        // Phase 16.6: Admin/Import tools (INSTITUTION mode only)
+        if (InterfaceModeManager.showAdminTools()) {
+            try {
+                sheetView.findViewById(R.id.moreAdmin).setVisibility(View.VISIBLE);
+                sheetView.findViewById(R.id.moreAdmin).setOnClickListener(v -> {
+                    dialog.dismiss();
+                    loadFragment(new com.putraworks.graveatlas.ui.external.ExternalSearchFragment());
+                    selectHomeTabSilently();
+                });
+            } catch (Exception e) { /* ID not in layout yet — skip */ }
+        }
+
         dialog.show();
     }
 
@@ -207,6 +235,57 @@ public class MainNavActivity extends AppCompatActivity {
     public void navigateToAbout() {
         loadFragment(new AboutFragment());
         selectHomeTabSilently();
+    }
+
+    /**
+     * Phase 16.6: Get the default fragment for the current interface mode.
+     */
+    private Fragment getDefaultFragmentForMode() {
+        InterfaceMode mode = InterfaceModeManager.getCurrentMode();
+        switch (mode) {
+            case MAP:
+                return new MapFragment();
+            case ARCHIVE:
+                return new GlobalSearchFragment();
+            case INSTITUTION:
+            case PUBLIC:
+            case RESEARCH:
+            default:
+                return new HomeFragment();
+        }
+    }
+
+    /**
+     * Phase 16.6: Show the interface mode selector dialog.
+     */
+    private void showInterfaceModeSelector() {
+        String[] labels = new String[InterfaceMode.values().length];
+        String[] descriptions = new String[InterfaceMode.values().length];
+        for (int i = 0; i < InterfaceMode.values().length; i++) {
+            labels[i] = InterfaceMode.values()[i].getLabel();
+            descriptions[i] = InterfaceMode.values()[i].getDescription();
+        }
+
+        // Build display strings: "Label — description"
+        String[] displayItems = new String[labels.length];
+        for (int i = 0; i < labels.length; i++) {
+            displayItems[i] = labels[i] + " — " + descriptions[i];
+        }
+
+        int currentIdx = InterfaceModeManager.getCurrentMode().ordinal();
+
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Interface Mode")
+            .setSingleChoiceItems(displayItems, currentIdx, (dlg, which) -> {
+                InterfaceMode selected = InterfaceMode.values()[which];
+                InterfaceModeManager.setMode(this, selected);
+                InterfaceModeManager.markModeSelected(this);
+                dlg.dismiss();
+                // Recreate activity to apply mode changes
+                recreate();
+            })
+            .setNegativeButton("Cancel", null)
+            .show();
     }
 
     /**

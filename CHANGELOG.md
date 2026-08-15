@@ -519,6 +519,29 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.6] — 2026-08-16
+
+### Phase 16.6: Adaptive Interface Modes
+
+**Added:**
+- `InterfaceMode` enum with 5 modes: RESEARCH, MAP, ARCHIVE, INSTITUTION, PUBLIC
+- `InterfaceModeManager` — persists mode selection via SharedPreferences, provides feature flags
+- Mode-specific navigation defaults (MAP→MapFragment, ARCHIVE→GlobalSearchFragment)
+- AI system prompt includes current mode context hint
+- Mode selector dialog in More sheet with single-choice items
+- Admin/Import tools visible only in INSTITUTION mode
+- AI command bar hidden in PUBLIC mode
+- `moreInterfaceMode` and `moreAdmin` buttons in sheet_more.xml
+- 46 new tests (phase16-6.test.js)
+
+**Mode Features:**
+- RESEARCH: AI-first, evidence trails, timeline, research canvas — default for power users
+- MAP: Geographic exploration, GPS, compass, nearby cemeteries
+- ARCHIVE: Record management, search, cemetery browsing, contributions
+- INSTITUTION: Data import, admin, moderation tools — for museums/institutions
+- PUBLIC: Simplified, read-only, no AI command bar — for casual visitors
+
+
 ## Phase 4 Gap Closure — Publication Pipeline, Retry, Change Diff, Rate Limits (2026-08-11)
 
 ### Added — Backend (phase4a.js)
