@@ -821,3 +821,23 @@ After the initial 3 fixes, build #50 revealed additional compilation errors. Res
 
 ### Fixed
 - Syntax error in P8-2 test (fn => corrected to fn: () =>)
+
+## [Phase 16.1] — 2026-08-15
+
+### Added
+- **AIDataInterceptor.java** — RAG (Retrieval-Augmented Generation) layer that detects search intent in AI chat messages, queries GraveAtlas API for real records, and injects results as `[DATABASE CONTEXT]` before sending to AI
+- Evidence badges on search result cards in GlobalSearchFragment (KNOWN, SOURCE-BACKED, UNCERTAIN, etc.)
+- 44 new tests for Phase 16.1 (search intent detection, term extraction, context formatting, security verification, evidence badges)
+- docs/PHASE-16-FINAL-REPORT.md
+- docs/PHASE-16-ROADMAP.md
+
+### Changed
+- AISystemPrompts.java — Rewrote system prompt: AI now has database access via RAG, instructed to use [DATABASE CONTEXT] and cite real record IDs
+- MainActivity.java — Wired AIDataInterceptor into sendMessage() flow
+- GlobalSearchFragment.java — Search results now display in LinearLayout containers with evidence badges
+- tests/run.js — Added phase16.test.js to test runner
+
+### Security
+- AIDataInterceptor only uses public search endpoint (no admin, no write, no delete)
+- No API keys, tokens, or secrets in interceptor code
+- Graceful degradation: if API search fails, AI proceeds without data context

@@ -15,6 +15,7 @@ import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ProgressBar;
 import android.widget.Spinner;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -27,6 +28,7 @@ import androidx.fragment.app.Fragment;
 import com.putraworks.graveatlas.MainActivity;
 import com.putraworks.graveatlas.MainNavActivity;
 import com.putraworks.graveatlas.R;
+import com.putraworks.graveatlas.chat.AISystemPrompts;
 import com.putraworks.graveatlas.ui.addgrave.AddGraveFragment;
 import com.putraworks.graveatlas.ui.map.MapFragment;
 import com.putraworks.graveatlas.ui.search.SearchFragment;
@@ -109,6 +111,7 @@ public class HomeFragment extends Fragment {
         setupSpinners();
         loadSavedLocation();
         setupQuickActions(view);
+        setupAiCommandBar(view);
 
         return view;
     }
@@ -485,6 +488,49 @@ public class HomeFragment extends Fragment {
             Intent intent = new Intent(getActivity(), MainActivity.class);
             startActivity(intent);
         });
+    }
+
+    /**
+     * Phase 16 - AI-native home screen: AI command bar + suggested research prompts.
+     */
+    private void setupAiCommandBar(View view) {
+        // AI command input → opens AI chat with the question pre-filled
+        EditText etAiCommand = view.findViewById(R.id.etAiCommand);
+        view.findViewById(R.id.btnAiAsk).setOnClickListener(v -> {
+            String question = etAiCommand.getText() != null ? etAiCommand.getText().toString().trim() : "";
+            Intent intent = new Intent(getActivity(), MainActivity.class);
+            if (!question.isEmpty()) {
+                intent.putExtra("prefill_question", question);
+            }
+            startActivity(intent);
+        });
+
+        // Suggested research prompts
+        LinearLayout promptsContainer = view.findViewById(R.id.suggestedPromptsContainer);
+        if (promptsContainer != null) {
+            for (String prompt : AISystemPrompts.SUGGESTED_PROMPTS) {
+                TextView promptView = new TextView(getContext());
+                promptView.setText(prompt);
+                promptView.setTextSize(13);
+                promptView.setTextColor(getResources().getColor(R.color.text_secondary_dark));
+                promptView.setBackgroundResource(R.drawable.bg_more_item);
+                promptView.setPadding(32, 24, 32, 24);
+                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                );
+                params.setMargins(0, 4, 0, 4);
+                promptView.setLayoutParams(params);
+                promptView.setClickable(true);
+                promptView.setFocusable(true);
+                promptView.setOnClickListener(v -> {
+                    Intent intent = new Intent(getActivity(), MainActivity.class);
+                    intent.putExtra("prefill_question", prompt);
+                    startActivity(intent);
+                });
+                promptsContainer.addView(promptView);
+            }
+        }
     }
 
     private void loadFragment(Fragment fragment) {

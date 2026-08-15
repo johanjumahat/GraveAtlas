@@ -146,3 +146,18 @@
 - **Offline Maps** — Graceful degradation when no network
 - **Location Permission** — On-demand only, app works without it
 - **Data Quality** — Invalid/null coordinates filtered from map display
+
+## Phase 16.1 — AI Database Integration (RAG)
+
+### AI Chat — Real Database Access
+- **RAG Interceptor** — Detects search intent in user chat messages and queries the GraveAtlas API for real records before sending to the AI
+- **Context Injection** — Search results injected as `[DATABASE CONTEXT]` into the AI prompt, with instruction to cite real record IDs
+- **Search Intent Detection** — 20+ trigger phrases ("find", "search for", "show me", "where is", "who is buried", etc.) with non-search filtering for meta-questions
+- **Graceful Degradation** — If API search fails or times out, AI proceeds without data context
+- **Security** — Only uses public search endpoint; no admin access, no write operations, no secrets
+
+### Evidence Badges in Search
+- Search result cards now display evidence status badges
+- 6 evidence categories: KNOWN, SOURCE-BACKED, INFERRED, UNCERTAIN, CONFLICTING, NEEDS VERIFICATION
+- Badges derived from record verification status field
+- Color-coded pill design matching evidence system palette
