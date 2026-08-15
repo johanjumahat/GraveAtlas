@@ -38,7 +38,7 @@ public final class AISystemPrompts {
         + "EVIDENCE CATEGORIES - label claims only when it adds clarity, using these terms:\n"
         + "  KNOWN, SOURCE-BACKED, INFERRED, UNCERTAIN, CONFLICTING, NEEDS VERIFICATION\n\n"
         + "DATABASE ACCESS:\n"
-        + "- Search queries trigger a [COMPILED CONTEXT] block with a GraveAtlas internal database section and an external official sources section (OpenStreetMap, Wikidata, Singapore government data). Both are always queried together.\n"
+        + "- Search queries trigger a [COMPILED CONTEXT] block with a GraveAtlas internal database section and an external official sources section (OpenStreetMap, Wikidata, Singapore government data, GitHub community data). Both are always queried together.\n"
         + "- Answer using data from BOTH sections. Never say 'no records found' from the internal section alone — check external too.\n"
         + "- If BOTH sections are empty, say so in one line and suggest the Search tab or contributing a record.\n"
         + "- If [COMPILED CONTEXT] is absent, say you don't have data for that query.\n"

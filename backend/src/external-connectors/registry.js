@@ -193,6 +193,27 @@ export const SOURCE_REGISTRY = [
     lastVerificationDate: '2026-08-16',
     verificationEvidence: 'CSV endpoint verified. 70,267 records confirmed. 22 columns: Block, Division, Grave Number, Location, Name of Deceased, Sex, Age, Date of Death, Date of Internment, and flags. Data source: NAS digitised burial registers.',
     notes: 'Individual burial records for Bukit Brown Cemetery (1922-1972). 70,000+ records transcribed from NAS burial registers by the Bukit Brown Burial Record Transcription Project. Does NOT include GPS coordinates — only block/division/plot references. Japanese Occupation period (June 1942-1944) not transcribed.'
+  },  {
+    sourceId: 'github-community',
+    sourceName: 'GitHub Community Data (GraveAtlas repo)',
+    organization: 'GraveAtlas Community Contributors',
+    countryRegion: 'Global',
+    apiBaseUrl: 'https://api.github.com/repos/johanjumahat/GraveAtlas/contents/community-data',
+    documentationUrl: 'https://github.com/johanjumahat/GraveAtlas/tree/main/community-data',
+    dataType: 'Community-contributed cemetery and grave records with photos. JSON format. Users add data via GitHub Issues or PRs.',
+    authenticationRequirement: 'None for public read access. GitHub account required to contribute (submit Issues or PRs).',
+    rateLimits: '60 requests/hour unauthenticated, 5000/hour with GitHub token.',
+    licensing: 'CC BY-SA 4.0 — https://creativecommons.org/licenses/by-sa/4.0/',
+    licenseVerified: true,
+    commercialUseStatus: 'Permitted under CC BY-SA 4.0 with attribution and share-alike.',
+    attributionRequirement: 'Required: cite "GraveAtlas Community Contributors" and link to the source record.',
+    privacyRestrictions: 'Contributors must not submit personal data of living individuals. Only historical/public cemetery records.',
+    geographicCoverage: 'Global — community-contributed from any country. Particularly useful where official APIs have no coverage.',
+    updateFrequency: 'Continuous — updated whenever users submit new data via GitHub.',
+    integrationStatus: 'implemented',
+    lastVerificationDate: '2026-08-15',
+    verificationEvidence: 'GitHub Contents API verified at https://docs.github.com/en/rest/repos/contents. Community data stored as JSON files in /community-data/ directory.',
+    notes: 'Community fallback source. When official APIs (OSM, Wikidata, data.gov.sg) have no data for a query, users can contribute records via GitHub. See CONTRIBUTING.md for submission guidelines.'
   }
 ];
 

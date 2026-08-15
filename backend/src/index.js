@@ -754,6 +754,32 @@ async function handleRequest(request, env, ctx) {
       return jsonResponse({ datasets }, 200, corsHeaders);
     }
 
+    // GitHub community data — list files
+    if (path === '/api/external/community' && method === 'GET') {
+      try {
+        const { GitHubCommunityConnector } = await import('./external-connectors/connectors/github-community-connector.js');
+        const connector = new GitHubCommunityConnector();
+        const files = await connector.listCommunityFiles();
+        return jsonResponse({ files, count: files.length }, 200, corsHeaders);
+      } catch (err) {
+        return jsonResponse({ error: 'Failed to list community files', detail: err.message }, 500, corsHeaders);
+      }
+    }
+
+    // GitHub community data — query
+    if (path === '/api/external/community/query' && method === 'POST') {
+      let body;
+      try { body = await request.json(); } catch { return jsonResponse({ error: 'Invalid JSON' }, 400, corsHeaders); }
+      try {
+        const { GitHubCommunityConnector } = await import('./external-connectors/connectors/github-community-connector.js');
+        const connector = new GitHubCommunityConnector();
+        const result = await connector.execute(body.query || {});
+        return jsonResponse(sanitizeResponse(result), 200, corsHeaders);
+      } catch (err) {
+        return jsonResponse({ error: 'Community data query failed', detail: err.message }, 500, corsHeaders);
+      }
+    }
+
     // Get source registry (full, including not-implemented)
     if (path === '/api/external/registry' && method === 'GET') {
       const all = getSource();
