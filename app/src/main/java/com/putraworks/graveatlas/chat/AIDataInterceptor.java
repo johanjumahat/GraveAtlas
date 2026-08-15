@@ -71,6 +71,7 @@ public class AIDataInterceptor {
 
     public AIDataInterceptor(ApiClient client) {
         this.apiClient = client;
+        this.externalClient = new ExternalSourceClient();
     }
 
     /**
