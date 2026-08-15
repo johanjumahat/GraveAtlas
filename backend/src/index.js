@@ -1671,8 +1671,13 @@ async function handleSearch(request, env, cors) {
                 name: searchName,
                 cemetery: record.cemeteryName || record.cemetery || null,
                 cemeteryId: record.cemeteryId || null,
+                section: record.section || null,
+                plot: record.plot || null,
                 birthDate: record.birthDate || null,
                 deathDate: record.deathDate || null,
+                latitude: record.latitude || null,
+                longitude: record.longitude || null,
+                verificationStatus: record.status || null,
                 score
               });
             }
