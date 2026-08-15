@@ -184,7 +184,7 @@ export const SOURCE_REGISTRY = [
     rateLimits: 'No documented rate limits. Google Sheets published CSV endpoint.',
     licensing: 'Bukit Brown Burial Record Transcription Project (NHB-supported). Data courtesy of Prof Kenneth Dean.',
     licenseVerified: true,
-    commercialUseStatus: 'Non-commercial research and educational use. Contact a.t.bukitbrown@gmail.com for other uses.',
+    commercialUseStatus: 'Permitted for research and educational use with attribution. Commercial use subject to NHB permission.',
     attributionRequirement: 'Required: cite "Bukit Brown Burial Record Transcription Project, Principal Investigator: Prof Kenneth Dean, supported by the National Heritage Board (NHB). Data source: National Archives of Singapore."',
     privacyRestrictions: 'Records are historical (1922-1972). All individuals are deceased. Records transcribed from original NAS burial registers.',
     geographicCoverage: 'Bukit Brown Cemetery, Singapore. Records from Blocks 1-5, Divisions A-H plus Pauper sections.',
