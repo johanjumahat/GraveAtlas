@@ -1,6 +1,6 @@
 # GraveAtlas — Project Status
 
-**Last updated:** 2026-08-15
+**Last updated:** 2026-08-15 (post-merge)
 **Version:** Backend 7.1.0 | Android 1.0.0 | Schema 1.0.0
 **Tests:** 459 passing, 0 failed
 
@@ -41,7 +41,9 @@
 
 ## Next Steps
 
-1. Merge phase-16.1/ai-database-integration branch (RAG interceptor + evidence badges in search)
+1. ~~Merge phase-16.1/ai-database-integration branch~~ ✅ MERGED
+1a. Integrate Singapore NEA data.gov.sg cemetery GeoJSON (Tier 1 data source)
+1b. Integrate OpenStreetMap cemetery data via Overpass API (Tier 1 data source)
 2. Deploy backend to Cloudflare Workers
 3. Build signed release APK
 4. Submit to Google Play Console

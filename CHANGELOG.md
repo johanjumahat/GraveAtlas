@@ -841,3 +841,17 @@ After the initial 3 fixes, build #50 revealed additional compilation errors. Res
 - AIDataInterceptor only uses public search endpoint (no admin, no write, no delete)
 - No API keys, tokens, or secrets in interceptor code
 - Graceful degradation: if API search fails, AI proceeds without data context
+
+## [Phase 16.1 Post-Merge] — 2026-08-15
+
+### Added
+- docs/OFFICIAL-DATA-SOURCES.md — Comprehensive research on official APIs for cemetery/grave data
+  - Singapore NEA data.gov.sg (✅ available, GeoJSON, open license)
+  - OpenStreetMap (✅ available, ODbL, Overpass API)
+  - BillionGraves (⚠️ possible API, needs contact)
+  - MUIS/Pusara.sg (❌ no API)
+  - FindAGrave (❌ proprietary, no API)
+  - US NCA Gravesite Locator (⚠️ web search only)
+  - Interment.net (⚠️ free, no API)
+  - UK local councils (⚠️ varies by council)
+  - Tiered recommendations for GraveAtlas integration

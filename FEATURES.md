@@ -161,3 +161,25 @@
 - 6 evidence categories: KNOWN, SOURCE-BACKED, INFERRED, UNCERTAIN, CONFLICTING, NEEDS VERIFICATION
 - Badges derived from record verification status field
 - Color-coded pill design matching evidence system palette
+
+## Official Data Source Research (2026-08-15)
+
+### Tier 1 — Ready to integrate
+- **Singapore NEA data.gov.sg** — Active cemeteries GeoJSON, After Death Facilities, Columbaria. Singapore Open Data Licence. API: `api-open.data.gov.sg`
+- **OpenStreetMap** — Cemetery boundaries worldwide via Overpass API. ODbL licence.
+
+### Tier 2 — Potential with partnership
+- **BillionGraves** — 300K+ GPS-linked cemeteries, developer notes suggest API access possible
+- **UK local councils** — Some publish burial records as open data (varies by council)
+
+### Tier 3 — Reference only
+- Interment.net (25M records, free, no API)
+- US NCA Gravesite Locator (web search only)
+- FamilySearch Wiki (finding aids)
+
+### Not recommended
+- FindAGrave (proprietary, Ancestry.com, no API, no reuse rights)
+- MUIS/Pusara.sg (no API, phone-based search)
+
+### Import workflow for official data
+All official data imports follow the existing framework: Source Registration → License Check → Validation → Duplicate Detection → Moderation → Publication → Import History
