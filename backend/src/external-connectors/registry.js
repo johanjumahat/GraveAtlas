@@ -171,6 +171,28 @@ export const SOURCE_REGISTRY = [
     lastVerificationDate: '2026-08-15',
     verificationEvidence: 'API documentation reviewed at https://guide.data.gov.sg/developer-guide/dataset-apis/download-dataset. Poll-download API pattern confirmed. Four datasets identified: NEA Active Cemeteries (d_4a9b83ee745c10c3aa5829fb80e09d9c), NEA After Death Facilities (d_8057b4f4c7eca22c3c51c4ac05440f21), NEA Dedicated Columbaria (d_9b0752e9d3f1f9d957d5d8be2b58dfff), NHB National Monuments (d_b29c230ec6b609e29ed42f71ca9a8767). Dataset schemas verified from data.gov.sg preview pages.',
     notes: 'Provides cemetery/facility LOCATIONS only — not individual burial records. NEA manages burial records internally but has not published individual grave data as open data. Bukit Brown burial registers (1922-1972) are held by National Archives of Singapore (NAS) as digitised PDFs, not API-accessible. This connector covers all four SG government datasets relevant to cemetery/heritage research.'
+  },
+  {
+    sourceId: 'bukit-brown',
+    sourceName: 'Bukit Brown Burial Records (NAS/NHB)',
+    organization: 'Bukit Brown Burial Record Transcription Project (Prof Kenneth Dean, NHB)',
+    countryRegion: 'Singapore',
+    apiBaseUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSXqaQA_GRHRMjwpAkl3Z7jOnMZQLAwc26sbtvYsZv2kN9bIDCey9etC8Znc0CBVDmvNx0VXjg8p83y/pub',
+    documentationUrl: 'https://tombs.bukitbrown.org/p/bukit-brown-burial-records-search.html',
+    dataType: 'Individual burial records — name, sex, age, date of death, date of internment, block/division/plot location. CSV format (70,000+ records, 1922-1972).',
+    authenticationRequirement: 'None — published Google Sheets CSV, public read-only.',
+    rateLimits: 'No documented rate limits. Google Sheets published CSV endpoint.',
+    licensing: 'Bukit Brown Burial Record Transcription Project (NHB-supported). Data courtesy of Prof Kenneth Dean.',
+    licenseVerified: true,
+    commercialUseStatus: 'Non-commercial research and educational use. Contact a.t.bukitbrown@gmail.com for other uses.',
+    attributionRequirement: 'Required: cite "Bukit Brown Burial Record Transcription Project, Principal Investigator: Prof Kenneth Dean, supported by the National Heritage Board (NHB). Data source: National Archives of Singapore."',
+    privacyRestrictions: 'Records are historical (1922-1972). All individuals are deceased. Records transcribed from original NAS burial registers.',
+    geographicCoverage: 'Bukit Brown Cemetery, Singapore. Records from Blocks 1-5, Divisions A-H plus Pauper sections.',
+    updateFrequency: 'Static dataset. Transcription project ongoing for Japanese Occupation period (June 1942-1944) which has not been transcribed.',
+    integrationStatus: 'implemented',
+    lastVerificationDate: '2026-08-16',
+    verificationEvidence: 'CSV endpoint verified. 70,267 records confirmed. 22 columns: Block, Division, Grave Number, Location, Name of Deceased, Sex, Age, Date of Death, Date of Internment, and flags. Data source: NAS digitised burial registers.',
+    notes: 'Individual burial records for Bukit Brown Cemetery (1922-1972). 70,000+ records transcribed from NAS burial registers by the Bukit Brown Burial Record Transcription Project. Does NOT include GPS coordinates — only block/division/plot references. Japanese Occupation period (June 1942-1944) not transcribed.'
   }
 ];
 
