@@ -43,6 +43,8 @@ import com.putraworks.graveatlas.chat.ChatAdapter;
 import com.putraworks.graveatlas.chat.ChatHistoryManager;
 import com.putraworks.graveatlas.chat.ChatMessage;
 import com.putraworks.graveatlas.chat.SettingsManager;
+import com.putraworks.graveatlas.auth.SecureStorage;
+import com.putraworks.graveatlas.data.api.ApiClient;
 import com.putraworks.graveatlas.chat.AIDataInterceptor;
 
 import java.util.ArrayList;

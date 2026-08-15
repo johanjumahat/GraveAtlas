@@ -19,6 +19,7 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.fragment.app.Fragment;
 
 import com.putraworks.graveatlas.data.api.ApiClient;
+import java.util.List;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.ui.evidence.EvidenceStatus;
 import com.putraworks.graveatlas.ui.gravedetail.GraveDetailFragment;
@@ -27,7 +28,6 @@ import com.putraworks.graveatlas.MainNavActivity;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -52,6 +52,7 @@ import okhttp3.Response;
  * For large datasets, the backend should provide a /api/timeline endpoint.
  */
 public class TimelineFragment extends Fragment {
+    private ApiClient apiClient = new ApiClient();
 
     private LinearLayout timelineContainer;
     private ProgressBar progressBar;
@@ -112,54 +113,26 @@ public class TimelineFragment extends Fragment {
         timelineContainer.removeAllViews();
         progressBar.setVisibility(View.VISIBLE);
 
-        ApiClient.get("graves", new Callback() {
+        apiClient.getGraves(new ApiClient.ApiCallback<List<GraveRecord>>() {
             @Override
-            public void onFailure(Call call, IOException e) {
+            public void onFailure(String error) {
                 if (getActivity() == null) return;
                 getActivity().runOnUiThread(() -> {
                     progressBar.setVisibility(View.GONE);
                     summaryText.setText("Failed to load timeline data. Check your connection.");
-                    Toast.makeText(getContext(), "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getContext(), "Error: " + error, Toast.LENGTH_SHORT).show();
                 });
             }
 
             @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                if (!response.isSuccessful()) {
-                    if (getActivity() == null) return;
-                    getActivity().runOnUiThread(() -> {
-                        progressBar.setVisibility(View.GONE);
-                        summaryText.setText("Error loading data (HTTP " + response.code() + ")");
-                    });
-                    return;
-                }
+            public void onSuccess(List<GraveRecord> graves) {
+                allEvents = buildEvents(graves != null ? graves : new ArrayList<>());
 
-                try {
-                    String body = response.body() != null ? response.body().string() : "{}";
-                    JSONObject json = new JSONObject(body);
-                    JSONArray gravesArr = json.optJSONArray("graves");
-                    if (gravesArr == null) gravesArr = json.optJSONArray("data");
-                    if (gravesArr == null && json.has("id")) {
-                        // Single record
-                        gravesArr = new JSONArray();
-                        gravesArr.put(json);
-                    }
-
-                    List<GraveRecord> graves = GraveRecord.fromJsonArray(gravesArr);
-                    allEvents = buildEvents(graves);
-
-                    if (getActivity() == null) return;
-                    getActivity().runOnUiThread(() -> {
-                        progressBar.setVisibility(View.GONE);
-                        displayTimeline();
-                    });
-                } catch (Exception e) {
-                    if (getActivity() == null) return;
-                    getActivity().runOnUiThread(() -> {
-                        progressBar.setVisibility(View.GONE);
-                        summaryText.setText("Error parsing data: " + e.getMessage());
-                    });
-                }
+                if (getActivity() == null) return;
+                getActivity().runOnUiThread(() -> {
+                    progressBar.setVisibility(View.GONE);
+                    displayTimeline();
+                });
             }
         });
     }
