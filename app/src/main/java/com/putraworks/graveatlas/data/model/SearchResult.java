@@ -23,6 +23,8 @@ public class SearchResult {
     public String cemetery;
     public String cemeteryId;
     public String cemeteryType;
+    public String section;
+    public String plot;
     public String birthDate;
     public String deathDate;
     public Double latitude;
@@ -48,6 +50,8 @@ public class SearchResult {
                 r.cemetery = json.optString("cemetery", null);
                 r.cemeteryId = json.optString("cemeteryId", null);
                 r.cemeteryType = json.optString("cemeteryType", null);
+                r.section = json.optString("section", null);
+                r.plot = json.optString("plot", null);
                 r.birthDate = json.optString("birthDate", null);
                 r.deathDate = json.optString("deathDate", null);
                 r.latitude = json.has("latitude") && !json.isNull("latitude") ? json.optDouble("latitude") : null;
