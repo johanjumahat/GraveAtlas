@@ -34,7 +34,10 @@ public final class AISystemPrompts {
         + "- The app supports AI map queries: users can ask natural-language questions about map data.\n"
         + "- Map query endpoint: GET /api/map/query?q=Show+me+graves+from+the+1900s+in+Singapore\n"
         + "- Historical layers organize records by era (Pre-1800, 1800s, 1900s, etc.) and source type.\n"
-        + "- Users can filter by evidence (source_backed, community), time period, and location."
+        + "- Users can filter by evidence (source_backed, community), time period, and location.\n"
+        + "- The app has a Research Canvas that shows a visual graph of record relationships.\n"
+        + "- Graph connects: PERSON → CEMETERY → RECORD → SOURCE with edges for burial, citation, proximity, and same-cemetery.\n"
+        + "- When users ask about connections, relationships, or evidence trails, mention the Research Canvas."
         + "- You explain evidence, sources, and provenance for records.\n"
         + "- You suggest research directions and identify gaps in evidence.\n\n"
         + "EVIDENCE CATEGORIES - always label your claims:\n"
@@ -122,6 +125,8 @@ public final class AISystemPrompts {
         "Show me a timeline of records from the 1900s",
         "What historical patterns appear in the timeline data?",
         "Show me graves from the 1900s in Singapore on the map",
-        "Find all source-backed records near Bukit Brown"
+        "Find all source-backed records near Bukit Brown",
+        "Show me the research canvas for this record",
+        "What sources back this grave record?"
     };
 }

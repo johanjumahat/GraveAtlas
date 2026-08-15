@@ -1,4 +1,47 @@
 
+## [Phase 16.5 — Research Canvas] — 2026-08-15
+
+### Added — Visual Graph for Record Relationships
+- **ResearchGraph.java** — Graph model connecting PERSON → CEMETERY → RECORD → SOURCE:
+  - 5 node types: PERSON, CEMETERY, RECORD, SOURCE, LOCATION
+  - 8 edge types: BURIED_IN, RECORDED_IN, LOCATED_IN, CITED_BY, NEAR, SAME_CEMETERY, SAME_REGION, RELATED_TO
+  - buildFromRecord() builds complete graph from GraveRecord + RelatedRecords
+  - getNeighbors() — find connected nodes
+  - getEdgesForNode() — get all edges for a node
+  - getNodeCounts() / getEdgeCounts() — graph statistics
+  - getSummary() — text summary with evidence trail info
+  - getCentralNode() — the highlighted starting node
+  - Deduplicated node IDs via HashMap
+
+- **ResearchCanvasFragment.java** — Visual graph UI:
+  - Central entity card (highlighted)
+  - Direct connections list with edge labels
+  - Graph statistics by node type
+  - Related persons, cemeteries, and sources sections
+  - Full edge list with arrows and labels
+  - Tap node → view details
+  - Long-press → node details dialog with neighbors
+  - API failure → cache fallback
+  - Accessible content descriptions
+
+- **AISystemPrompts** — AI aware of Research Canvas and graph relationships
+
+### Tests
+- **tests/phase16-5.test.js** — 80+ tests covering:
+  - ResearchGraph model (8 tests)
+  - Node types (7 tests)
+  - Edge types (9 tests)
+  - GraphNode fields (9 tests)
+  - GraphEdge fields (3 tests)
+  - Graph building (17 tests)
+  - Graph navigation (7 tests)
+  - Graph statistics (4 tests)
+  - Summary (6 tests)
+  - ResearchCanvasFragment (18 tests)
+  - AI system prompts (4 tests)
+  - Documentation (1 test)
+
+
 ## [Phase 16.4 — AI Map] — 2026-08-15
 
 ### Added — Natural-Language Map Queries & Historical Layers

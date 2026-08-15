@@ -21,6 +21,7 @@
 | 16.2. Smart Record Cards & AI Command Bar | ✅ COMPLETE | 100% |
 | 16.3. AI Timelines | ✅ COMPLETE | 100% |
 | 16.4. AI Map Queries & Historical Layers | ✅ COMPLETE | 100% |
+| 16.5. Research Canvas | ✅ COMPLETE | 100% |
 
 **All 8 core phases complete. Phase 16 AI-native features complete. 1477 tests passing.**
 
@@ -32,6 +33,7 @@
 1d. ~~Phase 5.5 — Security audit~~ ✅ 82 security checks across 14 categories, 0 security issues found
 1e. ~~Phase 16.3 — AI Timelines~~ ✅ Interactive chronological timelines, decade grouping, /api/timeline endpoint, 90 tests
 1f. ~~Phase 16.4 — AI Map~~ ✅ Natural-language map queries, historical layers, /api/map/query endpoint, 80+ tests
+1g. ~~Phase 16.5 — Research Canvas~~ ✅ Visual graph PERSON→CEMETERY→RECORD→SOURCE, 80+ tests
 
 ## Architecture
 
