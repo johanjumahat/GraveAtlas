@@ -43,6 +43,7 @@ import com.putraworks.graveatlas.chat.ChatAdapter;
 import com.putraworks.graveatlas.chat.ChatHistoryManager;
 import com.putraworks.graveatlas.chat.ChatMessage;
 import com.putraworks.graveatlas.chat.SettingsManager;
+import com.putraworks.graveatlas.chat.AIDataInterceptor;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -111,6 +112,17 @@ public class MainActivity extends AppCompatActivity {
         initViews();
         setupSpinners();
         initTextToSpeech();
+
+        // Phase 16: Handle prefill question from AI-native home screen
+        String prefillQuestion = getIntent().getStringExtra("prefill_question");
+        if (prefillQuestion != null && !prefillQuestion.isEmpty()) {
+            etInput.setText(prefillQuestion);
+            etInput.requestFocus();
+            // Auto-send after a brief delay to let the UI settle
+            etInput.postDelayed(() -> {
+                if (btnSend != null) btnSend.performClick();
+            }, 300);
+        }
     }
 
     // ── TTS Setup ──
@@ -665,7 +677,20 @@ public class MainActivity extends AppCompatActivity {
 
         List<ChatMessage> apiMessages = new ArrayList<>(adapter.getMessages());
         List<Candidate> candidates = buildFallbackCandidates();
-        attemptCandidate(apiMessages, candidates, 0, new ArrayList<>());
+
+        // Phase 16.1: RAG interceptor — query GraveAtlas database before sending to AI
+        AIDataInterceptor interceptor = new AIDataInterceptor();
+        interceptor.intercept(text, apiMessages, new AIDataInterceptor.InterceptorCallback() {
+            @Override
+            public void onReady(List<ChatMessage> augmentedMessages, String searchContext) {
+                attemptCandidate(augmentedMessages, candidates, 0, new ArrayList<>());
+            }
+
+            @Override
+            public void onSkipped(List<ChatMessage> originalMessages) {
+                attemptCandidate(originalMessages, candidates, 0, new ArrayList<>());
+            }
+        });
     }
 
     private void attemptCandidate(List<ChatMessage> apiMessages, List<Candidate> candidates,

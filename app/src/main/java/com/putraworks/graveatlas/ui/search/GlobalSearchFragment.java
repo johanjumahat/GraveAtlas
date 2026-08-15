@@ -29,6 +29,7 @@ import com.putraworks.graveatlas.data.model.GlobalSearchResponse;
 import com.putraworks.graveatlas.data.model.SearchResult;
 import com.putraworks.graveatlas.ui.cemetery.CemeteryFragment;
 import com.putraworks.graveatlas.ui.gravedetail.GraveDetailFragment;
+import com.putraworks.graveatlas.ui.evidence.EvidenceStatus;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -444,6 +445,26 @@ public class GlobalSearchFragment extends Fragment implements ApiClient.ApiCallb
 
     private void displayResults(List<SearchResult> results) {
         for (SearchResult r : results) {
+            // Container for card with badge
+            LinearLayout cardContainer = new LinearLayout(getContext());
+            cardContainer.setOrientation(LinearLayout.VERTICAL);
+            cardContainer.setPadding(32, 32, 32, 32);
+            cardContainer.setBackground(ContextCompat.getDrawable(getContext(), android.R.drawable.editbox_background_normal));
+
+            LinearLayout.LayoutParams containerLp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+            containerLp.setMargins(0, 0, 0, 12);
+            cardContainer.setLayoutParams(containerLp);
+
+            // Evidence badge row (Phase 16.1)
+            LinearLayout badgeRow = new LinearLayout(getContext());
+            badgeRow.setOrientation(LinearLayout.HORIZONTAL);
+            EvidenceStatus.Category category = EvidenceStatus.fromVerificationStatus(null);
+            badgeRow.addView(EvidenceStatus.createBadge(getContext(), category));
+            cardContainer.addView(badgeRow);
+
+            // Text content
             TextView card = new TextView(getContext());
             StringBuilder sb = new StringBuilder();
 
@@ -460,21 +481,14 @@ public class GlobalSearchFragment extends Fragment implements ApiClient.ApiCallb
             }
 
             card.setText(sb.toString());
-            card.setPadding(32, 32, 32, 32);
             card.setTextSize(14);
             card.setContentDescription(buildContentDescription(r));
-            card.setBackground(ContextCompat.getDrawable(getContext(), android.R.drawable.editbox_background_normal));
-
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT);
-            lp.setMargins(0, 0, 0, 12);
-            card.setLayoutParams(lp);
+            cardContainer.addView(card);
 
             // Part 100: Result detail navigation
-            card.setOnClickListener(v -> navigateToDetail(r));
+            cardContainer.setOnClickListener(v -> navigateToDetail(r));
 
-            resultsContainer.addView(card);
+            resultsContainer.addView(cardContainer);
         }
     }
 

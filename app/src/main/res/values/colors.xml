@@ -24,4 +24,22 @@
     <color name="text_muted_dark">#6E6B67</color>
     <color name="divider_dark">#2C2C30</color>
     <color name="row_highlight">#2A2417</color>
+
+    <!-- ===== Evidence Status Colors (Phase 16) ===== -->
+    <color name="evidence_known">#2E7D32</color>
+    <color name="evidence_source_backed">#1565C0</color>
+    <color name="evidence_inferred">#F9A825</color>
+    <color name="evidence_uncertain">#EF6C00</color>
+    <color name="evidence_conflicting">#C62828</color>
+    <color name="evidence_needs_verification">#616161</color>
+
+    <!-- ===== AI Native UI Colors (Phase 16) ===== -->
+    <color name="ai_bg">#141418</color>
+    <color name="ai_bubble_user">#2A2417</color>
+    <color name="ai_bubble_ai">#1E1E24</color>
+    <color name="ai_accent">#E0A845</color>
+    <color name="ai_hint">#6E6B67</color>
+    <color name="mode_research">#1565C0</color>
+    <color name="mode_map">#2E7D32</color>
+    <color name="mode_public">#E0A845</color>
 </resources>

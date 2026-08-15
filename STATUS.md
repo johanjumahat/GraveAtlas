@@ -1,8 +1,8 @@
 # GraveAtlas — Project Status
 
-**Last updated:** 2026-08-11
+**Last updated:** 2026-08-15
 **Version:** Backend 7.1.0 | Android 1.0.0 | Schema 1.0.0
-**Tests:** 415 passing, 0 failed
+**Tests:** 459 passing, 0 failed
 
 ## Phase Completion
 
@@ -16,6 +16,7 @@
 | 6. Security, Privacy & Hardening | ✅ COMPLETE | 100% |
 | 7. Reliability, Observability & CI/CD | ✅ COMPLETE | 100% |
 | 8. Production Release & Store Readiness | ✅ COMPLETE | 100% |
+| 16.1. AI Database Integration (RAG) | 🔧 IN PROGRESS | 60% |
 
 **All 8 phases complete. Phase 9 post-launch audit done. 415 tests passing. Ready for release.**
 - Security: Dependabot enabled, SECURITY.md added (2026-08-11)
@@ -40,7 +41,7 @@
 
 ## Next Steps
 
-1. Upload phase master prompts to GitHub
+1. Merge phase-16.1/ai-database-integration branch (RAG interceptor + evidence badges in search)
 2. Deploy backend to Cloudflare Workers
 3. Build signed release APK
 4. Submit to Google Play Console
