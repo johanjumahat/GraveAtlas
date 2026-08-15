@@ -1,3 +1,9 @@
+## [Unreleased] - 2026-08-15
+
+### Changed
+- **AI chat response format tightened** (`AISystemPrompts.java`): removed boilerplate "Next steps you might consider" suggestions from every reply, dropped placeholder fields like "(not recorded)", cut filler phrasing. Responses are now short, evidence-first, and only suggest Timeline/Map/Research Canvas features when genuinely relevant to the query.
+
+
 ## [7.2.3] — 2026-08-15
 
 ### Fixed
