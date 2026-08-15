@@ -396,8 +396,17 @@ public class AIDataInterceptor {
             if (sr.region != null) sb.append("   Region: ").append(sr.region).append("\n");
             if (sr.city != null) sb.append("   City: ").append(sr.city).append("\n");
             if (sr.cemetery != null) sb.append("   Cemetery: ").append(sr.cemetery).append("\n");
+            if (sr.section != null) sb.append("   Block/Section: ").append(sr.section).append("\n");
+            if (sr.plot != null) sb.append("   Plot: ").append(sr.plot).append("\n");
             if (sr.birthDate != null) sb.append("   Born: ").append(sr.birthDate).append("\n");
             if (sr.deathDate != null) sb.append("   Died: ").append(sr.deathDate).append("\n");
+            if (sr.latitude != null && sr.longitude != null) {
+                sb.append("   Coordinates: ").append(sr.latitude).append(", ").append(sr.longitude).append("\n");
+                sb.append("   Map link: https://www.google.com/maps?q=").append(sr.latitude).append(",").append(sr.longitude).append("\n");
+            }
+            if (sr.verificationStatus != null && !"verified".equalsIgnoreCase(sr.verificationStatus)) {
+                sb.append("   Verification: ").append(sr.verificationStatus).append(" (needs verification)\n");
+            }
 
             sb.append("\n");
         }
