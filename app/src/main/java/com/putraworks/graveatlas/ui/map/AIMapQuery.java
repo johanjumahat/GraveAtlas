@@ -84,6 +84,8 @@ public class AIMapQuery {
             "\\b(?:cemetery|cemeteries|memorial|memorials|burial ground|graveyard)\\b", Pattern.CASE_INSENSITIVE);
     private static final Pattern GRAVE_PATTERN = Pattern.compile(
             "\\b(?:grave|graves|tomb|tombs|plot|burial|interment)\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern EXTERNAL_SOURCE_PATTERN = Pattern.compile(
+            "\\b(?:external|other sources|government|nea|nhb|data\\.gov|data\\.gov\\.sg|openstreetmap|osm|wikidata|compare|cross-reference)\\b", Pattern.CASE_INSENSITIVE);
 
     /**
      * Parse a natural-language query into a structured MapQuery.
