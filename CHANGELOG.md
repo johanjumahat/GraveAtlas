@@ -1,3 +1,66 @@
+## [v7.1.7 — Grave/Cemetery API Integration Complete] — 2026-08-15
+
+### Added — AI External Search (Parts 16-17)
+- `ai-external-search.js` — Query parser, source transparency, combined search with internal data
+- `wantsExternalSearch()` — Detects when user query asks for external sources
+- `executeExternalSearch()` — Queries all external sources in parallel, applies privacy review + source badges
+- `combinedSearch()` — Merges internal + external results with fallback when external is unavailable (Part 18)
+- New API route: `POST /api/external/ai-search`
+- Wired into `/api/map/query` — detects "external" keywords, queries sources alongside internal data
+- `AIDataInterceptor` — External search triggers + [EXTERNAL SOURCE CONTEXT] injection for AI chat
+- `AISystemPrompts` — External source awareness, API endpoint documentation, new suggested prompts
+
+### Added — Map Integration (Part 19)
+- `AIMapQuery.wantsExternalSources` — Detects when map query should include external source data
+- External cemetery records shown on map with source attribution
+
+### Added — GUI Integration (Part 27)
+- `ExternalSearchFragment.java` — Search external cemetery sources, results with source badges
+- `fragment_external_search.xml` — Layout: search bar, progress indicator, results grouped by source
+- SourceBadge integration — each external record shows its source, license, and retrieval time
+- Users can: search external sources, find burial records, compare with GraveAtlas data
+
+### Added — Documentation (Part 28)
+- All 18 previously-stub doc files filled with real implementation content:
+  - `API-CONNECTORS.md` — Source registry, connector interface, OSM/Wikidata implementations
+  - `EXTERNAL-GRAVE-SCHEMA.md` — Unified external record schema with field mapping
+  - `CEMETERY-MATCHING.md` — Fuzzy matching algorithm (Jaro-Winkler + Levenshtein)
+  - `EXTERNAL-PROVENANCE.md` — Provenance chain, source badges, format definitions
+  - `API-LICENSING.md` — Per-source license enforcement (ODbL, CC-BY, CC0)
+  - `API-RATE-LIMITING.md` — Token bucket per source, default limits, bypass rules
+  - `API-CACHING.md` — Redis-compatible caching with TTL per source type
+  - `API-FAILURE-HANDLING.md` — Graceful degradation, circuit breaker, fallback behavior
+  - `API-SCHEMA-CHANGES.md` — Versioned schemas, change detection, migration
+  - `EXTERNAL-DATA-PRIVACY.md` — Privacy review, sensitive data redaction, GDPR considerations
+  - `EXTERNAL-API-SECURITY.md` — API key management, input validation, rate limit bypass security
+  - `GRAVE-API-AUDIT.md` — Audit logging for all external API calls
+  - `GRAVE-API-COST-CONTROL.md` — Response size limits, request budgets, monitoring
+  - `GRAVE-API-HEALTH.md` — Health dashboard, per-source status, metrics
+  - `AI-EXTERNAL-SEARCH.md` — AI search architecture, source transparency rules
+  - `EXTERNAL-MAP-DATA.md` — Map integration, external cemetery overlays
+  - `EXTERNAL-DATA-IMPORT.md` — Import workflow, deduplication, quality validation
+  - `GRAVE-API-GUI.md` — GUI components, source badges, search fragment
+
+### Fixed
+- `AIDataInterceptor(ApiClient)` constructor now initializes `externalClient` field (CI fix)
+
+### Acceptance Gate
+All 28 parts of the Grave/Cemetery API Integration master prompt are now complete:
+- ✅ Parts 1-15: Architecture, registry, connectors, schema, matching, provenance, badges, licensing, rate limiting, caching, failure handling, schema detection, gateway, data quality, batch import
+- ✅ Parts 16-17: AI external search + source transparency
+- ✅ Part 18: Search fallback
+- ✅ Part 19: Map integration
+- ✅ Part 20: External import workflow
+- ✅ Parts 21-22: Privacy + security controls
+- ✅ Part 23: Audit logging
+- ✅ Part 24: Cost control
+- ✅ Part 25: Data quality validation
+- ✅ Part 26: API health dashboard
+- ✅ Part 27: GUI integration
+- ✅ Part 28: Documentation (21 files, all filled)
+
+---
+
 
 ## [Phase 16.5 — Research Canvas] — 2026-08-15
 
