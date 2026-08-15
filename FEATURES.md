@@ -483,3 +483,35 @@ AI investigations are now saved locally. Users can resume research across app se
 | 50-session limit | Oldest sessions auto-pruned |
 | JSON storage | Sessions serialized in SharedPreferences |
 | Sortable | List sorted by last accessed (most recent first) |
+
+## Phase 5.5 — Security Audit
+
+### Comprehensive Security Audit (82 checks, 0 issues)
+
+| Category | Checks | Status |
+|----------|--------|--------|
+| Input Validation | 7 | ✅ Pass |
+| Path Traversal Protection | 4 | ✅ Pass |
+| Token Security | 5 | ✅ Pass |
+| Rate Limiting | 7 | ✅ Pass |
+| CORS Configuration | 5 | ✅ Pass |
+| Code Injection Prevention | 4 | ✅ Pass |
+| Auth on Write Endpoints | 9 | ✅ Pass |
+| Google ID Token Verification | 6 | ✅ Pass |
+| Session Token Security | 5 | ✅ Pass |
+| GitHub App Authentication | 7 | ✅ Pass |
+| XSS Prevention | 3 | ✅ Pass |
+| Import Framework Security | 8 | ✅ Pass |
+| Android Security | 6 | ✅ Pass |
+| AI Moderation Security | 6 | ✅ Pass |
+
+### Key Security Features
+- **Constant-time token comparison** (XOR-based) — prevents timing attacks
+- **Rate limiting** — 10/min default, 30/min admin, 60/min search
+- **Path sanitization** — sanitizePathSegment on all ID parameters
+- **Google ID token verification** — sub, email_verified, audience, expiry checks
+- **GitHub App auth** — JWT + installation token (no personal access tokens)
+- **Encrypted Android storage** — AES-256-GCM via EncryptedSharedPreferences
+- **Login required** for submissions — ban system with ban reason returned to user
+- **No code injection** — no eval(), Function(), child_process, or exec()
+- **No hardcoded secrets** — all tokens/keys from environment variables
