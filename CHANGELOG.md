@@ -1,4 +1,62 @@
 
+## [Phase 16.2 — Command Bar + Research Sessions] — 2026-08-15
+
+### Added — Persistent AI Command Bar
+- **AICommandBar.java** — Reusable AI command bar component:
+  - Extends LinearLayout with EditText + send button
+  - "🔍 Ask GraveAtlas" label
+  - Sends question to MainActivity (AI chat) with pre-fill
+  - Clears input after sending
+  - Handles IME_ACTION_SEND (Enter key)
+  - Three constructors for XML inflation
+  - preFill(), clear(), hasText() public methods
+- **activity_main_nav.xml** — Updated layout:
+  - AICommandBar positioned above bottom navigation
+  - Fragment container constrained above AI command bar
+  - Elevation and background for visual separation
+- **MainNavActivity.java** — Updated:
+  - Initializes AICommandBar in onCreate
+  - Initializes ResearchSessionManager in onCreate
+  - AI command bar now visible on all screens (Home, Search, Map, etc.)
+
+### Added — Research Session Persistence
+- **ResearchSessionManager.java** — Save and resume AI investigations:
+  - createSession(firstQuestion) — Creates new session with UUID, auto-title
+  - addAnswer(sessionId, answer) — Adds AI response to session
+  - addQuestion(sessionId, question) — Adds follow-up question
+  - addReferencedRecord(sessionId, recordId) — Tracks referenced records (deduped)
+  - getSession(sessionId) — Retrieve a session
+  - listSessions() — List all sessions, sorted by last accessed
+  - deleteSession(sessionId) — Delete a session
+  - clearAll() — Clear all sessions
+  - Max 50 sessions (oldest auto-pruned)
+  - Sessions serialized to JSON in SharedPreferences
+  - Session.Interaction: question, answer, timestamp
+  - Session: id, title, createdAt, lastAccessedAt, interactions, referencedRecordIds
+
+### Tests
+- **tests/phase16-2-command-bar.test.js** — 41 tests covering:
+  - AICommandBar component (12 tests)
+  - ResearchSessionManager (18 tests)
+  - MainNavActivity integration (6 tests)
+  - Layout integration (5 tests)
+- Total: 1247 tests passing, 0 failures
+
+### Phase 16 Roadmap Progress
+- ✅ AI-native home screen (Phase 16)
+- ✅ AI research assistant system prompt (Phase 16)
+- ✅ Evidence-first badge system (Phase 16)
+- ✅ Smart record cards (Phase 16)
+- ✅ Contextual actions on grave records (Phase 16)
+- ✅ Integrate AI with backend search (Phase 16.1)
+- ✅ Evidence badges in search results (Phase 16.2)
+- ✅ "Why am I seeing this?" transparency feature (Phase 16.2)
+- ✅ Make AI command bar persistent across all screens (Phase 16.2)
+- ✅ Add research session persistence (Phase 16.2)
+- ⬜ TalkBack screen reader testing
+- ⬜ Test with large text settings
+
+
 ## [Phase 16.2] — 2026-08-15
 
 ### Added — Evidence Badges in Search + Transparency

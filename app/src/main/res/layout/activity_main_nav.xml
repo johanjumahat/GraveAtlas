@@ -11,6 +11,17 @@
         android:layout_width="0dp"
         android:layout_height="0dp"
         app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/aiCommandBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Phase 16.2: Persistent AI command bar across all screens -->
+    <com.putraworks.graveatlas.ui.ai.AICommandBar
+        android:id="@+id/aiCommandBar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="@color/card_background_dark"
+        android:elevation="4dp"
         app:layout_constraintBottom_toTopOf="@id/bottom_navigation"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />

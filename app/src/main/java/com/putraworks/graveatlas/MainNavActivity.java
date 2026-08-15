@@ -21,6 +21,8 @@ import com.putraworks.graveatlas.ui.addgrave.AddGraveFragment;
 import com.putraworks.graveatlas.ui.cemetery.CemeteryFragment;
 import com.putraworks.graveatlas.ui.contribute.ContributeFragment;
 import com.putraworks.graveatlas.auth.SecureStorage;
+import com.putraworks.graveatlas.ui.ai.AICommandBar;
+import com.putraworks.graveatlas.ui.ai.ResearchSessionManager;
 import com.putraworks.graveatlas.ui.home.HomeFragment;
 import com.putraworks.graveatlas.ui.map.MapFragment;
 import com.putraworks.graveatlas.ui.search.SearchFragment;
@@ -43,6 +45,8 @@ import com.putraworks.graveatlas.utils.ShareUtils;
 public class MainNavActivity extends AppCompatActivity {
 
     private BottomNavigationView bottomNav;
+    private AICommandBar aiCommandBar;
+    private ResearchSessionManager researchSessionManager;
     private boolean suppressNavListener = false;
     private Fragment currentFragment;
 
@@ -61,6 +65,9 @@ public class MainNavActivity extends AppCompatActivity {
 
         loadSavedApiUrl();
 
+        // Phase 16.2: Initialize research session manager
+        researchSessionManager = new ResearchSessionManager(this);
+
         // Handle deep link if launched from a share URL (Part 126)
         handleDeepLink(getIntent());
 
@@ -69,6 +76,9 @@ public class MainNavActivity extends AppCompatActivity {
         if (savedInstanceState == null) {
             loadFragment(new HomeFragment());
         }
+
+        // Phase 16.2: Persistent AI command bar
+        aiCommandBar = findViewById(R.id.aiCommandBar);
 
         bottomNav.setOnItemSelectedListener(item -> {
             if (suppressNavListener) return true;

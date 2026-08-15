@@ -458,3 +458,28 @@ Each search result card now has a "Why am I seeing this?" link that opens a dial
 5. **Call to Action** — How to improve the record (submit corrections)
 
 This gives users transparency into both *why a record appeared* and *how reliable it is*.
+
+## Phase 16.2 — Persistent AI Command Bar + Research Sessions
+
+### Persistent AI Command Bar
+The AI command bar is now visible on every screen (Home, Search, Map, Cemetery, etc.) — positioned above the bottom navigation. Users can type a research question from any screen and it opens the AI chat with the question pre-filled.
+
+| Feature | Description |
+|---------|-------------|
+| Always visible | Bar appears on all screens in MainNavActivity |
+| Quick access | Type question → tap send → opens AI chat |
+| Enter key support | IME_ACTION_SEND sends the question |
+| Visual separation | Elevation + background above bottom nav |
+
+### Research Session Persistence
+AI investigations are now saved locally. Users can resume research across app sessions.
+
+| Feature | Description |
+|---------|-------------|
+| Auto-save | Every AI conversation creates a session |
+| Session title | Auto-generated from first question (50 chars) |
+| Interactions | Question + answer pairs with timestamps |
+| Referenced records | Tracks which GraveAtlas records were referenced |
+| 50-session limit | Oldest sessions auto-pruned |
+| JSON storage | Sessions serialized in SharedPreferences |
+| Sortable | List sorted by last accessed (most recent first) |
