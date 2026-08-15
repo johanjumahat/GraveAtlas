@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-08-15 (post-merge)
 **Version:** Backend 7.1.0 | Android 1.0.0 | Schema 1.0.0
-**Tests:** 696 passing, 0 failed
+**Tests:** 762 passing, 0 failed
 
 ## Phase Completion
 
@@ -46,6 +46,7 @@
 1b. ~~Integrate OpenStreetMap cemetery data via Overpass API~~ ✅ Importer built, 67 tests passing
 1c. ~~Admin import API endpoints~~ ✅ 6 endpoints built, 59 tests passing
 1d. ~~AI auto-moderation~~ ✅ No human admin needed — AI reviews/approves/rejects automatically, 70 tests passing
+1e. ~~Google auth & abuse prevention~~ ✅ Users must login with Google, all submissions logged with account/IP/user-agent, 66 tests passing
 2. Deploy backend to Cloudflare Workers
 3. Build signed release APK
 4. Submit to Google Play Console

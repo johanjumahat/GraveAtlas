@@ -944,3 +944,53 @@ Trigger → Fetch → Process → AI Auto-Moderation → [APPROVED → Publish] 
                                                     ↓
                                               Audit trail with reasoning
 ```
+
+## [Google Auth & Abuse Prevention] — 2026-08-15
+
+### Added
+- **backend/src/google-auth.js** — Google OAuth verification + abuse prevention
+  - `verifyGoogleIdToken()` — server-side Google ID token verification via tokeninfo endpoint
+  - `createSessionToken()` / `verifySessionToken()` — 7-day session tokens (HMAC-signed)
+  - `createOrUpdateGoogleUser()` — maps Google account (sub) to GraveAtlas user ID
+  - `logSubmissionAttempt()` — logs every submission with userId, Google sub, IP, user-agent
+  - `getSubmissionAuditLog()` — queryable audit log with filters (user, Google sub, IP)
+  - `getAbuseStats()` — abuse statistics (total submissions, total banned)
+  - `banGoogleAccount()` — ban by Google sub, suspends user + prevents re-registration
+  - `requireGoogleAuth()` — auth middleware for submission endpoints
+  - Checks: email verified, token not expired, audience matches, sub present
+  - Banned Google accounts cannot create new user IDs
+- **Endpoints added:**
+  - POST /api/auth/google/verify — Login with Google, get session token
+  - GET /api/auth/session — Check session validity
+  - POST /api/auth/logout — Logout (client-side)
+  - GET /api/admin/abuse/log — Get submission audit log (admin, filterable)
+  - GET /api/admin/abuse/stats — Get abuse statistics (admin)
+  - POST /api/admin/abuse/ban/:sub — Ban a Google account (admin, requires reason)
+- **All submission endpoints now require Google auth:**
+  - handleCreateGrave — requires Bearer session token
+  - handleCreateCemetery — requires Bearer session token
+  - handleSubmitDraft — requires Bearer session token
+  - handleSubmitPhoto — requires Bearer session token
+- **Every submission now logs:**
+  - User ID (GraveAtlas internal)
+  - Google sub (stable Google account ID)
+  - Client IP (from CF-Connecting-IP)
+  - User-Agent (truncated to 500 chars)
+  - Contribution ID and type
+  - Timestamp
+- **Every submission record now includes:**
+  - submittedBy (user ID)
+  - submittedByGoogleSub (Google account ID)
+  - submittedByIp (client IP)
+  - submittedByUserAgent (truncated)
+- **tests/google-auth.test.js** — 66 tests (module, token verification, session, user management, abuse logging, banning, middleware, integration, security)
+- Total tests: 762 passing, 0 failures
+
+### Security
+- Google ID tokens verified server-side (never trust client claims)
+- Session tokens are HMAC-signed and expire after 7 days
+- Banned Google accounts cannot re-register
+- All submissions auditable by user, Google sub, or IP
+- Path traversal prevention on all IDs
+- No access tokens or refresh tokens stored
+- User-agent truncated to prevent log injection

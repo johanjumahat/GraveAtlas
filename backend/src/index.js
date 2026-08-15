@@ -29,6 +29,17 @@ import {
   handleRejectImport,
   handleGetModerationConfig
 } from './import-handlers.js';
+import {
+  verifyGoogleIdToken,
+  createSessionToken,
+  verifySessionToken,
+  createOrUpdateGoogleUser,
+  logSubmissionAttempt,
+  getSubmissionAuditLog,
+  getAbuseStats,
+  banGoogleAccount,
+  requireGoogleAuth
+} from './google-auth.js';
 
 // ── Constants ──
 
@@ -449,6 +460,36 @@ async function handleRequest(request, env, ctx) {
       return await handleDeleteDraft(id, request, env, corsHeaders);
     }
 
+
+    // ── Google OAuth Authentication ──
+
+    if (path === '/api/auth/google/verify' && method === 'POST') {
+      return await handleGoogleVerify(request, env, corsHeaders);
+    }
+
+    if (path === '/api/auth/session' && method === 'GET') {
+      return await handleCheckSession(request, env, corsHeaders);
+    }
+
+    if (path === '/api/auth/logout' && method === 'POST') {
+      return jsonResponse({ success: true, message: 'Logged out. Clear your session token on the client.' }, 200, corsHeaders);
+    }
+
+    // ── Abuse Prevention (Admin) ──
+
+    if (path === '/api/admin/abuse/log' && method === 'GET') {
+      return await requireAdmin(request, env, corsHeaders, () => handleGetAbuseLog(request, env, corsHeaders));
+    }
+
+    if (path === '/api/admin/abuse/stats' && method === 'GET') {
+      return await requireAdmin(request, env, corsHeaders, () => handleGetAbuseStats(env, corsHeaders));
+    }
+
+    if (path.match(/^\/api\/admin\/abuse\/ban\/[^/]+$/) && method === 'POST') {
+      const googleSub = path.split('/').pop();
+      return await requireAdmin(request, env, corsHeaders, () => handleBanAccount(googleSub, request, env, corsHeaders));
+    }
+
     if (path.match(/^\/api\/drafts\/[^/]+\/submit$/) && method === 'POST') {
       const id = path.split('/')[3];
       return await handleSubmitDraft(id, request, env, corsHeaders);
@@ -792,6 +833,10 @@ async function handleGetGraves(request, env, cors) {
 }
 
 async function handleCreateGrave(request, env, cors) {
+  // Require Google authentication
+  const auth = requireGoogleAuth(request, env);
+  if (!auth.authenticated) return jsonResponse({ success: false, error: auth.error }, 401, cors);
+
   // Check Content-Length to reject oversized payloads early
   const contentLength = parseInt(request.headers.get('Content-Length') || '0', 10);
   if (contentLength > MAX_BODY_SIZE) {
@@ -829,6 +874,9 @@ async function handleCreateGrave(request, env, cors) {
   const now = new Date().toISOString();
 
   // Build the record
+  const clientIp = getClientIp(request);
+  const userAgent = request.headers.get('User-Agent') || '';
+
   const record = {
     id: submissionId,
     name: body.name,
@@ -844,7 +892,11 @@ async function handleCreateGrave(request, env, cors) {
     source: 'user_submission',
     status: 'pending',
     submittedAt: now,
-    updatedAt: null
+    updatedAt: null,
+    submittedBy: auth.userId,
+    submittedByGoogleSub: auth.googleSub,
+    submittedByIp: clientIp,
+    submittedByUserAgent: userAgent.substring(0, 500),
   };
 
   // Write to GitHub pending/ directory (if configured)
@@ -869,6 +921,17 @@ async function handleCreateGrave(request, env, cors) {
   if (idempotencyKey) {
     setIdempotencyEntry(idempotencyKey, submissionId);
   }
+
+  // Log submission attempt for abuse prevention
+  await logSubmissionAttempt(env, {
+    userId: auth.userId,
+    googleSub: auth.googleSub,
+    contributionId: submissionId,
+    contributionType: 'grave',
+    clientIp,
+    userAgent,
+    success: true,
+  });
 
   return jsonResponse({
     success: true,
@@ -1300,6 +1363,10 @@ async function handleGetPerson(id, request, env, cors) {
 // ── Cemetery Submission Handler ──
 
 async function handleCreateCemetery(request, env, cors) {
+  // Require Google authentication
+  const auth = requireGoogleAuth(request, env);
+  if (!auth.authenticated) return jsonResponse({ success: false, error: auth.error }, 401, cors);
+
   const contentLength = parseInt(request.headers.get('Content-Length') || '0', 10);
   if (contentLength > MAX_BODY_SIZE) {
     return jsonResponse({ success: false, error: 'Request too large (max 50KB)' }, 413, cors);
@@ -1327,6 +1394,9 @@ async function handleCreateCemetery(request, env, cors) {
 
   const submissionId = `cemetery_${generateId().replace('sub_', '')}`;
   const now = new Date().toISOString();
+
+  const clientIp = getClientIp(request);
+  const userAgent = request.headers.get('User-Agent') || '';
 
   const record = {
     id: submissionId,
@@ -1356,7 +1426,11 @@ async function handleCreateCemetery(request, env, cors) {
     verificationStatus: 'community_submitted',
     status: 'pending',
     submittedAt: now,
-    updatedAt: null
+    updatedAt: null,
+    submittedBy: auth.userId,
+    submittedByGoogleSub: auth.googleSub,
+    submittedByIp: clientIp,
+    submittedByUserAgent: userAgent.substring(0, 500),
   };
 
   if (env.GITHUB_APP_ID) {
@@ -1373,6 +1447,17 @@ async function handleCreateCemetery(request, env, cors) {
   }
 
   if (idempotencyKey) setIdempotencyEntry(idempotencyKey, submissionId);
+
+  // Log submission attempt for abuse prevention
+  await logSubmissionAttempt(env, {
+    userId: auth.userId,
+    googleSub: auth.googleSub,
+    contributionId: submissionId,
+    contributionType: 'cemetery',
+    clientIp,
+    userAgent,
+    success: true,
+  });
 
   return jsonResponse({ success: true, submissionId: submissionId, status: 'pending' }, 201, cors);
 }
@@ -3388,8 +3473,12 @@ async function handleDeleteDraft(id, request, env, cors) {
 }
 
 async function handleSubmitDraft(id, request, env, cors) {
-  const userId = getUserIdFromRequest(request);
-  if (!userId) return jsonResponse({ success: false, error: 'X-User-Id header required' }, 400, cors);
+  // Require Google authentication
+  const auth = requireGoogleAuth(request, env);
+  if (!auth.authenticated) return jsonResponse({ success: false, error: auth.error }, 401, cors);
+  const userId = auth.userId;
+  const clientIp = getClientIp(request);
+  const userAgent = request.headers.get('User-Agent') || '';
 
   const auth = await Phase6A.authorizeDraftAccess(env, id, userId);
   if (!auth.authorized) return jsonResponse({ success: false, error: auth.reason }, 403, cors);
@@ -3407,6 +3496,17 @@ async function handleSubmitDraft(id, request, env, cors) {
   const contribution = await Phase6A.createContribution(env, userId, draft.type, draft.data, 'PENDING_REVIEW');
   await Phase6A.createContributionAuditEvent(env, Phase6A.AUDIT_ACTIONS.SUBMISSION_CREATED, userId, contribution.id, { type: draft.type, fromDraft: id });
 
+  // Log submission attempt for abuse prevention
+  await logSubmissionAttempt(env, {
+    userId,
+    googleSub: auth.googleSub,
+    contributionId: contribution.id,
+    contributionType: draft.type,
+    clientIp,
+    userAgent,
+    success: true,
+  });
+
   // Delete the draft
   await Phase6A.deleteDraft(env, id);
   await Phase6A.updateUserStats(env, userId, false);
@@ -3415,8 +3515,12 @@ async function handleSubmitDraft(id, request, env, cors) {
 }
 
 async function handleSubmitPhoto(request, env, cors) {
-  const userId = getUserIdFromRequest(request);
-  if (!userId) return jsonResponse({ success: false, error: 'X-User-Id header required' }, 400, cors);
+  // Require Google authentication
+  const auth = requireGoogleAuth(request, env);
+  if (!auth.authenticated) return jsonResponse({ success: false, error: auth.error }, 401, cors);
+  const userId = auth.userId;
+  const clientIp = getClientIp(request);
+  const userAgent = request.headers.get('User-Agent') || '';
 
   const user = await Phase6A.getUser(env, userId);
   if (!user) return jsonResponse({ success: false, error: 'User not registered' }, 401, cors);
@@ -3440,6 +3544,17 @@ async function handleSubmitPhoto(request, env, cors) {
   );
   await Phase6A.createContributionAuditEvent(env, Phase6A.AUDIT_ACTIONS.PHOTO_SUBMITTED, userId, photo.id, {
     targetId: body.targetId, targetType: body.targetType, rights: body.rights
+  });
+
+  // Log submission attempt for abuse prevention
+  await logSubmissionAttempt(env, {
+    userId,
+    googleSub: auth.googleSub,
+    contributionId: photo.id,
+    contributionType: 'photo',
+    clientIp,
+    userAgent,
+    success: true,
   });
 
   return jsonResponse({
@@ -3824,4 +3939,121 @@ async function handlePublicRecord(path, request, env, cors) {
   } catch (e) {
     return jsonResponse({ error: 'Failed to load record' }, 500, cors);
   }
+}
+
+// ── Google OAuth & Abuse Prevention Handlers ──
+
+async function handleGoogleVerify(request, env, cors) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse({ success: false, error: 'Invalid JSON body' }, 400, cors);
+  }
+
+  const { idToken } = body;
+  if (!idToken || typeof idToken !== 'string') {
+    return jsonResponse({ success: false, error: 'Google ID token required' }, 400, cors);
+  }
+
+  // Verify the token with Google
+  const expectedClientId = env.GOOGLE_CLIENT_ID || null;
+  const googlePayload = await verifyGoogleIdToken(idToken, expectedClientId);
+  if (!googlePayload) {
+    return jsonResponse({ success: false, error: 'Invalid Google ID token' }, 401, cors);
+  }
+
+  // Get client IP and user-agent for logging
+  const clientIp = getClientIp(request);
+  const userAgent = request.headers.get('User-Agent') || '';
+
+  // Create or update the user
+  const result = await createOrUpdateGoogleUser(env, googlePayload, clientIp, userAgent);
+  if (result.error) {
+    return jsonResponse({ success: false, error: result.error, banReason: result.banReason }, 403, cors);
+  }
+
+  // Create a session token
+  const sessionToken = createSessionToken(result.userId, env.ADMIN_TOKEN, googlePayload.sub);
+
+  // Log the login
+  await logSubmissionAttempt(env, {
+    userId: result.userId,
+    googleSub: googlePayload.sub,
+    contributionType: 'AUTH_LOGIN',
+    clientIp,
+    userAgent,
+    success: true,
+    reason: isNewUserLogin(result) ? 'new_user' : 'returning_user',
+  });
+
+  return jsonResponse({
+    success: true,
+    sessionToken,
+    user: {
+      userId: result.userId,
+      displayName: googlePayload.name || googlePayload.email?.split('@')[0] || 'Anonymous',
+      email: googlePayload.email,
+      picture: googlePayload.picture,
+      isNew: result.isNew,
+    },
+    message: result.isNew ? 'Account created. You can now contribute to GraveAtlas.' : 'Welcome back.'
+  }, 200, cors);
+}
+
+function isNewUserLogin(result) {
+  return result.isNew;
+}
+
+async function handleCheckSession(request, env, cors) {
+  const auth = requireGoogleAuth(request, env);
+  if (!auth.authenticated) {
+    return jsonResponse({ valid: false, error: auth.error }, 401, cors);
+  }
+
+  return jsonResponse({
+    valid: true,
+    userId: auth.userId,
+    googleSub: auth.googleSub,
+    sessionIssuedAt: auth.sessionIssuedAt,
+  }, 200, cors);
+}
+
+async function handleGetAbuseLog(request, env, cors) {
+  const url = new URL(request.url);
+  const params = url.searchParams;
+  const limit = parseInt(params.get('limit') || '50', 10);
+  const filter = {};
+  if (params.get('userId')) filter.userId = params.get('userId');
+  if (params.get('googleSub')) filter.googleSub = params.get('googleSub');
+  if (params.get('ip')) filter.ip = params.get('ip');
+
+  const result = await getSubmissionAuditLog(env, { limit, filter: Object.keys(filter).length > 0 ? filter : null });
+  return jsonResponse({ success: true, ...result }, 200, cors);
+}
+
+async function handleGetAbuseStats(env, cors) {
+  const stats = await getAbuseStats(env);
+  return jsonResponse({ success: true, ...stats }, 200, cors);
+}
+
+async function handleBanAccount(googleSub, request, env, cors) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse({ success: false, error: 'Invalid JSON. Reason is required.' }, 400, cors);
+  }
+
+  const { reason } = body;
+  if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
+    return jsonResponse({ success: false, error: 'Ban reason is required' }, 400, cors);
+  }
+
+  const result = await banGoogleAccount(env, googleSub, reason, 'admin');
+  if (result.error) {
+    return jsonResponse({ success: false, error: result.error }, 400, cors);
+  }
+
+  return jsonResponse({ success: true, message: result.message }, 200, cors);
 }

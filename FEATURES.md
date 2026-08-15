@@ -359,3 +359,46 @@ Every AI decision is logged with:
 ### Manual Override
 
 Manual approve/reject endpoints remain available for edge cases, but the normal flow is fully autonomous.
+
+## Google Authentication & Abuse Prevention
+
+Users must log in with a Google account before they can submit records.
+
+### How It Works
+
+1. Android app uses GoogleSignIn to get an ID token
+2. App sends token to `POST /api/auth/google/verify`
+3. Worker verifies token with Google's tokeninfo endpoint (server-side)
+4. Worker creates or updates user record with Google identity
+5. Worker returns a session token (valid for 7 days)
+6. All submission endpoints require the session token
+
+### What Gets Logged (Every Submission)
+
+| Field | Source | Purpose |
+|-------|--------|---------|
+| userId | GraveAtlas internal | Identify user |
+| googleSub | Google account ID (stable) | Prevent multi-account abuse |
+| clientIp | CF-Connecting-IP | IP-based rate limiting & tracking |
+| userAgent | User-Agent header | Device/client identification |
+| contributionId | System-generated | Link to specific submission |
+| contributionType | Request | Category of submission |
+| timestamp | Server clock | Audit trail |
+| success | Server | Whether submission succeeded |
+
+### Abuse Prevention Layers
+
+1. **Google account verification** — Must have a valid, email-verified Google account
+2. **Per-user rate limiting** — Already exists (Phase 6A, 10 requests/minute)
+3. **Per-IP rate limiting** — Already exists (main index.js, 10 requests/minute)
+4. **Banned accounts** — Admin can ban by Google sub; banned accounts cannot re-register
+5. **Audit trail** — Every submission logged with full identity metadata
+6. **Submission metadata** — Every record stores who submitted it (user, Google sub, IP, user-agent)
+
+### Admin Abuse Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /api/admin/abuse/log | Get submission audit log (filter by user, Google sub, IP) |
+| GET | /api/admin/abuse/stats | Get abuse statistics |
+| POST | /api/admin/abuse/ban/:sub | Ban a Google account (requires reason) |
