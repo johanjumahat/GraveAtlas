@@ -183,3 +183,35 @@
 
 ### Import workflow for official data
 All official data imports follow the existing framework: Source Registration → License Check → Validation → Duplicate Detection → Moderation → Publication → Import History
+
+## NEA Singapore Cemetery Importer
+
+### Source
+- **Provider:** National Environment Agency (NEA), Singapore
+- **Dataset:** Active Cemeteries (GEOJSON) — `d_4a9b83ee745c10c3aa5829fb80e09d9c`
+- **API:** `https://api-open.data.gov.sg/v1/public/api/datasets/{dataset_id}/poll-download`
+- **License:** Singapore Open Data Licence (free, commercial use OK)
+- **Attribution:** National Environment Agency. (2020). Active Cemeteries (GEOJSON) [Dataset]. data.gov.sg.
+
+### Coverage
+- 9 active cemeteries in Singapore's Choa Chu Kang complex:
+  - Ahmadiyya, Bahai, Chinese, Christian, Hindu, Jewish, Muslim, Parsi, Lawn
+- Cemetery locations only (no individual grave records)
+
+### Pipeline
+1. Fetch GeoJSON from data.gov.sg API
+2. License check (Singapore Open Data Licence)
+3. Source registration in import framework
+4. Format detection (GeoJSON)
+5. Normalization (NEA features → GraveAtlas cemetery records)
+6. Validation (coordinates, required fields, data integrity)
+7. Duplicate detection (against existing records)
+8. Quality scoring (government source = high quality)
+9. Output: PENDING_APPROVAL (awaits human moderation)
+
+### Security
+- All data treated as untrusted input
+- File size limits enforced (10 MB max)
+- No auto-publish — human moderation required
+- No secrets, tokens, or credentials in importer code
+- Never executes imported content as code

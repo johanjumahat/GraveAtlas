@@ -855,3 +855,20 @@ After the initial 3 fixes, build #50 revealed additional compilation errors. Res
   - Interment.net (⚠️ free, no API)
   - UK local councils (⚠️ varies by council)
   - Tiered recommendations for GraveAtlas integration
+
+## [NEA Importer] — 2026-08-15
+
+### Added
+- **backend/src/importers/nea-singapore.js** — Singapore NEA cemetery importer
+  - Fetches active cemetery GeoJSON from data.gov.sg API
+  - Normalizes NEA GeoJSON features to GraveAtlas cemetery records
+  - Full pipeline: fetch → license check → source registration → format detection → normalization → validation → duplicate detection → quality scoring
+  - Output status: PENDING_APPROVAL (no auto-publish)
+  - Dry-run mode (processNEAGeojson) for testing without network
+  - Preserves NEA internal fields (INC_CRC, FMEL_UPD_D)
+  - Attribution: National Environment Agency, Singapore Open Data Licence
+- **tests/nea-importer.test.js** — 42 tests covering normalization, validation, full pipeline, duplicate detection, security
+
+### Changed
+- tests/run.js — Added nea-importer.test.js to test runner
+- Total tests: 501 (up from 459)

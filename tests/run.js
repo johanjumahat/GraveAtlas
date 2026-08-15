@@ -8,6 +8,7 @@ try {
   execSync('node tests/phase7a.test.js', { stdio: 'inherit' });
   execSync('node tests/phase7b.test.js', { stdio: 'inherit' });
   execSync('node tests/phase16.test.js', { stdio: 'inherit' });
+  execSync('node tests/nea-importer.test.js', { stdio: 'inherit' });
 } catch (e) {
   process.exit(1);
 }
