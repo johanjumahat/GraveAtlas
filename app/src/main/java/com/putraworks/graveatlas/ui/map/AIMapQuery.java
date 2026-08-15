@@ -163,6 +163,11 @@ public class AIMapQuery {
             }
         }
 
+        // ── Detect external source requests ──
+        if (EXTERNAL_SOURCE_PATTERN.matcher(query).find()) {
+            mq.wantsExternalSources = true;
+        }
+
         mq.isEmpty = !mq.hasFilters();
         return mq;
     }

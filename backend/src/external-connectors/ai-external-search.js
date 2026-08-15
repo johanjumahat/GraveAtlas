@@ -26,7 +26,11 @@ export function wantsExternalSearch(query) {
     'external', 'other sources', 'external sources',
     'government', 'openstreetmap', 'osm', 'wikidata',
     'compare', 'cross-reference', 'cross reference',
-    'find burial records', 'search external'
+    'find burial records', 'search external',
+    'nea', 'nhb', 'data.gov.sg', 'datagov', 'singapore government',
+    'bukit brown', 'choa chu kang', 'chua chu kang', 'kranji',
+    'national environment agency', 'national heritage board',
+    'columbarium', 'crematorium'
   ];
   return externalKeywords.some(kw => lower.includes(kw));
 }

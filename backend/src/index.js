@@ -32,6 +32,7 @@ import { batchMatchRecords } from './external-connectors/matching/record-matcher
 import { reviewPrivacy, sanitizeResponse } from './external-connectors/privacy-security.js';
 import { validateBatch } from './external-connectors/data-quality.js';
 import { wantsExternalSearch, executeExternalSearch, combinedSearch } from './external-connectors/ai-external-search.js';
+import { DataGovSgConnector } from './external-connectors/connectors/datagov-sg-connector.js';
 import { validateNormalizedRecord } from './external-connectors/normalized-schema.js';
 
 import {
@@ -744,6 +745,13 @@ async function handleRequest(request, env, ctx) {
     if (path === '/api/external/sources' && method === 'GET') {
       const sources = getImplementedSources();
       return jsonResponse({ sources }, 200, corsHeaders);
+    }
+
+    // List Singapore government datasets available via data.gov.sg connector
+    if (path === '/api/external/sg/datasets' && method === 'GET') {
+      const connector = new DataGovSgConnector();
+      const datasets = connector.listDatasets();
+      return jsonResponse({ datasets }, 200, corsHeaders);
     }
 
     // Get source registry (full, including not-implemented)
