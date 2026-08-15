@@ -8,6 +8,8 @@ import com.putraworks.graveatlas.data.api.ApiClient;
 import com.putraworks.graveatlas.data.model.CemeteryRecord;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.SearchResult;
+import com.putraworks.graveatlas.data.api.ExternalSourceClient;
+import com.putraworks.graveatlas.data.model.ExternalRecord;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -34,6 +36,7 @@ import java.util.regex.Pattern;
 public class AIDataInterceptor {
 
     private final ApiClient apiClient;
+    private final ExternalSourceClient externalClient;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     // Keywords that indicate the user is asking about records in the database
@@ -43,6 +46,14 @@ public class AIDataInterceptor {
         "records for", "records of", "graves in", "graves at", "cemeteries in",
         "cemeteries at", "buried in", "buried at", "grave of", "memorial for",
         "list cemeteries", "list graves", "what cemeteries", "what graves"
+    };
+
+    // Keywords that indicate the user wants to search external sources
+    private static final String[] EXTERNAL_SEARCH_TRIGGERS = {
+        "external sources", "external cemetery", "external records",
+        "search external", "compare graveatlas", "compare records",
+        "other sources", "government cemetery", "openstreetmap", "osm",
+        "wikidata", "find burial records from external"
     };
 
     // Keywords that indicate a non-search message (conversational, meta)
@@ -55,6 +66,7 @@ public class AIDataInterceptor {
 
     public AIDataInterceptor() {
         this.apiClient = new ApiClient();
+        this.externalClient = new ExternalSourceClient();
     }
 
     public AIDataInterceptor(ApiClient client) {
@@ -77,6 +89,12 @@ public class AIDataInterceptor {
      * @param callback     Called with augmented messages (if search detected) or original messages (if not)
      */
     public void intercept(String userMessage, List<ChatMessage> history, InterceptorCallback callback) {
+        // Check if user wants external source search (Part 16-17)
+        if (isExternalSearchQuery(userMessage)) {
+            handleExternalSearch(userMessage, history, callback);
+            return;
+        }
+        
         if (!isSearchQuery(userMessage)) {
             callback.onSkipped(history);
             return;
@@ -122,6 +140,96 @@ public class AIDataInterceptor {
         });
     }
 
+    /**
+     * Determine if the user wants to search external sources.
+     */
+    private boolean isExternalSearchQuery(String message) {
+        String lower = message.toLowerCase();
+        for (String trigger : EXTERNAL_SEARCH_TRIGGERS) {
+            if (lower.contains(trigger)) return true;
+        }
+        return false;
+    }
+    
+    /**
+     * Handle an external source search query (Part 16-17).
+     * Queries external sources and injects results as [EXTERNAL CONTEXT].
+     */
+    private void handleExternalSearch(String userMessage, List<ChatMessage> history, InterceptorCallback callback) {
+        try {
+            JSONObject query = new JSONObject();
+            query.put("search", userMessage);
+            
+            externalClient.queryAllSources(query, new ApiClient.ApiCallback<ExternalSourceClient.ExternalSearchResult>() {
+                @Override
+                public void onSuccess(ExternalSourceClient.ExternalSearchResult result) {
+                    String context = formatExternalContext(result);
+                    List<ChatMessage> augmented = new ArrayList<>(history);
+                    
+                    if (!context.isEmpty() && !augmented.isEmpty()) {
+                        ChatMessage lastMsg = augmented.get(augmented.size() - 1);
+                        if (lastMsg.isUser()) {
+                            String augmentedContent = "[EXTERNAL SOURCE CONTEXT]\n" + context + "\n[/EXTERNAL SOURCE CONTEXT]\n\n" + lastMsg.getContent();
+                            augmented.set(augmented.size() - 1, new ChatMessage(augmentedContent, true));
+                        }
+                    }
+                    callback.onReady(augmented, context);
+                }
+                
+                @Override
+                public void onError(String error) {
+                    // On external search error, proceed without external data
+                    callback.onReady(history, "");
+                }
+            });
+        } catch (Exception e) {
+            callback.onReady(history, "");
+        }
+    }
+    
+    /**
+     * Format external source search results as context for the AI.
+     */
+    private String formatExternalContext(ExternalSourceClient.ExternalSearchResult result) {
+        if (result == null || result.results.isEmpty()) return "";
+        
+        StringBuilder sb = new StringBuilder();
+        int totalRecords = result.getTotalRecordCount();
+        
+        if (totalRecords == 0) {
+            sb.append("External search found 0 records from ").append(result.results.size()).append(" sources.\n");
+            for (ExternalSourceClient.ExternalSourceResult r : result.results) {
+                sb.append("- ").append(r.sourceName).append(": ").append(r.reason != null ? r.reason : "no records").append("\n");
+            }
+            return sb.toString();
+        }
+        
+        sb.append("External search found ").append(totalRecords).append(" record(s) from ").append(result.results.size()).append(" source(s):\n\n");
+        
+        for (ExternalSourceClient.ExternalSourceResult srcResult : result.results) {
+            sb.append("SOURCE: ").append(srcResult.sourceName).append("\n");
+            sb.append("  Status: ").append(srcResult.status).append(srcResult.fromCache ? " (cached)" : "").append("\n");
+            if (srcResult.records.isEmpty()) {
+                sb.append("  Records: none").append(srcResult.reason != null ? " — " + srcResult.reason : "").append("\n");
+            } else {
+                sb.append("  Records (").append(srcResult.records.size()).append("):\n");
+                for (ExternalRecord record : srcResult.records) {
+                    sb.append("    - ").append(record.getDisplayName());
+                    if (record.cemetery != null) sb.append(" | Cemetery: ").append(record.cemetery);
+                    if (record.deathDate != null) sb.append(" | d. ").append(record.deathDate);
+                    if (record.license != null) sb.append(" | License: ").append(record.license);
+                    sb.append("\n");
+                }
+            }
+            sb.append("\n");
+        }
+        
+        sb.append("IMPORTANT: These are EXTERNAL records with source provenance.\n");
+        sb.append("They are NOT GraveAtlas native records. Always cite the source.\n");
+        
+        return sb.toString();
+    }
+    
     /**
      * Determine if the user's message is a search/research query about records.
      */
