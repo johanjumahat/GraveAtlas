@@ -77,7 +77,7 @@ export async function querySource(sourceId, query, env) {
     return { status: 'error', reason: `No connector available for ${sourceId}`, records: [] };
   }
 
-  const result = await connector.execute(query);
+  const result = await connector.execute(query, env);
   return result;
 }
 
