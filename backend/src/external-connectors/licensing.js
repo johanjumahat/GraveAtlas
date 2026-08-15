@@ -20,7 +20,10 @@ const COMPATIBLE_LICENSES = [
   'CC0', 'Public Domain', 'public-domain', 'PDDL',
   'CC-BY', 'CC-BY-SA',
   'ODbL', 'OGTSL',
-  'Singapore Open Data Licence'
+  'Singapore Open Data Licence',
+  'Bukit Brown Burial Record Transcription Project',
+  'NHB',
+  'National Heritage Board'
 ];
 
 // Licenses that prohibit redistribution or commercial use
