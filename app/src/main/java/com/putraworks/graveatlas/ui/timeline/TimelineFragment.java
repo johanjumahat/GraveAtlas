@@ -115,7 +115,7 @@ public class TimelineFragment extends Fragment {
 
         apiClient.getGraves(new ApiClient.ApiCallback<List<GraveRecord>>() {
             @Override
-            public void onFailure(String error) {
+            public void onError(String error) {
                 if (getActivity() == null) return;
                 getActivity().runOnUiThread(() -> {
                     progressBar.setVisibility(View.GONE);
