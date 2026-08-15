@@ -21,6 +21,19 @@ import * as Phase6A from './phase6a.js';
 import * as Phase4A from './phase4a.js';
 import * as Phase7A from './phase7a.js';
 import {
+  querySource,
+  queryAllSources,
+  getSourceHealthSummary,
+} from './external-connectors/gateway.js';
+import { getHealthDashboard } from './external-connectors/health-dashboard.js';
+import { getImplementedSources, getSource } from './external-connectors/registry.js';
+import { matchCemetery } from './external-connectors/matching/cemetery-matcher.js';
+import { batchMatchRecords } from './external-connectors/matching/record-matcher.js';
+import { reviewPrivacy, sanitizeResponse } from './external-connectors/privacy-security.js';
+import { validateBatch } from './external-connectors/data-quality.js';
+import { validateNormalizedRecord } from './external-connectors/normalized-schema.js';
+
+import {
   handleListImportSources,
   handleTriggerImport,
   handleListImports,
@@ -722,6 +735,84 @@ async function handleRequest(request, env, ctx) {
     if (path.match(/^\/api\/admin\/imports\/[^/]+$/) && method === 'GET') {
       const importId = path.split('/')[4];
       return await requireAdmin(request, env, corsHeaders, () => handleGetImport(importId, env, corsHeaders));
+    }
+
+    // ── External Connector Routes (Grave/Cemetery API Integration) ──
+
+    // List all evaluated sources
+    if (path === '/api/external/sources' && method === 'GET') {
+      const sources = getImplementedSources();
+      return jsonResponse({ sources }, 200, corsHeaders);
+    }
+
+    // Get source registry (full, including not-implemented)
+    if (path === '/api/external/registry' && method === 'GET') {
+      const all = getSource();
+      return jsonResponse({ sources: all }, 200, corsHeaders);
+    }
+
+    // Query a specific external source
+    if (path === '/api/external/query' && method === 'POST') {
+      let body;
+      try { body = await request.json(); } catch { return jsonResponse({ error: 'Invalid JSON' }, 400, corsHeaders); }
+      const { sourceId, query } = body;
+      if (!sourceId) return jsonResponse({ error: 'sourceId required' }, 400, corsHeaders);
+      const result = await querySource(sourceId, query || {}, env);
+      return jsonResponse(sanitizeResponse(result), 200, corsHeaders);
+    }
+
+    // Query all implemented sources
+    if (path === '/api/external/query-all' && method === 'POST') {
+      let body;
+      try { body = await request.json(); } catch { return jsonResponse({ error: 'Invalid JSON' }, 400, corsHeaders); }
+      const results = await queryAllSources(body.query || {}, env);
+      return jsonResponse(sanitizeResponse({ results }), 200, corsHeaders);
+    }
+
+    // API health dashboard
+    if (path === '/api/external/health' && method === 'GET') {
+      const dashboard = getHealthDashboard();
+      return jsonResponse(dashboard, 200, corsHeaders);
+    }
+
+    // Cemetery matching
+    if (path === '/api/external/match-cemetery' && method === 'POST') {
+      let body;
+      try { body = await request.json(); } catch { return jsonResponse({ error: 'Invalid JSON' }, 400, corsHeaders); }
+      const { externalCemetery, graveAtlasCemeteries } = body;
+      if (!externalCemetery) return jsonResponse({ error: 'externalCemetery required' }, 400, corsHeaders);
+      const matches = matchCemetery(externalCemetery, graveAtlasCemeteries || []);
+      return jsonResponse({ matches }, 200, corsHeaders);
+    }
+
+    // Record matching
+    if (path === '/api/external/match-records' && method === 'POST') {
+      let body;
+      try { body = await request.json(); } catch { return jsonResponse({ error: 'Invalid JSON' }, 400, corsHeaders); }
+      const { externalRecords, graveAtlasRecords } = body;
+      if (!externalRecords) return jsonResponse({ error: 'externalRecords required' }, 400, corsHeaders);
+      const results = batchMatchRecords(externalRecords, graveAtlasRecords || []);
+      return jsonResponse({ results }, 200, corsHeaders);
+    }
+
+    // Validate external records (data quality)
+    if (path === '/api/external/validate' && method === 'POST') {
+      let body;
+      try { body = await request.json(); } catch { return jsonResponse({ error: 'Invalid JSON' }, 400, corsHeaders); }
+      const { records } = body;
+      if (!records || !Array.isArray(records)) return jsonResponse({ error: 'records array required' }, 400, corsHeaders);
+      const result = validateBatch(records);
+      return jsonResponse(result, 200, corsHeaders);
+    }
+
+    // Privacy review
+    if (path === '/api/external/privacy-review' && method === 'POST') {
+      let body;
+      try { body = await request.json(); } catch { return jsonResponse({ error: 'Invalid JSON' }, 400, corsHeaders); }
+      const { record } = body;
+      if (!record) return jsonResponse({ error: 'record required' }, 400, corsHeaders);
+      const result = reviewPrivacy(record);
+      return jsonResponse(result, 200, corsHeaders);
     }
 
     return notFound(corsHeaders);
