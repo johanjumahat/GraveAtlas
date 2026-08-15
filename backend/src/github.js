@@ -394,8 +394,6 @@ async function createPullRequest(env, branchName, title, body, changes) {
     branchName,
   };
 }
-  await deleteFile(oldPath, env, `Remove ${oldPath} (moved)`);
-}
 
 // ── Utility functions ──
 

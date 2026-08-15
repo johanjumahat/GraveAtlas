@@ -437,16 +437,4 @@ export function requireGoogleAuth(request, env) {
   };
 }
 
-// ── Exports ──
-
-export {
-  verifyGoogleIdToken,
-  createSessionToken,
-  verifySessionToken,
-  createOrUpdateGoogleUser,
-  logSubmissionAttempt,
-  getSubmissionAuditLog,
-  getAbuseStats,
-  banGoogleAccount,
-  requireGoogleAuth,
-};
+// (functions exported inline above)

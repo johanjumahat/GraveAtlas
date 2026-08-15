@@ -3337,7 +3337,8 @@ function generateId() {
   const bytes = new Uint8Array(12);
   crypto.getRandomValues(bytes);
   const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-  return `sub_${hex}
+  return `sub_${hex}`;
+}
 
 // ── Request ID / Correlation ID ──
 
@@ -3346,8 +3347,6 @@ function generateRequestId() {
   const bytes = new Uint8Array(8);
   crypto.getRandomValues(bytes);
   return 'req_' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-`;
 }
 
 // ── Admin auth ──
@@ -3394,7 +3393,6 @@ function jsonResponse(data, status, cors = {}) {
     'Content-Type': 'application/json',
     ...cors,
   };
-  if (_currentRequestId) headers['X-Request-Id'] = _currentRequestId;
   return new Response(JSON.stringify(data), {
     status: status,
     headers: headers,
@@ -3569,7 +3567,7 @@ async function handleListUsers(request, env, cors) {
     for (const file of files) {
       if (!file.name.endsWith('.json')) continue;
       try {
-        const content = await readFile(env, `users/${file.name}`);
+        const content = await readFile(`users/${file.name}`, env);
         if (content) {
           const user = JSON.parse(content);
           users.push(Phase6A.getPublicProfile(user));
@@ -3916,10 +3914,10 @@ async function handleSubmitDraft(id, request, env, cors) {
   const clientIp = getClientIp(request);
   const userAgent = request.headers.get('User-Agent') || '';
 
-  const auth = await Phase6A.authorizeDraftAccess(env, id, userId);
-  if (!auth.authorized) return jsonResponse({ success: false, error: auth.reason }, 403, cors);
+  const draftAuth = await Phase6A.authorizeDraftAccess(env, id, userId);
+  if (!draftAuth.authorized) return jsonResponse({ success: false, error: draftAuth.reason }, 403, cors);
 
-  const draft = auth.draft;
+  const draft = draftAuth.draft;
 
   // Validate the draft data as a contribution
   let validationErrors = [];

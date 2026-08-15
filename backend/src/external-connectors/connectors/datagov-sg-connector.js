@@ -17,7 +17,7 @@
  * For GraveAtlas use, we treat this as a low-volume, cached connector.
  */
 
-import { ExternalSourceClient } from '../connector-base.js';
+import { BaseConnector } from '../connector-base.js';
 
 // ── Dataset Registry ──
 
@@ -62,10 +62,9 @@ const SG_DATASETS = {
 
 // ── Connector ──
 
-export class DataGovSgConnector extends ExternalSourceClient {
+export class DataGovSgConnector extends BaseConnector {
   constructor() {
-    super();
-    this.sourceId = 'datagov-sg';
+    super('datagov-sg');
     this.sourceName = 'Singapore Government Open Data (data.gov.sg)';
     this.apiBaseUrl = 'https://api-open.data.gov.sg/v1/public/api/datasets';
     this.datastoreBaseUrl = 'https://data.gov.sg/api/action/datastore_search';

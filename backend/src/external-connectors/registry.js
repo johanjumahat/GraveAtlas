@@ -149,7 +149,7 @@ export const SOURCE_REGISTRY = [
     lastVerificationDate: '2026-08-11',
     verificationEvidence: 'Only third-party unofficial scraper listings were found (not first-party API docs). Per core principles, GraveAtlas will not use unofficial scrapers to bypass the absence of a public API.',
     notes: 'Would require contacting BillionGraves directly for an official data partnership — outside the scope of this automated pass.'
-,
+  },
   {
     sourceId: 'datagov-sg',
     sourceName: 'Singapore Government Open Data (data.gov.sg)',
@@ -171,7 +171,6 @@ export const SOURCE_REGISTRY = [
     lastVerificationDate: '2026-08-15',
     verificationEvidence: 'API documentation reviewed at https://guide.data.gov.sg/developer-guide/dataset-apis/download-dataset. Poll-download API pattern confirmed. Four datasets identified: NEA Active Cemeteries (d_4a9b83ee745c10c3aa5829fb80e09d9c), NEA After Death Facilities (d_8057b4f4c7eca22c3c51c4ac05440f21), NEA Dedicated Columbaria (d_9b0752e9d3f1f9d957d5d8be2b58dfff), NHB National Monuments (d_b29c230ec6b609e29ed42f71ca9a8767). Dataset schemas verified from data.gov.sg preview pages.',
     notes: 'Provides cemetery/facility LOCATIONS only — not individual burial records. NEA manages burial records internally but has not published individual grave data as open data. Bukit Brown burial registers (1922-1972) are held by National Archives of Singapore (NAS) as digitised PDFs, not API-accessible. This connector covers all four SG government datasets relevant to cemetery/heritage research.'
-  }
   }
 ];
 
