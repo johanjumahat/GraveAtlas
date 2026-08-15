@@ -1,4 +1,54 @@
 
+## [Phase 16.2] — 2026-08-15
+
+### Added — Evidence Badges in Search + Transparency
+- **SearchFragment.java** — Redesigned search result cards:
+  - Evidence badge on each card (top-right, next to name)
+  - Uses actual `verificationStatus` from GraveRecord
+  - "Why am I seeing this?" link on each card
+  - `showEvidenceExplanation()` dialog explaining:
+    - Evidence category label + description
+    - Backend verification status
+    - Source information
+    - Why the record matched the search
+    - Call to action (submit corrections)
+  - Report Issue button links to grave detail
+- **GlobalSearchFragment.java** — Updated evidence badges:
+  - Now uses actual `r.verificationStatus` from SearchResult (was hardcoded null)
+  - "Why am I seeing this?" link on each result card
+  - `showEvidenceExplanation()` dialog for global search results
+  - View Record button in dialog
+- **SearchResult.java** — Added `verificationStatus` field:
+  - Parsed from JSON response (`json.optString("verificationStatus", null)`)
+  - Used by GlobalSearchFragment for evidence badge
+
+### Tests
+- **tests/phase16-2.test.js** — 29 tests covering:
+  - SearchResult verificationStatus field (2 tests)
+  - SearchFragment evidence badges (4 tests)
+  - SearchFragment transparency feature (10 tests)
+  - GlobalSearchFragment evidence badges (2 tests)
+  - GlobalSearchFragment transparency feature (4 tests)
+  - Backend verificationStatus (2 tests)
+  - EvidenceStatus categories regression (4 tests)
+  - Documentation (2 tests)
+- Total: 1206 tests passing, 0 failures
+
+### Phase 16 Roadmap Progress
+- ✅ AI-native home screen (Phase 16)
+- ✅ AI research assistant system prompt (Phase 16)
+- ✅ Evidence-first badge system (Phase 16)
+- ✅ Smart record cards (Phase 16)
+- ✅ Contextual actions on grave records (Phase 16)
+- ✅ Integrate AI with backend search (Phase 16.1)
+- ✅ Evidence badges in search results (Phase 16.2)
+- ✅ "Why am I seeing this?" transparency feature (Phase 16.2)
+- ⬜ TalkBack screen reader testing
+- ⬜ Test with large text settings
+- ⬜ Make AI command bar persistent across all screens
+- ⬜ Add research session persistence (save investigations)
+
+
 ## [Android Google Auth Integration] — 2026-08-15
 
 ### Added — Android Client

@@ -437,3 +437,24 @@ The Android app now requires Google login before submitting records. Browsing an
 - Login gate on all submission entry points
 - Browsing/searching works without login (read-only)
 - Banned accounts see banReason in error message
+
+## Phase 16.2 — Evidence Badges in Search + Transparency
+
+### Evidence Badges in Search Results
+Both the basic SearchFragment and GlobalSearchFragment now show evidence badges on every result card. The badge is determined from the record's `verificationStatus` field.
+
+| Search Screen | Badge Source | Badge Position |
+|--------------|-------------|----------------|
+| SearchFragment | `GraveRecord.verificationStatus` | Top-right of card |
+| GlobalSearchFragment | `SearchResult.verificationStatus` | Top row of card |
+
+### "Why Am I Seeing This?" Transparency
+Each search result card now has a "Why am I seeing this?" link that opens a dialog explaining:
+
+1. **Evidence Status** — The category label and description
+2. **Backend Status** — The raw verification status from the database
+3. **Source Info** — Whether sources are cited
+4. **Search Match** — Why the record appeared in results
+5. **Call to Action** — How to improve the record (submit corrections)
+
+This gives users transparency into both *why a record appeared* and *how reliable it is*.

@@ -29,6 +29,7 @@ public class SearchResult {
     public Double longitude;
     public int score;
     public int cemeteryCount; // for location results
+    public String verificationStatus; // Phase 16.2: evidence badge in search results
 
     public static List<SearchResult> fromJsonArray(JSONArray array) {
         List<SearchResult> results = new ArrayList<>();
@@ -53,6 +54,7 @@ public class SearchResult {
                 r.longitude = json.has("longitude") && !json.isNull("longitude") ? json.optDouble("longitude") : null;
                 r.score = json.optInt("score", 0);
                 r.cemeteryCount = json.optInt("cemeteryCount", 0);
+                r.verificationStatus = json.optString("verificationStatus", null);
 
                 // Parse alt names array
                 JSONArray altArr = json.optJSONArray("altNames");

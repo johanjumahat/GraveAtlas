@@ -460,7 +460,7 @@ public class GlobalSearchFragment extends Fragment implements ApiClient.ApiCallb
             // Evidence badge row (Phase 16.1)
             LinearLayout badgeRow = new LinearLayout(getContext());
             badgeRow.setOrientation(LinearLayout.HORIZONTAL);
-            EvidenceStatus.Category category = EvidenceStatus.fromVerificationStatus(null);
+            EvidenceStatus.Category category = EvidenceStatus.fromVerificationStatus(r.verificationStatus);
             badgeRow.addView(EvidenceStatus.createBadge(getContext(), category));
             cardContainer.addView(badgeRow);
 
@@ -485,11 +485,53 @@ public class GlobalSearchFragment extends Fragment implements ApiClient.ApiCallb
             card.setContentDescription(buildContentDescription(r));
             cardContainer.addView(card);
 
+            // Phase 16.2: "Why am I seeing this?" transparency link
+            TextView whyLink = new TextView(getContext());
+            whyLink.setText("Why am I seeing this?");
+            whyLink.setTextSize(11);
+            whyLink.setPadding(0, 8, 0, 0);
+            EvidenceStatus.Category whyCategory = EvidenceStatus.fromVerificationStatus(r.verificationStatus);
+            whyLink.setOnClickListener(v -> showEvidenceExplanation(r, whyCategory));
+            cardContainer.addView(whyLink);
+
             // Part 100: Result detail navigation
             cardContainer.setOnClickListener(v -> navigateToDetail(r));
 
             resultsContainer.addView(cardContainer);
         }
+    }
+
+    /**
+     * Show a dialog explaining why this record appears and what its evidence status means.
+     * Phase 16.2 transparency feature.
+     */
+    private void showEvidenceExplanation(SearchResult r, EvidenceStatus.Category category) {
+        StringBuilder explanation = new StringBuilder();
+        explanation.append("Evidence Status: ").append(category.getLabel()).append("\n\n");
+        explanation.append(category.getDescription()).append("\n\n");
+
+        if (r.verificationStatus != null && !r.verificationStatus.isEmpty()) {
+            explanation.append("Backend status: ").append(r.verificationStatus).append("\n");
+        } else {
+            explanation.append("Backend status: not set (defaults to unverified)\n");
+        }
+
+        explanation.append("\nThis record appears because it matches your search query. ");
+        if (r.name != null) {
+            explanation.append("Name: \"").append(r.name).append("\". ");
+        }
+        if (r.cemetery != null) {
+            explanation.append("Cemetery: ").append(r.cemetery).append(". ");
+        }
+        explanation.append("\n\nThe evidence badge indicates how well-documented this record is. ");
+        explanation.append("You can help improve it by submitting corrections or additional sources.");
+
+        new androidx.appcompat.app.AlertDialog.Builder(getContext())
+                .setTitle("Why am I seeing this?")
+                .setMessage(explanation.toString())
+                .setPositiveButton("OK", null)
+                .setNeutralButton("View Record", (d, w) -> navigateToDetail(r))
+                .show();
     }
 
     private String buildContentDescription(SearchResult r) {
