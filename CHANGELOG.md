@@ -1,4 +1,48 @@
 
+## [Phase 16.4 — AI Map] — 2026-08-15
+
+### Added — Natural-Language Map Queries & Historical Layers
+- **AIMapQuery.java** — Natural-language query parser for map data:
+  - Year extraction: single year, decade ("1900s"), range ("1900 to 1999"), before/after
+  - Evidence filter: source-backed, unverified, verified, cited, documented
+  - Location extraction: "near X", "in X", "around X"
+  - Record type: cemetery, memorial, grave, tomb, burial
+  - applyFilters() — filter GraveRecord list by parsed query
+  - generateResponse() — natural-language response with result count and description
+  - Stop word filtering for location extraction
+
+- **HistoricalLayers.java** — Era-based map layer system:
+  - 6 eras: Pre-1800, 1800–1849, 1850–1899, 1900–1949, 1950–1999, 2000–Present
+  - 3 source filters: All Sources, Source-Backed, Community-Submitted
+  - 18 layer combinations (6 eras × 3 source filters)
+  - buildFromRecords() — organize records into layers
+  - toggleLayer(), setEraVisible(), setSourceFilterVisible() — visibility control
+  - getVisibleRecords() — deduplicated records from visible layers
+  - getSummary() — era breakdown with source/community counts
+
+- **Backend /api/map/query endpoint**:
+  - GET /api/map/query?q=Show+me+graves+from+the+1900s+in+Singapore
+  - Also accepts structured params: ?startYear=1900&endYear=1999&location=Singapore&evidence=source_backed
+  - Parses NL query for year ranges, decades, before/after, evidence, location
+  - Filters published records and returns summary
+
+- **AISystemPrompts** — AI aware of map query endpoint and historical layers
+
+### Tests
+- **tests/phase16-4.test.js** — 80+ tests covering:
+  - AIMapQuery model and parsing (10 tests)
+  - Year extraction (7 tests)
+  - Evidence filter extraction (4 tests)
+  - Location extraction (5 tests)
+  - Record type extraction (4 tests)
+  - applyFilters (6 tests)
+  - generateResponse (5 tests)
+  - HistoricalLayers (20+ tests)
+  - Backend endpoint (16 tests)
+  - AI system prompts (5 tests)
+  - Documentation (1 test)
+
+
 ## [Phase 16.3 — AI Timelines] — 2026-08-15
 
 ### Added — Interactive Timelines

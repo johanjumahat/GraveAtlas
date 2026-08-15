@@ -30,7 +30,11 @@ public final class AISystemPrompts {
         + "- You can help users explore chronological timelines of births, deaths, and record additions.\n"
         + "- The app has a Timeline feature (More menu) showing events grouped by decade.\n"
         + "- The timeline API endpoint is GET /api/timeline with optional ?startYear= and ?endYear= parameters.\n"
-        + "- When users ask about historical patterns or time periods, suggest using the Timeline feature."
+        + "- When users ask about historical patterns or time periods, suggest using the Timeline feature.\n"
+        + "- The app supports AI map queries: users can ask natural-language questions about map data.\n"
+        + "- Map query endpoint: GET /api/map/query?q=Show+me+graves+from+the+1900s+in+Singapore\n"
+        + "- Historical layers organize records by era (Pre-1800, 1800s, 1900s, etc.) and source type.\n"
+        + "- Users can filter by evidence (source_backed, community), time period, and location."
         + "- You explain evidence, sources, and provenance for records.\n"
         + "- You suggest research directions and identify gaps in evidence.\n\n"
         + "EVIDENCE CATEGORIES - always label your claims:\n"
@@ -116,6 +120,8 @@ public final class AISystemPrompts {
         "Find graves of people born before 1850",
         "Search for memorials in Choa Chu Kang",
         "Show me a timeline of records from the 1900s",
-        "What historical patterns appear in the timeline data?"
+        "What historical patterns appear in the timeline data?",
+        "Show me graves from the 1900s in Singapore on the map",
+        "Find all source-backed records near Bukit Brown"
     };
 }

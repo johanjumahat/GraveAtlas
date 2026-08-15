@@ -337,6 +337,11 @@ async function handleRequest(request, env, ctx) {
       return await handleGetTimeline(request, env, corsHeaders);
     }
 
+    // Phase 16.4: AI Map query endpoint
+    if (path === '/api/map/query' && method === 'GET') {
+      return await handleMapQuery(request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -964,6 +969,177 @@ function extractYear(dateStr) {
   if (!dateStr || typeof dateStr !== 'string') return 0;
   const match = dateStr.match(/\d{4}/);
   return match ? parseInt(match[0], 10) : 0;
+}
+
+/**
+ * Phase 16.4: AI Map Query endpoint — parses natural-language queries and returns filtered results.
+ *
+ * GET /api/map/query?q=Show+me+graves+from+the+1900s+in+Singapore
+ * GET /api/map/query?startYear=1900&endYear=1999&location=Singapore
+ *
+ * Returns:
+ *   { records: [...], count: N, query: {...}, summary: "Found 15 records..." }
+ */
+async function handleMapQuery(request, env, cors) {
+  const url = new URL(request.url);
+  const q = url.searchParams.get('q') || '';
+  const startYear = url.searchParams.get('startYear') ? parseInt(url.searchParams.get('startYear'), 10) : null;
+  const endYear = url.searchParams.get('endYear') ? parseInt(url.searchParams.get('endYear'), 10) : null;
+  const location = url.searchParams.get('location') || null;
+  const evidenceFilter = url.searchParams.get('evidence') || null;
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      records: [],
+      count: 0,
+      query: { q, startYear, endYear, location, evidenceFilter },
+      summary: 'No data available. GitHub not configured.'
+    }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('graves', env);
+    const records = [];
+
+    // Parse the natural language query if provided
+    let parsedStartYear = startYear;
+    let parsedEndYear = endYear;
+    let parsedLocation = location;
+    let parsedEvidence = evidenceFilter;
+
+    if (q) {
+      // Year range
+      const rangeMatch = q.match(/(\d{4})\s*(?:to|-|–)\s*(\d{4})/);
+      if (rangeMatch) {
+        parsedStartYear = parseInt(rangeMatch[1], 10);
+        parsedEndYear = parseInt(rangeMatch[2], 10);
+      } else {
+        // Decade (e.g., "1900s")
+        const decadeMatch = q.match(/\b(1[5-9]|20[0-5])0s\b/);
+        if (decadeMatch) {
+          parsedStartYear = parseInt(decadeMatch[1] + '0', 10);
+          parsedEndYear = parsedStartYear + 9;
+        } else {
+          // Before/after
+          const beforeMatch = q.match(/(?:before|prior to|pre-)\s*(\d{4})/);
+          if (beforeMatch) parsedEndYear = parseInt(beforeMatch[1], 10);
+          const afterMatch = q.match(/(?:after|since|from|post-)\s*(\d{4})/);
+          if (afterMatch) parsedStartYear = parseInt(afterMatch[1], 10);
+          // Single year
+          if (parsedStartYear === null && parsedEndYear === null) {
+            const yearMatch = q.match(/\b(1[5-9]\d{2}|20[0-5]\d)\b/);
+            if (yearMatch) {
+              parsedStartYear = parseInt(yearMatch[1], 10);
+              parsedEndYear = parsedStartYear;
+            }
+          }
+        }
+      }
+
+      // Evidence filter
+      if (/source[- ]?backed|sourced|cited|documented|verified/i.test(q)) {
+        parsedEvidence = 'source_backed';
+      } else if (/unverified|unconfirmed|pending/i.test(q)) {
+        parsedEvidence = 'unverified';
+      }
+
+      // Location from "near X" or "in X"
+      if (!parsedLocation) {
+        const nearMatch = q.match(/(?:near|around|close to)\s+([\w\s]+)/i);
+        if (nearMatch) {
+          parsedLocation = nearMatch[1].trim().split(/\s+(?:with|showing|displaying|having)\b/)[0].trim();
+        } else {
+          const inMatch = q.match(/(?:in|at|within)\s+([\w\s]+)/i);
+          if (inMatch) {
+            const loc = inMatch[1].trim();
+            if (!['the', 'a', 'an', 'all', 'this', 'that'].includes(loc.toLowerCase())) {
+              parsedLocation = loc;
+            }
+          }
+        }
+      }
+    }
+
+    // Load and filter records
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      const content = await readFile(`graves/${file}`, env);
+      if (!content) continue;
+      try {
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+
+        let include = true;
+
+        // Year filter
+        if (parsedStartYear !== null || parsedEndYear !== null) {
+          const year = extractYear(record.deathDate || record.birthDate || '');
+          if (year > 0) {
+            if (parsedStartYear !== null && year < parsedStartYear) include = false;
+            if (parsedEndYear !== null && year > parsedEndYear) include = false;
+          } else {
+            include = false;
+          }
+        }
+
+        // Evidence filter
+        if (include && parsedEvidence) {
+          const status = record.verificationStatus || 'unverified';
+          if (parsedEvidence === 'source_backed') {
+            if (!['source_backed', 'verified'].includes(status)) include = false;
+          } else if (parsedEvidence === 'unverified') {
+            if (!['unverified', 'needs_verification'].includes(status)) include = false;
+          }
+        }
+
+        // Location filter
+        if (include && parsedLocation) {
+          const loc = parsedLocation.toLowerCase();
+          const cemeteryName = (record.cemeteryName || '').toLowerCase();
+          const cemetery = (record.cemetery || '').toLowerCase();
+          const name = (record.name || '').toLowerCase();
+          if (!cemeteryName.includes(loc) && !cemetery.includes(loc) && !name.includes(loc)) {
+            include = false;
+          }
+        }
+
+        if (include) records.push(record);
+      } catch (e) { /* skip */ }
+    }
+
+    // Generate summary
+    let summary = `Found ${records.length} records`;
+    if (parsedStartYear !== null && parsedEndYear !== null) {
+      if (parsedStartYear === parsedEndYear) summary += ` from ${parsedStartYear}`;
+      else summary += ` from ${parsedStartYear} to ${parsedEndYear}`;
+    }
+    if (parsedLocation) summary += ` in ${parsedLocation}`;
+    if (parsedEvidence) summary += ` [${parsedEvidence}]`;
+    summary += '.';
+
+    return jsonResponse({
+      success: true,
+      records: records,
+      count: records.length,
+      query: {
+        original: q || null,
+        startYear: parsedStartYear,
+        endYear: parsedEndYear,
+        location: parsedLocation,
+        evidence: parsedEvidence
+      },
+      summary: summary
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: true,
+      records: [],
+      count: 0,
+      query: { q },
+      summary: 'Unable to process map query.'
+    }, 200, cors);
+  }
 }
 
 async function handleCreateGrave(request, env, cors) {

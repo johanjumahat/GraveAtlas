@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-08-15 (Phase 16.3 complete)
 **Version:** Backend 7.1.0 | Android 1.0.0 | Schema 1.0.0
-**Tests:** 1477 passing, 0 failed
+**Tests:** 1562 passing, 0 failed
 
 ## Phase Completion
 
@@ -20,6 +20,7 @@
 | 16.1. AI Database Integration (RAG) | ✅ COMPLETE | 100% |
 | 16.2. Smart Record Cards & AI Command Bar | ✅ COMPLETE | 100% |
 | 16.3. AI Timelines | ✅ COMPLETE | 100% |
+| 16.4. AI Map Queries & Historical Layers | ✅ COMPLETE | 100% |
 
 **All 8 core phases complete. Phase 16 AI-native features complete. 1477 tests passing.**
 
@@ -30,6 +31,7 @@
 1c. ~~Phase 16.2 — AI command bar persistent~~ ✅ Command bar visible on all screens, research session persistence with 50-session limit, 41 tests
 1d. ~~Phase 5.5 — Security audit~~ ✅ 82 security checks across 14 categories, 0 security issues found
 1e. ~~Phase 16.3 — AI Timelines~~ ✅ Interactive chronological timelines, decade grouping, /api/timeline endpoint, 90 tests
+1f. ~~Phase 16.4 — AI Map~~ ✅ Natural-language map queries, historical layers, /api/map/query endpoint, 80+ tests
 
 ## Architecture
 
