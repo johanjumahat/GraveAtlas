@@ -4038,7 +4038,9 @@ async function handleGlobalSearch(request, env, cors) {
 
           // Convert external records to SearchResult format
           for (const record of sourceRecords) {
-            const recName = record.cemetery || record.name || 'Unknown';
+            // Bukit Brown returns person records, not cemetery records
+            const isPersonRecord = record.personName && source.sourceId === 'bukit-brown';
+            const recName = isPersonRecord ? record.personName : (record.cemetery || record.name || 'Unknown');
             const nameLower = recName.toLowerCase();
             const qLower = queryText.toLowerCase();
 
@@ -4052,25 +4054,55 @@ async function handleGlobalSearch(request, env, cors) {
               if (matched) score = 0.5;
             }
 
-            externalResults.push({
-              type: 'cemetery',
-              category: 'cemeteries',
-              id: 'ext-' + (record.externalRecordId || record.id || Math.random().toString(36).substr(2, 9)),
-              name: recName,
-              country: record.country || 'Singapore',
-              region: record.region || null,
-              city: record.city || null,
-              latitude: record.latitude || null,
-              longitude: record.longitude || null,
-              source: source.sourceId,
-              sourceName: source.sourceName,
-              sourceOrganization: record.sourceOrganization || null,
-              verificationStatus: 'verified',
-              license: record.license || null,
-              isExternal: true,
-              recordUrl: record.recordUrl || null,
-              score: score
-            });
+            if (isPersonRecord) {
+              // Person/grave record
+              externalResults.push({
+                type: 'person',
+                category: 'people',
+                id: 'ext-' + (record.externalRecordId || record.id || Math.random().toString(36).substr(2, 9)),
+                name: recName,
+                cemetery: record.cemetery || 'Bukit Brown Cemetery',
+                cemeteryId: null,
+                country: 'Singapore',
+                region: null,
+                city: 'Singapore',
+                birthDate: record.birthDate || null,
+                deathDate: record.deathDate || null,
+                latitude: record.latitude || null,
+                longitude: record.longitude || null,
+                section: record.section || null,
+                plot: record.plot || null,
+                source: source.sourceId,
+                sourceName: source.sourceName,
+                sourceOrganization: record.sourceOrganization || null,
+                verificationStatus: 'verified',
+                license: record.license || null,
+                isExternal: true,
+                recordUrl: record.recordUrl || null,
+                score: score
+              });
+            } else {
+              // Cemetery/facility record
+              externalResults.push({
+                type: 'cemetery',
+                category: 'cemeteries',
+                id: 'ext-' + (record.externalRecordId || record.id || Math.random().toString(36).substr(2, 9)),
+                name: recName,
+                country: record.country || 'Singapore',
+                region: record.region || null,
+                city: record.city || null,
+                latitude: record.latitude || null,
+                longitude: record.longitude || null,
+                source: source.sourceId,
+                sourceName: source.sourceName,
+                sourceOrganization: record.sourceOrganization || null,
+                verificationStatus: 'verified',
+                license: record.license || null,
+                isExternal: true,
+                recordUrl: record.recordUrl || null,
+                score: score
+              });
+            }
           }
         }
       } catch (extError) {
