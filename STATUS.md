@@ -1,7 +1,7 @@
 # GraveAtlas — Project Status
 
-**Last updated:** 2026-08-15 (backend deployment fix + SG connector request() implementation, v7.2.3)
-**Version:** Backend 7.1.0 | Android 7.2.2 | Schema 1.0.0
+**Last updated:** 2026-08-16 (GitHub community data connector, v7.2.5)
+**Version:** Backend 7.1.0 | Android 7.2.5 | Schema 1.0.0
 **Tests:** 1562 passing, 0 failed (pre-existing unrelated failures in import-admin/phase16-3/phase16-5 tracked separately)
 **Backend Live:** https://graveatlas.putraworks-2026.workers.dev (Cloudflare Worker, version 8256720c)
 
@@ -31,6 +31,8 @@
 0. **Fix — AI search now compiles GraveAtlas DB + external official sources together** ✅ Fixed `AIDataInterceptor` mutually-exclusive routing bug; every search query now queries internal DB and all external sources (OSM, Wikidata, Singapore gov) in parallel and compiles both into one `[COMPILED CONTEXT]` block. PR #25, merged as `c678e4f`, v7.2.2.
 
 1. **Fix — Backend deployment to Cloudflare (9 build/runtime errors fixed)** ✅ Backend was never deployed — all Phase 5+ features existed in code but were not live. Fixed: unclosed template literal in `generateId()`, stray template remnants after `generateRequestId()`, undefined `_currentRequestId` in `jsonResponse()`, duplicate `auth` variable in `handleSubmitDraft()`, reversed `readFile()` args in `listUsers`, duplicate exports in `google-auth.js`, missing closing brace + double `];` in `registry.js`, orphaned code in `github.js`, wrong base class in `datagov-sg-connector.js`. Deployed version 8256720c. All endpoints verified live: `/api/health`, `/api/external/sources`, `/api/external/query-all`, `/api/timeline`, `/api/admin/imports/sources`, `/api/graves/search`. v7.2.3.
+
+3. **Add — GitHub Community Data connector (5th external source)** ✅ `GitHubCommunityConnector` reads community-contributed cemetery/grave records from `/community-data/` via GitHub Contents API. Users submit data via GitHub Issues or PRs. Fills coverage gaps where official APIs have no data. New routes: `/api/external/community`, `/api/external/community/query`. CC BY-SA 4.0. PR #27, merged as `51ffec7`, v7.2.5.
 
 2. **Implement — SG data.gov.sg connector `request()` method** ✅ Implemented missing `request()` method on `DataGovSgConnector` so it can participate in `/api/external/query-all` searches. Previously returned "request() not implemented for connector: datagov-sg". v7.2.3.
 

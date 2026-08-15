@@ -1,3 +1,17 @@
+## [7.2.5] — 2026-08-16
+
+### Added
+- **GitHub Community Data connector** (`GitHubCommunityConnector`): 5th external data source.
+  Community-contributed cemetery and grave records stored as JSON in `/community-data/`.
+  Reads via GitHub Contents API. Fills coverage gaps where official APIs (OSM, Wikidata,
+  data.gov.sg, Bukit Brown) have no data. Users contribute via GitHub Issues or PRs.
+  - New API routes: `GET /api/external/community` (list files), `POST /api/external/community/query` (search)
+  - `community-data/` directory with README and JSON template
+  - `CONTRIBUTING.md` updated with cemetery record submission guide
+  - CC BY-SA 4.0 license for all community contributions
+  - Registered in gateway + registry as implemented source
+
+
 ## [Unreleased] - 2026-08-15
 
 ### Changed
