@@ -1,4 +1,54 @@
 
+## [Phase 16.3 — AI Timelines] — 2026-08-15
+
+### Added — Interactive Timelines
+- **TimelineEvent.java** — Timeline event model with 7 event types:
+  - BIRTH, DEATH, BURIAL, CEMETERY_ESTABLISHED, INSCRIPTION, RECORD_CREATED, RECORD_UPDATED
+  - Factory methods: fromBirth(), fromDeath(), fromRecordCreated(), fromCemeteryEstablished()
+  - sortChronologically() — oldest first, unknown dates last
+  - filterByYearRange() — filter events by start/end year
+  - groupByDecade() — group events into decade buckets (1900s, 1910s, etc.)
+  - generateSummary() — natural-language summary for AI chat
+  - toJson() — serialization for persistence
+  - extractYear() — regex-based year extraction from date strings
+  - getFormattedDate() — human-readable date formatting (Jan 15, 1950)
+
+- **TimelineFragment.java** — Visual timeline UI:
+  - Vertical timeline with decade grouping
+  - Color-coded event dots (green=birth, gray=death, etc.)
+  - Event cards with type, date, title, description, cemetery name
+  - Evidence badges on each event (from record's verificationStatus)
+  - Tap event → navigate to GraveDetailFragment
+  - Long-press → event details dialog
+  - Natural-language summary at top
+  - Handles API failure and empty data gracefully
+
+- **Backend /api/timeline endpoint**:
+  - GET /api/timeline — returns all timeline events from published graves
+  - Optional ?startYear= and ?endYear= query params for filtering
+  - Builds BIRTH and DEATH events from grave records
+  - Sorted chronologically (oldest first)
+  - Returns events array + summary string + count
+
+- **MainNavActivity** — Timeline accessible from More sheet
+- **AISystemPrompts** — AI aware of timeline feature and API endpoint
+
+### Tests
+- **tests/phase16-3.test.js** — 90 tests covering:
+  - TimelineEvent model (19 tests)
+  - Event factory methods (9 tests)
+  - Sorting and filtering (5 tests)
+  - Decade grouping (7 tests)
+  - Summary generation (4 tests)
+  - JSON serialization (4 tests)
+  - TimelineFragment (21 tests)
+  - Backend endpoint (12 tests)
+  - MainNavActivity integration (3 tests)
+  - Layout integration (2 tests)
+  - AI system prompts (4 tests)
+  - Documentation (1 test)
+
+
 ## [Phase 5.5 — Security Audit] — 2026-08-15
 
 ### Added — Comprehensive Security Audit

@@ -515,3 +515,21 @@ AI investigations are now saved locally. Users can resume research across app se
 - **Login required** for submissions — ban system with ban reason returned to user
 - **No code injection** — no eval(), Function(), child_process, or exec()
 - **No hardcoded secrets** — all tokens/keys from environment variables
+
+## Phase 16.3 — AI Timelines
+
+### Interactive Chronological Timelines
+The Timeline feature visualizes records chronologically — births, deaths, and record additions grouped by decade.
+
+| Feature | Description |
+|---------|-------------|
+| Event types | Birth, Death, Burial, Cemetery Established, Inscription, Record Created, Record Updated |
+| Decade grouping | Events grouped into decade buckets (1900s, 1910s, etc.) |
+| Year filtering | Filter by start/end year via API params |
+| Color-coded | Green=birth, gray=death, blue=cemetery, etc. |
+| Evidence badges | Each event shows evidence status from underlying record |
+| Navigation | Tap event → grave detail page |
+| Long-press | Event details dialog with full info |
+| Summary | Natural-language summary at top |
+| Backend API | GET /api/timeline?startYear=1900&endYear=2000 |
+| AI awareness | AI system prompts mention timeline feature and endpoint |

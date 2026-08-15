@@ -332,6 +332,11 @@ async function handleRequest(request, env, ctx) {
       return await handleSearch(request, env, corsHeaders);
     }
 
+    // Phase 16.3: Timeline endpoint
+    if (path === '/api/timeline' && method === 'GET') {
+      return await handleGetTimeline(request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -830,6 +835,135 @@ async function handleGetGraves(request, env, cors) {
       message: 'Unable to fetch from data repository.'
     }, 200, cors);
   }
+}
+
+/**
+ * Phase 16.3: Timeline endpoint — returns chronological events built from grave records.
+ *
+ * Builds timeline events (birth, death) from all published graves, sorted chronologically.
+ * Supports optional ?startYear= and ?endYear= query params for filtering.
+ * Response format:
+ *   { events: [...], summary: "3 events from 1900 to 1950", count: 3 }
+ */
+async function handleGetTimeline(request, env, cors) {
+  const url = new URL(request.url);
+  const startYear = parseInt(url.searchParams.get('startYear') || '0', 10);
+  const endYear = parseInt(url.searchParams.get('endYear') || '9999', 10);
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      events: [],
+      count: 0,
+      summary: 'No data available. GitHub not configured.',
+      message: 'GitHub not configured. Deploy with secrets to enable data access.'
+    }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('graves', env);
+    const events = [];
+
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      const content = await readFile(`graves/${file}`, env);
+      if (!content) continue;
+      try {
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+
+        // Build birth event
+        if (record.birthDate) {
+          const year = extractYear(record.birthDate);
+          if (year > 0) {
+            events.push({
+              id: 'birth_' + record.id,
+              type: 'BIRTH',
+              date: record.birthDate,
+              year: year,
+              title: record.name || 'Unknown',
+              description: 'Born' + (record.cemeteryName ? ' \u2014 later interred at ' + record.cemeteryName : ''),
+              recordId: record.id,
+              recordType: 'grave',
+              cemeteryName: record.cemeteryName || null,
+              verificationStatus: record.verificationStatus || 'unverified',
+              sourceRefs: record.sourceRefs || [],
+              latitude: record.latitude || 0,
+              longitude: record.longitude || 0
+            });
+          }
+        }
+
+        // Build death event
+        if (record.deathDate) {
+          const year = extractYear(record.deathDate);
+          if (year > 0) {
+            events.push({
+              id: 'death_' + record.id,
+              type: 'DEATH',
+              date: record.deathDate,
+              year: year,
+              title: record.name || 'Unknown',
+              description: 'Passed away' + (record.cemeteryName ? ' \u2014 interred at ' + record.cemeteryName : ''),
+              recordId: record.id,
+              recordType: 'grave',
+              cemeteryName: record.cemeteryName || null,
+              verificationStatus: record.verificationStatus || 'unverified',
+              sourceRefs: record.sourceRefs || [],
+              latitude: record.latitude || 0,
+              longitude: record.longitude || 0
+            });
+          }
+        }
+      } catch (e) { /* skip invalid JSON */ }
+    }
+
+    // Filter by year range
+    let filtered = events;
+    if (startYear > 0 || endYear < 9999) {
+      filtered = events.filter(e => e.year >= startYear && e.year <= endYear);
+    }
+
+    // Sort chronologically
+    filtered.sort((a, b) => a.year - b.year);
+
+    // Generate summary
+    let summary = 'No events available.';
+    if (filtered.length > 0) {
+      const firstYear = filtered[0].year;
+      const lastYear = filtered[filtered.length - 1].year;
+      const births = filtered.filter(e => e.type === 'BIRTH').length;
+      const deaths = filtered.filter(e => e.type === 'DEATH').length;
+      summary = `${filtered.length} event(s)`;
+      if (firstYear !== lastYear) summary += ` from ${firstYear} to ${lastYear}`;
+      else summary += ` in ${firstYear}`;
+      summary += `: ${births} birth${births !== 1 ? 's' : ''}, ${deaths} death${deaths !== 1 ? 's' : ''}.`;
+    }
+
+    return jsonResponse({
+      success: true,
+      events: filtered,
+      count: filtered.length,
+      summary: summary
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: true,
+      events: [],
+      count: 0,
+      summary: 'Unable to fetch timeline data.',
+      message: 'Unable to fetch from data repository.'
+    }, 200, cors);
+  }
+}
+
+/**
+ * Extract a 4-digit year from a date string.
+ */
+function extractYear(dateStr) {
+  if (!dateStr || typeof dateStr !== 'string') return 0;
+  const match = dateStr.match(/\d{4}/);
+  return match ? parseInt(match[0], 10) : 0;
 }
 
 async function handleCreateGrave(request, env, cors) {

@@ -29,6 +29,7 @@ import com.putraworks.graveatlas.ui.search.SearchFragment;
 import com.putraworks.graveatlas.ui.search.GlobalSearchFragment;
 import com.putraworks.graveatlas.ui.nearby.NearbyFragment;
 import com.putraworks.graveatlas.ui.saved.SavedFragment;
+import com.putraworks.graveatlas.ui.timeline.TimelineFragment;
 import com.putraworks.graveatlas.ui.settings.SettingsFragment;
 import com.putraworks.graveatlas.ui.gravedetail.GraveDetailFragment;
 import com.putraworks.graveatlas.utils.ShareUtils;
@@ -141,6 +142,15 @@ public class MainNavActivity extends AppCompatActivity {
                 selectHomeTabSilently();
             });
         } catch (Exception e) { /* IDs not in layout yet — skip */ }
+
+        // Phase 16.3: Timeline
+        try {
+            sheetView.findViewById(R.id.moreTimeline).setOnClickListener(v -> {
+                dialog.dismiss();
+                loadFragment(new TimelineFragment());
+                selectHomeTabSilently();
+            });
+        } catch (Exception e) { /* ID not in layout yet — skip */ }
 
         sheetView.findViewById(R.id.moreChat).setOnClickListener(v -> {
             dialog.dismiss();

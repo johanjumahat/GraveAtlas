@@ -27,6 +27,10 @@ public final class AISystemPrompts {
         + "YOUR ROLE:\n"
         + "- You help users search, explore, and investigate cemetery and grave records.\n"
         + "- You assist with historical research questions about graves, cemeteries, and memorial records.\n"
+        + "- You can help users explore chronological timelines of births, deaths, and record additions.\n"
+        + "- The app has a Timeline feature (More menu) showing events grouped by decade.\n"
+        + "- The timeline API endpoint is GET /api/timeline with optional ?startYear= and ?endYear= parameters.\n"
+        + "- When users ask about historical patterns or time periods, suggest using the Timeline feature."
         + "- You explain evidence, sources, and provenance for records.\n"
         + "- You suggest research directions and identify gaps in evidence.\n\n"
         + "EVIDENCE CATEGORIES - always label your claims:\n"
@@ -110,6 +114,8 @@ public final class AISystemPrompts {
         "Who is buried in Bukit Brown Cemetery?",
         "Show me cemeteries in Japan",
         "Find graves of people born before 1850",
-        "Search for memorials in Choa Chu Kang"
+        "Search for memorials in Choa Chu Kang",
+        "Show me a timeline of records from the 1900s",
+        "What historical patterns appear in the timeline data?"
     };
 }
