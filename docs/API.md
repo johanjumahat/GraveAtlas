@@ -243,6 +243,165 @@ Reject a pending submission. Updates the file in `pending/` with status `rejecte
 }
 ```
 
+
+---
+
+## Admin Import Management Endpoints
+
+All endpoints require admin authentication: `Authorization: Bearer <ADMIN_TOKEN>`
+
+### GET /api/admin/imports/sources
+
+List available official data import sources.
+
+**Response:** `200 OK`
+```json
+{
+  "success": true,
+  "sources": [
+    {
+      "id": "nea-singapore",
+      "name": "Singapore NEA — Active Cemeteries",
+      "description": "9 active cemeteries in Singapore from data.gov.sg (GeoJSON)",
+      "license": "Singapore Open Data Licence",
+      "attribution": "National Environment Agency. (2020). Active Cemeteries (GEOJSON)",
+      "country": "Singapore",
+      "recordType": "cemetery",
+      "requiresOptions": false
+    },
+    {
+      "id": "osm-overpass",
+      "name": "OpenStreetMap — Cemeteries (Overpass API)",
+      "description": "Worldwide cemetery data from OpenStreetMap contributors (ODbL)",
+      "license": "ODbL",
+      "attribution": "© OpenStreetMap contributors (ODbL)",
+      "country": null,
+      "recordType": "cemetery",
+      "requiresOptions": true,
+      "options": {
+        "area": { "type": "string", "required": false, "description": "ISO 3166-1 alpha-2 country code" },
+        "includeHistoric": { "type": "boolean", "default": true },
+        "includeGraveYard": { "type": "boolean", "default": true },
+        "includeGraves": { "type": "boolean", "default": false }
+      }
+    }
+  ],
+  "count": 2
+}
+```
+
+### POST /api/admin/imports/trigger
+
+Trigger a new data import from an official source.
+
+**Request Body:**
+```json
+{
+  "source": "nea-singapore",
+  "options": {}
+}
+```
+
+For OSM:
+```json
+{
+  "source": "osm-overpass",
+  "options": {
+    "area": "SG",
+    "includeHistoric": true
+  }
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "success": true,
+  "importId": "nea-singapore-2026-08-15-1700000000",
+  "source": "nea-singapore",
+  "status": "PENDING_APPROVAL",
+  "summary": {
+    "validRecords": 9,
+    "invalidRecords": 0,
+    "duplicates": 0,
+    "qualityScore": 4.0,
+    "attribution": "National Environment Agency. (2020). Active Cemeteries (GEOJSON)",
+    "license": "Singapore Open Data Licence"
+  },
+  "message": "Import processed. 9 records ready for review."
+}
+```
+
+### GET /api/admin/imports
+
+List all import jobs.
+
+**Response:** `200 OK`
+```json
+{
+  "success": true,
+  "imports": [
+    {
+      "importId": "nea-singapore-2026-08-15-1700000000",
+      "source": "nea-singapore",
+      "date": "2026-08-15"
+    }
+  ],
+  "count": 1
+}
+```
+
+### GET /api/admin/imports/:importId
+
+Get full import report (including all records, errors, duplicates, quality scores).
+
+**Response:** `200 OK` — full import report with records array.
+
+### POST /api/admin/imports/:importId/approve
+
+Approve import and publish records to the GitHub data repository.
+
+**Request Body (optional):**
+```json
+{
+  "notes": "Verified all 9 Singapore cemeteries against NEA website."
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "success": true,
+  "importId": "nea-singapore-2026-08-15-1700000000",
+  "status": "COMPLETED",
+  "published": 9,
+  "totalRecords": 9,
+  "errors": 0,
+  "message": "Import approved. 9 records published."
+}
+```
+
+### POST /api/admin/imports/:importId/reject
+
+Reject import. Records are NOT published.
+
+**Request Body:**
+```json
+{
+  "reason": "Data quality concerns — coordinates appear outdated."
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "success": true,
+  "importId": "nea-singapore-2026-08-15-1700000000",
+  "status": "REJECTED",
+  "message": "Import rejected. Records not published."
+}
+```
+
 ---
 
 ## Error Codes

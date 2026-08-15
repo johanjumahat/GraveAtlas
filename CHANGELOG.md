@@ -888,3 +888,28 @@ After the initial 3 fixes, build #50 revealed additional compilation errors. Res
   - Dry-run mode (processOSMData) for testing without network
 - **tests/osm-importer.test.js** — 67 tests covering query building, coordinate extraction, normalization, validation, full pipeline, duplicate detection, cross-source compatibility, security
 - Total tests: 568 (up from 501)
+
+## [Admin Import API] — 2026-08-15
+
+### Added
+- **backend/src/import-handlers.js** — Admin import API endpoints
+  - GET /api/admin/imports/sources — List available import sources (NEA, OSM)
+  - POST /api/admin/imports/trigger — Trigger an import (fetch → process → store pending)
+  - GET /api/admin/imports — List all import jobs
+  - GET /api/admin/imports/:importId — Get import job details (full report)
+  - POST /api/admin/imports/:importId/approve — Approve & publish records to data repo
+  - POST /api/admin/imports/:importId/reject — Reject import (with reason, no publish)
+  - State transition validation (PENDING_APPROVAL → APPROVED/REJECTED)
+  - Audit logging for all import actions (trigger, fail, approve, reject)
+  - Path traversal protection (sanitized import IDs)
+  - File size limits enforced
+- **tests/import-admin.test.js** — 59 tests (structure, routes, sources, transitions, approval, rejection, audit, security, storage)
+- All 6 routes wired into backend/src/index.js (admin-protected via requireAdmin)
+- Total tests: 627 passing, 0 failures
+
+### Import Lifecycle (complete)
+1. Admin triggers import → fetches from source → processes through framework → stored in pending/imports/ [PENDING_APPROVAL]
+2. Admin reviews import report (records, errors, duplicates, quality score)
+3. Admin approves → each record published to cemeteries/ or graves/ in GitHub data repo [COMPLETED or PARTIAL]
+4. OR admin rejects → import marked REJECTED, no records published
+5. All actions logged to audit/ directory

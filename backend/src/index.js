@@ -20,6 +20,14 @@ import { getToken, writeFile, readFile, listFiles, deleteFile, sanitizePathSegme
 import * as Phase6A from './phase6a.js';
 import * as Phase4A from './phase4a.js';
 import * as Phase7A from './phase7a.js';
+import {
+  handleListImportSources,
+  handleTriggerImport,
+  handleListImports,
+  handleGetImport,
+  handleApproveImport,
+  handleRejectImport
+} from './import-handlers.js';
 
 // ── Constants ──
 
@@ -629,6 +637,35 @@ async function handleRequest(request, env, ctx) {
     if (path.match(/^\/api\/admin\/restore\/[^/]+$/) && method === 'POST') {
       const id = path.split('/').pop();
       return await requireAdmin(request, env, corsHeaders, () => handleRestoreRecord(id, request, env, corsHeaders));
+    }
+
+    // ── Phase 5: Admin Import Management ──
+
+    if (path === '/api/admin/imports/sources' && method === 'GET') {
+      return await requireAdmin(request, env, corsHeaders, () => handleListImportSources(env, corsHeaders));
+    }
+
+    if (path === '/api/admin/imports/trigger' && method === 'POST') {
+      return await requireAdmin(request, env, corsHeaders, () => handleTriggerImport(request, env, corsHeaders));
+    }
+
+    if (path === '/api/admin/imports' && method === 'GET') {
+      return await requireAdmin(request, env, corsHeaders, () => handleListImports(env, corsHeaders));
+    }
+
+    if (path.match(/^\/api\/admin\/imports\/[^/]+\/approve$/) && method === 'POST') {
+      const importId = path.split('/')[4];
+      return await requireAdmin(request, env, corsHeaders, () => handleApproveImport(importId, request, env, corsHeaders));
+    }
+
+    if (path.match(/^\/api\/admin\/imports\/[^/]+\/reject$/) && method === 'POST') {
+      const importId = path.split('/')[4];
+      return await requireAdmin(request, env, corsHeaders, () => handleRejectImport(importId, request, env, corsHeaders));
+    }
+
+    if (path.match(/^\/api\/admin\/imports\/[^/]+$/) && method === 'GET') {
+      const importId = path.split('/')[4];
+      return await requireAdmin(request, env, corsHeaders, () => handleGetImport(importId, env, corsHeaders));
     }
 
     return notFound(corsHeaders);

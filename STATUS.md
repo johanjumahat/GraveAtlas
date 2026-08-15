@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-08-15 (post-merge)
 **Version:** Backend 7.1.0 | Android 1.0.0 | Schema 1.0.0
-**Tests:** 568 passing, 0 failed
+**Tests:** 627 passing, 0 failed
 
 ## Phase Completion
 
@@ -44,6 +44,7 @@
 1. ~~Merge phase-16.1/ai-database-integration branch~~ ✅ MERGED
 1a. ~~Integrate Singapore NEA data.gov.sg cemetery GeoJSON~~ ✅ Importer built, 42 tests passing
 1b. ~~Integrate OpenStreetMap cemetery data via Overpass API~~ ✅ Importer built, 67 tests passing
+1c. ~~Admin import API endpoints~~ ✅ 6 endpoints built, 59 tests passing
 2. Deploy backend to Cloudflare Workers
 3. Build signed release APK
 4. Submit to Google Play Console

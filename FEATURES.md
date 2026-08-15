@@ -256,3 +256,67 @@ All official data imports follow the existing framework: Source Registration →
 ### Verification Status
 - OSM records: `source-backed` (community-verified, ODbL licensed)
 - NEA records: `verified` (government official data)
+
+## Admin Import API Endpoints
+
+All endpoints require admin authentication (Bearer token).
+
+### Available Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /api/admin/imports/sources | List available import sources |
+| POST | /api/admin/imports/trigger | Trigger a new import (source + options) |
+| GET | /api/admin/imports | List all import jobs |
+| GET | /api/admin/imports/:importId | Get full import report |
+| POST | /api/admin/imports/:importId/approve | Approve & publish records |
+| POST | /api/admin/imports/:importId/reject | Reject import (requires reason) |
+
+### Import Lifecycle
+
+```
+Trigger → Fetch → Process → Store (pending/imports/) → [PENDING_APPROVAL]
+                                                       ↓
+                                              Admin reviews report
+                                                       ↓
+                                              ┌──── approve ────┐
+                                              │                │
+                                         COMPLETED          PARTIAL
+                                         (all published)   (some failed)
+                                              │
+                                              └──── reject ──── REJECTED (no publish)
+```
+
+### State Machine
+
+```
+CREATED → LICENSE_REVIEW → VALIDATING → DUPLICATE_CHECK → PENDING_APPROVAL
+                                                        ↓
+                                               APPROVED → IMPORTING → COMPLETED
+                                                        ↓                ↗
+                                                  REJECTED      PARTIAL → ROLLED_BACK
+                                                                ↘
+                                                               FAILED → ROLLED_BACK
+```
+
+### Available Sources
+
+1. **nea-singapore** — 9 Singapore cemeteries from data.gov.sg (no options needed)
+2. **osm-overpass** — Worldwide cemeteries from OpenStreetMap (optional: area, includeHistoric, includeGraveYard, includeGraves)
+
+### Audit Trail
+
+All import actions are logged to `audit/` in the GitHub data repo:
+- IMPORT_TRIGGERED — when an import is started
+- IMPORT_FAILED — when an import fails
+- IMPORT_APPROVED — when an admin approves (includes published count)
+- IMPORT_REJECTED — when an admin rejects (includes reason)
+
+### Security
+
+- All endpoints admin-protected (Bearer token, constant-time comparison)
+- Import IDs sanitized to prevent path traversal
+- File size limits enforced (10 MB max for import reports)
+- No auto-publish — PENDING_APPROVAL is always set first
+- GitHub configuration checked before any operation
+- OSM area codes validated (ISO 3166-1 alpha-2 format)
