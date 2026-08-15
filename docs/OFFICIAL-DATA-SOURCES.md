@@ -257,3 +257,39 @@ Any data imported from these sources must follow the GraveAtlas import framework
 - NEA data.gov.sg → `SOURCE-BACKED` (government open data)
 - OpenStreetMap → `SOURCE-BACKED` (community-verified, ODbL)
 - User contributions → `NEEDS VERIFICATION` (pending review)
+
+
+## Singapore Government Data (data.gov.sg) — IMPLEMENTED
+
+### NEA (National Environment Agency)
+- **Active Cemeteries (GEOJSON)** — `d_4a9b83ee745c10c3aa5829fb80e09d9c`
+  - Government-managed active cemeteries (Choa Chu Kang complex)
+  - Updated: 2024-03-13 | License: Singapore Open Data Licence
+  - URL: https://data.gov.sg/datasets/d_4a9b83ee745c10c3aa5829fb80e09d9c/view
+
+- **After Death Facilities** — `d_8057b4f4c7eca22c3c51c4ac05440f21`
+  - Crematoria, cemeteries, and columbaria (2015 data, may be outdated)
+  - Updated: 2015-02-02 | License: Singapore Open Data Licence
+  - URL: https://data.gov.sg/datasets/d_8057b4f4c7eca22c3c51c4ac05440f21/view
+
+- **Dedicated Columbaria (GEOJSON)** — `d_9b0752e9d3f1f9d957d5d8be2b58dfff`
+  - Government and private dedicated columbaria
+  - Updated: 2024-03-13 | License: Singapore Open Data Licence
+  - URL: https://data.gov.sg/datasets/d_9b0752e9d3f1f9d957d5d8be2b58dfff/view
+
+### NHB (National Heritage Board)
+- **National Monuments (GEOJSON)** — `d_b29c230ec6b609e29ed42f71ca9a8767`
+  - Singapore's national monuments (may include memorial/heritage cemetery-adjacent sites)
+  - Updated: 2026-04-16 | License: Singapore Open Data Licence
+  - URL: https://data.gov.sg/datasets/d_b29c230ec6b609e29ed42f71ca9a8767/view
+
+### Connector Details
+- **Source ID:** `datagov-sg`
+- **Connector file:** `backend/src/external-connectors/connectors/datagov-sg-connector.js`
+- **API:** data.gov.sg poll-download + datastore search
+- **Rate limit:** 5 req/min (public), higher with API key
+- **Data scope:** Facility locations only (no individual burial records)
+
+### Not Available as Open Data
+- Individual burial records for Choa Chu Kang Cemetery (NEA internal)
+- Bukit Brown Cemetery burial registers 1922-1972 (NAS digitised PDFs, not API)

@@ -1,3 +1,30 @@
+## [7.2.0] — 2026-08-15
+
+### Added
+- **Singapore Government Open Data Connector (data.gov.sg)**
+  - New live external source connector: `datagov-sg-connector.js`
+  - Four government datasets integrated:
+    - NEA Active Cemeteries (GEOJSON) — government-managed cemetery locations
+    - NEA After Death Facilities — crematoria, cemeteries, columbaria
+    - NEA Dedicated Columbaria (GEOJSON) — government and private columbaria
+    - NHB National Monuments (GEOJSON) — heritage sites (may include cemetery-adjacent)
+  - Uses data.gov.sg poll-download API for full dataset retrieval
+  - In-memory search filtering for GeoJSON datasets
+  - Normalizes all features to GraveAtlas cemetery schema with source agency attribution
+  - Registered in external source registry as `datagov-sg` (integrationStatus: implemented)
+  - Wired into gateway, AI external search, and AI system prompts
+  - Singapore-specific keywords added to AI search (nea, nhb, data.gov.sg, bukit brown, choa chu kang, columbarium, crematorium)
+  - `EXTERNAL_SOURCE_PATTERN` added to `AIMapQuery.java` for map query detection
+  - New API route: `GET /api/external/sg/datasets` (list SG datasets)
+  - New doc: `docs/SINGAPORE-GOV-DATA.md` (full connector documentation)
+
+### Fixed
+- Missing `EXTERNAL_SOURCE_PATTERN` declaration in `AIMapQuery.java` (was referenced but not declared)
+
+### Notes
+- Individual burial records (Bukit Brown Cemetery registers 1922-1972) are held by National Archives of Singapore (NAS) as digitised PDFs, not API-accessible. The connector documents this and links to the NAS archive.
+- All datasets under Singapore Open Data Licence — free for personal and commercial use with attribution.
+
 ## [v7.1.7 — Grave/Cemetery API Integration Complete] — 2026-08-15
 
 ### Added — AI External Search (Parts 16-17)
