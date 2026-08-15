@@ -24,6 +24,7 @@
 | 16.4. AI Map Queries & Historical Layers | ✅ COMPLETE | 100% |
 | 16.5. Research Canvas | ✅ COMPLETE | 100% |
 | 16.6. Adaptive Interface Modes | ✅ COMPLETE | 100% |
+| 16.7. AI Cemetery Intelligence | ✅ COMPLETE | 100% |
 
 **All 8 core phases complete. Phase 16 AI-native features complete. 1477 tests passing.**
 
@@ -40,9 +41,12 @@
 
 4. **Add — Adaptive Interface Modes (5 modes)** ✅ `InterfaceMode` enum with RESEARCH, MAP, ARCHIVE, INSTITUTION, PUBLIC. `InterfaceModeManager` persists selection, adapts navigation defaults, AI prompt context, and feature visibility. Mode selector in More sheet. Admin tools only in INSTITUTION mode. AI command bar hidden in PUBLIC mode. v7.2.6.
 
+
+5. **Add — AI Cemetery Intelligence** ✅ Backend endpoints for cemetery stats (`/api/cemeteries/:id/stats`), auto-generated summaries (`/summary`), and duplicate person detection (`/duplicates`) using Levenshtein name similarity + date/section matching. New models: `CemeteryStats`, `DuplicateResult`. API client methods added. 55 new tests. v7.2.7.
+
 ## Architecture
 
-- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 65+ API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
+- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 70 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
 - **Android:** 18+ screens with navigation host, external maps handoff (geo: intent), offline support
 - **Data:** GitHub repository (graveatlas-data) with JSON schemas
 - **Auth:** Google Sign-In with ID token verification, session tokens, ban system
@@ -50,7 +54,7 @@
 - **Timeline:** Chronological event visualization with decade grouping, backend endpoint
 - **External Sources:** OpenStreetMap (Overpass API), Wikidata (SPARQL), Singapore Government Open Data (data.gov.sg)
 
-## Test Suite (1477 tests)
+## Test Suite (1757 tests)
 
 | Test File | Tests | Area |
 |---|---|---|

@@ -357,6 +357,22 @@ async function handleRequest(request, env, ctx) {
       return await handleMapQuery(request, env, corsHeaders);
     }
 
+    // Phase 16.7: Cemetery Intelligence — stats, summary, duplicate detection
+    if (path.startsWith('/api/cemeteries/') && path.endsWith('/stats') && method === 'GET') {
+      const id = path.split('/')[3];
+      return await handleCemeteryStats(id, request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/cemeteries/') && path.endsWith('/summary') && method === 'GET') {
+      const id = path.split('/')[3];
+      return await handleCemeterySummary(id, request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/cemeteries/') && path.endsWith('/duplicates') && method === 'GET') {
+      const id = path.split('/')[3];
+      return await handleCemeteryDuplicates(id, request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -3418,6 +3434,401 @@ function safeTokenCompare(a, b) {
 }
 
 // ── Utils ──
+
+// ── Phase 16.7: Cemetery Intelligence Handlers ──
+
+/**
+ * GET /api/cemeteries/:id/stats
+ * Returns statistical summary of a cemetery's grave records.
+ */
+async function handleCemeteryStats(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid cemetery ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    // Return placeholder stats when GitHub not configured
+    return jsonResponse({
+      success: true,
+      cemeteryId: safeId,
+      totalRecords: 0,
+      verifiedRecords: 0,
+      communitySubmitted: 0,
+      unverified: 0,
+      withPhotos: 0,
+      withInscriptions: 0,
+      withSources: 0,
+      dateRange: { earliest: null, latest: null },
+      decadeBreakdown: {},
+      topNames: [],
+      typeBreakdown: {},
+      message: 'GitHub not configured — showing empty stats'
+    }, 200, cors);
+  }
+
+  try {
+    // List all grave files
+    const files = await listFiles('graves', env);
+    const cemeteryRecords = [];
+
+    // Filter and parse records belonging to this cemetery
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        if (record.cemeteryId === safeId || record.cemeteryId === id) {
+          cemeteryRecords.push(record);
+        }
+      } catch (e) { /* skip malformed records */ }
+    }
+
+    // Compute statistics
+    const total = cemeteryRecords.length;
+    let verified = 0, community = 0, unverified = 0;
+    let withPhotos = 0, withInscriptions = 0, withSources = 0;
+    let earliestDate = null, latestDate = null;
+    const decadeCounts = {};
+    const nameCounts = {};
+    const typeCounts = {};
+
+    for (const rec of cemeteryRecords) {
+      // Verification status
+      const vStatus = rec.verificationStatus || 'unverified';
+      if (vStatus === 'verified') verified++;
+      else if (vStatus === 'community_submitted') community++;
+      else unverified++;
+
+      // Content flags
+      if (rec.photoRefs && rec.photoRefs.length > 0) withPhotos++;
+      if (rec.inscription && rec.inscription.trim()) withInscriptions++;
+      if (rec.sourceRefs && rec.sourceRefs.length > 0) withSources++;
+
+      // Date range
+      if (rec.birthDate) {
+        const year = parseInt(rec.birthDate.substring(0, 4));
+        if (!isNaN(year)) {
+          if (earliestDate === null || year < earliestDate) earliestDate = year;
+          if (latestDate === null || year > latestDate) latestDate = year;
+          const decade = Math.floor(year / 10) * 10;
+          decadeCounts[decade] = (decadeCounts[decade] || 0) + 1;
+        }
+      }
+      if (rec.deathDate) {
+        const year = parseInt(rec.deathDate.substring(0, 4));
+        if (!isNaN(year)) {
+          if (earliestDate === null || year < earliestDate) earliestDate = year;
+          if (latestDate === null || year > latestDate) latestDate = year;
+          const decade = Math.floor(year / 10) * 10;
+          decadeCounts[decade] = (decadeCounts[decade] || 0) + 1;
+        }
+      }
+
+      // Name frequency
+      if (rec.name) {
+        const name = rec.name.trim();
+        nameCounts[name] = (nameCounts[name] || 0) + 1;
+      }
+
+      // Cemetery type (if available on record)
+      if (rec.cemeteryType) {
+        typeCounts[rec.cemeteryType] = (typeCounts[rec.cemeteryType] || 0) + 1;
+      }
+    }
+
+    // Top 10 most common names
+    const topNames = Object.entries(nameCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([name, count]) => ({ name, count }));
+
+    return jsonResponse({
+      success: true,
+      cemeteryId: safeId,
+      totalRecords: total,
+      verifiedRecords: verified,
+      communitySubmitted: community,
+      unverified: unverified,
+      withPhotos: withPhotos,
+      withInscriptions: withInscriptions,
+      withSources: withSources,
+      dateRange: { earliest: earliestDate, latest: latestDate },
+      decadeBreakdown: decadeCounts,
+      topNames: topNames,
+      typeBreakdown: typeCounts
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to compute cemetery stats',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/cemeteries/:id/summary
+ * Returns an auto-generated narrative summary of a cemetery.
+ */
+async function handleCemeterySummary(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid cemetery ID' }, 400, cors);
+  }
+
+  // First get the cemetery record itself
+ let cemeteryName = safeId;
+  let cemeteryLocation = '';
+  let cemeteryType = '';
+  let establishedDate = '';
+
+  if (env.GITHUB_APP_ID) {
+    try {
+      const cemContent = await readFile(`cemeteries/${safeId}.json`, env);
+      if (cemContent) {
+        const cem = JSON.parse(cemContent);
+        cemeteryName = cem.name || cem.localName || safeId;
+        cemeteryLocation = [cem.city, cem.region, cem.country].filter(Boolean).join(', ');
+        cemeteryType = cem.cemeteryType || '';
+        establishedDate = cem.establishedDate || '';
+      }
+    } catch (e) { /* use defaults */ }
+  }
+
+  // Get stats (reuse the stats handler logic)
+  let stats = null;
+  if (env.GITHUB_APP_ID) {
+    try {
+      const statsResponse = await handleCemeteryStats(safeId, request, env, cors);
+      const statsText = await statsResponse.text();
+      stats = JSON.parse(statsText);
+    } catch (e) { /* stats unavailable */ }
+  }
+
+  // Generate narrative summary
+  const parts = [];
+
+  if (stats && stats.success && stats.totalRecords > 0) {
+    parts.push(`${cemeteryName} contains ${stats.totalRecords} published grave record${stats.totalRecords !== 1 ? 's' : ''}.`);
+
+    if (stats.verifiedRecords > 0) {
+      parts.push(`${stats.verifiedRecords} record${stats.verifiedRecords !== 1 ? 's are' : ' is'} verified, ${stats.communitySubmitted} community-submitted, and ${stats.unverified} unverified.`);
+    }
+
+    if (stats.dateRange.earliest && stats.dateRange.latest) {
+      if (stats.dateRange.earliest === stats.dateRange.latest) {
+        parts.push(`All records date from ${stats.dateRange.earliest}.`);
+      } else {
+        parts.push(`Records span from ${stats.dateRange.earliest} to ${stats.dateRange.latest}.`);
+      }
+    }
+
+    if (stats.withPhotos > 0) {
+      parts.push(`${stats.withPhotos} record${stats.withPhotos !== 1 ? 's have' : ' has'} photos.`);
+    }
+
+    if (stats.withInscriptions > 0) {
+      parts.push(`${stats.withInscriptions} record${stats.withInscriptions !== 1 ? 's include' : ' includes'} transcribed inscriptions.`);
+    }
+
+    if (stats.topNames && stats.topNames.length > 0) {
+      const top3 = stats.topNames.slice(0, 3).map(t => t.name).join(', ');
+      parts.push(`Common names include: ${top3}.`);
+    }
+  } else {
+    parts.push(`${cemeteryName} is a cemetery${cemeteryLocation ? ' located in ' + cemeteryLocation : ''}.`);
+    parts.push('No published records are available yet.');
+  }
+
+  if (cemeteryType) {
+    parts.push(`It is classified as a ${cemeteryType} cemetery.`);
+  }
+
+  if (establishedDate) {
+    parts.push(`Established in ${establishedDate}.`);
+  }
+
+  const summary = parts.join(' ');
+
+  return jsonResponse({
+    success: true,
+    cemeteryId: safeId,
+    cemeteryName: cemeteryName,
+    location: cemeteryLocation,
+    summary: summary,
+    stats: stats && stats.success ? {
+      totalRecords: stats.totalRecords,
+      verifiedRecords: stats.verifiedRecords,
+      dateRange: stats.dateRange
+    } : null
+  }, 200, cors);
+}
+
+/**
+ * GET /api/cemeteries/:id/duplicates
+ * Detects potential duplicate person records within a cemetery.
+ * Uses name + birth/death date proximity matching.
+ */
+async function handleCemeteryDuplicates(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid cemetery ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      cemeteryId: safeId,
+      duplicates: [],
+      message: 'GitHub not configured — no duplicates to check'
+    }, 200, cors);
+  }
+
+  try {
+    // List all grave files and filter to this cemetery
+    const files = await listFiles('graves', env);
+    const records = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        if (record.cemeteryId === safeId || record.cemeteryId === id) {
+          records.push(record);
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    // Find potential duplicates
+    const duplicates = [];
+    const seen = new Set();
+
+    for (let i = 0; i < records.length; i++) {
+      for (let j = i + 1; j < records.length; j++) {
+        const a = records[i];
+        const b = records[j];
+
+        // Skip if already paired
+        const pairKey = [a.id, b.id].sort().join('|');
+        if (seen.has(pairKey)) continue;
+
+        let score = 0;
+        let reasons = [];
+
+        // Name similarity (exact match = high score)
+        if (a.name && b.name) {
+          if (a.name.toLowerCase() === b.name.toLowerCase()) {
+            score += 50;
+            reasons.push('Exact name match');
+          } else {
+            // Levenshtein distance check
+            const dist = levenshtein(a.name.toLowerCase(), b.name.toLowerCase());
+            const maxLen = Math.max(a.name.length, b.name.length);
+            const similarity = maxLen > 0 ? (1 - dist / maxLen) : 0;
+            if (similarity > 0.85) {
+              score += 30;
+              reasons.push(`Very similar name (${Math.round(similarity * 100)}% match)`);
+            } else if (similarity > 0.7) {
+              score += 15;
+              reasons.push(`Similar name (${Math.round(similarity * 100)}% match)`);
+            }
+          }
+        }
+
+        // Birth date match
+        if (a.birthDate && b.birthDate) {
+          if (a.birthDate === b.birthDate) {
+            score += 25;
+            reasons.push('Same birth date');
+          } else if (a.birthDate.substring(0, 4) === b.birthDate.substring(0, 4)) {
+            score += 10;
+            reasons.push('Same birth year');
+          }
+        }
+
+        // Death date match
+        if (a.deathDate && b.deathDate) {
+          if (a.deathDate === b.deathDate) {
+            score += 25;
+            reasons.push('Same death date');
+          } else if (a.deathDate.substring(0, 4) === b.deathDate.substring(0, 4)) {
+            score += 10;
+            reasons.push('Same death year');
+          }
+        }
+
+        // Same plot/section
+        if (a.section && b.section && a.section === b.section) {
+          if (a.plot && b.plot && a.plot === b.plot) {
+            score += 20;
+            reasons.push('Same section and plot');
+          } else {
+            score += 5;
+            reasons.push('Same section');
+          }
+        }
+
+        // Only report if score is high enough
+        if (score >= 40) {
+          seen.add(pairKey);
+          duplicates.push({
+            recordA: { id: a.id, name: a.name, birthDate: a.birthDate, deathDate: a.deathDate },
+            recordB: { id: b.id, name: b.name, birthDate: b.birthDate, deathDate: b.deathDate },
+            score: score,
+            reasons: reasons
+          });
+        }
+      }
+    }
+
+    // Sort by score descending
+    duplicates.sort((a, b) => b.score - a.score);
+
+    return jsonResponse({
+      success: true,
+      cemeteryId: safeId,
+      totalChecked: records.length,
+      duplicatesFound: duplicates.length,
+      duplicates: duplicates
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to check duplicates',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * Simple Levenshtein distance for duplicate name matching.
+ */
+function levenshtein(a, b) {
+  const m = a.length;
+  const n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+
+  const dp = Array.from({ length: m + 1 }, (_, i) => [i]);
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost
+      );
+    }
+  }
+
+  return dp[m][n];
+}
 
 function jsonResponse(data, status, cors = {}) {
   const headers = {

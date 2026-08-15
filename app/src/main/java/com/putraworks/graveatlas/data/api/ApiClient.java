@@ -1,6 +1,8 @@
 package com.putraworks.graveatlas.data.api;
 
 import com.putraworks.graveatlas.data.model.CemeteryRecord;
+import com.putraworks.graveatlas.data.model.CemeteryStats;
+import com.putraworks.graveatlas.data.model.DuplicateResult;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -872,6 +874,108 @@ public class ApiClient {
         } catch (java.io.UnsupportedEncodingException e) {
             return value; // UTF-8 is always available on Android
         }
+    }
+
+    // ── Phase 16.7: Cemetery Intelligence ──
+
+    /**
+     * Get cemetery statistics.
+     * GET /api/cemeteries/{id}/stats
+     */
+    public void getCemeteryStats(String cemeteryId, final ApiCallback<CemeteryStats> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/cemeteries/" + cemeteryId + "/stats")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        callback.onSuccess(CemeteryStats.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse cemetery stats.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get auto-generated cemetery summary.
+     * GET /api/cemeteries/{id}/summary
+     */
+    public void getCemeterySummary(String cemeteryId, final ApiCallback<String> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/cemeteries/" + cemeteryId + "/summary")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        String summary = obj.optString("summary", "No summary available.");
+                        callback.onSuccess(summary);
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse cemetery summary.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Detect potential duplicate records in a cemetery.
+     * GET /api/cemeteries/{id}/duplicates
+     */
+    public void getCemeteryDuplicates(String cemeteryId, final ApiCallback<DuplicateResult> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/cemeteries/" + cemeteryId + "/duplicates")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        callback.onSuccess(DuplicateResult.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse duplicate results.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
     }
 
     public interface ApiCallback<T> {

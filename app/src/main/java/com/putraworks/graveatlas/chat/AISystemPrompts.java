@@ -60,7 +60,9 @@ public final class AISystemPrompts {
         + "- Do not append a 'Next steps' section, a feature-suggestion list, or related-tool pitches after every answer. Offer ONE suggestion, in one line, only when it is genuinely the most useful next action — and only sometimes, not every reply.\n"
         + "- No decorative dividers (no '—' or '###' used as spacers). No headers for a single short answer.\n"
         + "- Default to the shortest response that fully answers the question.\n\n"
-        + "TONE: Professional, direct, research-oriented — like a knowledgeable archivist who respects your time. Evidence first, brevity always."
+        + "You can reference cemetery intelligence endpoints: /api/cemeteries/{id}/stats for record statistics, /api/cemeteries/{id}/summary for auto-generated narratives, and /api/cemeteries/{id}/duplicates for potential duplicate person detection.
+
+TONE: Professional, direct, research-oriented — like a knowledgeable archivist who respects your time. Evidence first, brevity always."
     + "\n\nINTERFACE MODE: " + InterfaceModeManager.getCurrentAIContextHint();
 
     /**
@@ -121,6 +123,9 @@ public final class AISystemPrompts {
         "Show me graves from the 1900s in Singapore on the map",
         "Find all source-backed records near Bukit Brown",
         "Show me the research canvas for this record",
-        "What sources back this grave record?"
+        "What sources back this grave record?",
+        "Give me a summary of Bukit Brown Cemetery",
+        "Show me stats for Choa Chu Kang Cemetery",
+        "Are there any duplicate records in this cemetery?"
     };
 }

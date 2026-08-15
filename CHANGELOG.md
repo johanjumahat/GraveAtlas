@@ -519,6 +519,27 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.7] — 2026-08-16
+
+### Phase 16.7: AI Cemetery Intelligence
+
+**Added:**
+- `GET /api/cemeteries/:id/stats` — statistical summary (record counts, verification status, photos, inscriptions, sources, date range, decade breakdown, top names)
+- `GET /api/cemeteries/:id/summary` — auto-generated narrative cemetery description
+- `GET /api/cemeteries/:id/duplicates` — AI-assisted duplicate person detection using Levenshtein name similarity + date/section/plot matching
+- `CemeteryStats` model with verification rate, photo coverage, source coverage helpers
+- `DuplicateResult` model with severity levels (High/Medium/Low)
+- `ApiClient` methods: `getCemeteryStats()`, `getCemeterySummary()`, `getCemeteryDuplicates()`
+- AI system prompt updated with cemetery intelligence endpoint awareness
+- 3 new suggested prompts (cemetery summary, stats, duplicates)
+- 55 new tests (phase16-7.test.js)
+
+**Algorithm:**
+- Duplicate detection: Levenshtein distance for name similarity (85%+ = very similar, 70%+ = similar)
+- Scoring: exact name (50), similar name (15-30), same birth/death date (25), same year (10), same plot (20)
+- Threshold: score >= 40 to report as potential duplicate
+
+
 ## [7.2.6] — 2026-08-16
 
 ### Phase 16.6: Adaptive Interface Modes
