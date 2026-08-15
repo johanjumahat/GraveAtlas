@@ -37,6 +37,7 @@ public class AIMapQuery {
         public boolean proximityOnly;      // true if "near X" query
         public String originalQuery;       // Original user text
         public boolean isEmpty;            // No filters extracted
+        public boolean wantsExternalSources;  // true if query asks for external source data
 
         public boolean hasFilters() {
             return locationName != null

@@ -31,6 +31,7 @@ import { matchCemetery } from './external-connectors/matching/cemetery-matcher.j
 import { batchMatchRecords } from './external-connectors/matching/record-matcher.js';
 import { reviewPrivacy, sanitizeResponse } from './external-connectors/privacy-security.js';
 import { validateBatch } from './external-connectors/data-quality.js';
+import { wantsExternalSearch, executeExternalSearch, combinedSearch } from './external-connectors/ai-external-search.js';
 import { validateNormalizedRecord } from './external-connectors/normalized-schema.js';
 
 import {
@@ -805,6 +806,16 @@ async function handleRequest(request, env, ctx) {
       return jsonResponse(result, 200, corsHeaders);
     }
 
+    // AI external search (Part 16-17)
+    if (path === '/api/external/ai-search' && method === 'POST') {
+      let body;
+      try { body = await request.json(); } catch { return jsonResponse({ error: 'Invalid JSON' }, 400, corsHeaders); }
+      const { query } = body;
+      if (!query) return jsonResponse({ error: 'query required' }, 400, corsHeaders);
+      const result = await executeExternalSearch(query, env);
+      return jsonResponse(sanitizeResponse(result), 200, corsHeaders);
+    }
+
     // Privacy review
     if (path === '/api/external/privacy-review' && method === 'POST') {
       let body;
@@ -1199,6 +1210,17 @@ async function handleMapQuery(request, env, cors) {
       } catch (e) { /* skip */ }
     }
 
+    // Check if the user wants external source data (Part 16-17, 27)
+    let externalResults = null;
+    if (wantsExternalSearch(q)) {
+      try {
+        externalResults = await executeExternalSearch(q, env);
+      } catch (e) {
+        // External search failure should never block internal results
+        externalResults = null;
+      }
+    }
+
     // Generate summary
     let summary = `Found ${records.length} records`;
     if (parsedStartYear !== null && parsedEndYear !== null) {
@@ -1220,7 +1242,12 @@ async function handleMapQuery(request, env, cors) {
         location: parsedLocation,
         evidence: parsedEvidence
       },
-      summary: summary
+      summary: summary,
+      externalResults: externalResults ? {
+        records: externalResults.records,
+        sourcesUsed: externalResults.sourcesUsed,
+        summary: externalResults.summary
+      } : null
     }, 200, cors);
   } catch (error) {
     return jsonResponse({
