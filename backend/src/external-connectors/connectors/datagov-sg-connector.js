@@ -304,6 +304,7 @@ export class DataGovSgConnector extends BaseConnector {
     // If no query text, return all features (browse mode)
     let matched = allFeatures;
     if (queryText) {
+      // Try exact substring match first
       matched = allFeatures.filter(function(f) {
         const props = f.properties || {};
         const searchText = [
@@ -312,6 +313,19 @@ export class DataGovSgConnector extends BaseConnector {
         ].filter(Boolean).join(' ').toLowerCase();
         return searchText.includes(queryText);
       });
+
+      // Fallback: word-level matching if exact substring fails
+      if (matched.length === 0) {
+        const queryWords = queryText.split(/\s+/).filter(function(w) { return w.length >= 3; });
+        matched = allFeatures.filter(function(f) {
+          const props = f.properties || {};
+          const searchText = [
+            props.NAME, props.DESCRIPTION, props.ADDRESSSTREETNAME,
+            props.ADDRESSBUILDINGNAME
+          ].filter(Boolean).join(' ').toLowerCase();
+          return queryWords.some(function(word) { return searchText.includes(word); });
+        });
+      }
     }
 
     return {
