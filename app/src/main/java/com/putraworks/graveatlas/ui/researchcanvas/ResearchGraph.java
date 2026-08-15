@@ -165,7 +165,7 @@ public class ResearchGraph {
         String cemeteryName = grave.cemeteryName != null ? grave.cemeteryName : (grave.cemetery != null ? grave.cemetery : "Unknown Cemetery");
         String cemeteryId = "cemetery:" + cemeteryName.hashCode();
         GraphNode cemeteryNode = new GraphNode(cemeteryId, NodeType.CEMETERY, cemeteryName,
-                grave.city != null ? grave.city : (grave.region != null ? grave.region : ""));
+                grave.cemeteryName != null ? grave.cemeteryName : "");
         cemeteryNode.latitude = grave.latitude;
         cemeteryNode.longitude = grave.longitude;
         if (!nodes.containsKey(cemeteryId)) {
@@ -177,15 +177,8 @@ public class ResearchGraph {
 
         // ── LOCATION node ──
         StringBuilder locName = new StringBuilder();
-        if (grave.city != null) locName.append(grave.city);
-        if (grave.region != null) {
-            if (locName.length() > 0) locName.append(", ");
-            locName.append(grave.region);
-        }
-        if (grave.country != null) {
-            if (locName.length() > 0) locName.append(", ");
-            locName.append(grave.country);
-        }
+        if (grave.cemeteryName != null) locName.append(grave.cemeteryName);
+        else if (grave.cemetery != null) locName.append(grave.cemetery);
         if (locName.length() > 0) {
             String locationId = "location:" + locName.toString().hashCode();
             GraphNode locNode = new GraphNode(locationId, NodeType.LOCATION, locName.toString(), "");

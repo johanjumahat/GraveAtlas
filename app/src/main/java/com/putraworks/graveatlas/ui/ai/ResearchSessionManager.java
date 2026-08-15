@@ -231,7 +231,7 @@ public class ResearchSessionManager {
         json.put("lastAccessedAt", session.lastAccessedAt);
 
         JSONArray interactionsArr = new JSONArray();
-        for (Interaction i : session.interactions) {
+        for (Session.Interaction i : session.interactions) {
             JSONObject iJson = new JSONObject();
             iJson.put("question", i.question);
             iJson.put("answer", i.answer);
@@ -260,7 +260,7 @@ public class ResearchSessionManager {
         if (interactionsArr != null) {
             for (int i = 0; i < interactionsArr.length(); i++) {
                 JSONObject iJson = interactionsArr.getJSONObject(i);
-                Interaction interaction = new Interaction();
+                Session.Interaction interaction = new Session.Interaction();
                 interaction.question = iJson.optString("question", "");
                 interaction.answer = iJson.optString("answer", "");
                 interaction.timestamp = iJson.optLong("timestamp", 0);

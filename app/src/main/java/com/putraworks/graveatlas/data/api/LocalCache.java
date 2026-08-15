@@ -201,6 +201,35 @@ public class LocalCache {
         return System.currentTimeMillis() - cachedAt < CACHE_TTL_MS;
     }
 
+
+    /**
+     * Get a single cached grave record by ID (Phase 16.5).
+     * Searches the cached graves list for a matching ID.
+     */
+    public GraveRecord getRecord(String recordId) {
+        if (recordId == null) return null;
+        List<GraveRecord> graves = getCachedGraves();
+        if (graves == null) return null;
+        for (GraveRecord g : graves) {
+            if (recordId.equals(g.id)) return g;
+        }
+        return null;
+    }
+
+    /**
+     * Save a single grave record to cache (Phase 16.5).
+     * Merges with existing cache, replacing any record with the same ID.
+     */
+    public void saveRecord(GraveRecord record) {
+        if (record == null || record.id == null) return;
+        List<GraveRecord> graves = getCachedGraves();
+        if (graves == null) graves = new ArrayList<>();
+        // Remove existing record with same ID
+        graves.removeIf(g -> record.id.equals(g.id));
+        graves.add(record);
+        cacheGraves(graves);
+    }
+
     public void clear() {
         prefs.edit().clear().apply();
     }
