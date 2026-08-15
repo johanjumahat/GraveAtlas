@@ -26,7 +26,8 @@ import {
   handleListImports,
   handleGetImport,
   handleApproveImport,
-  handleRejectImport
+  handleRejectImport,
+  handleGetModerationConfig
 } from './import-handlers.js';
 
 // ── Constants ──
@@ -643,6 +644,10 @@ async function handleRequest(request, env, ctx) {
 
     if (path === '/api/admin/imports/sources' && method === 'GET') {
       return await requireAdmin(request, env, corsHeaders, () => handleListImportSources(env, corsHeaders));
+    }
+
+    if (path === '/api/admin/imports/moderation/config' && method === 'GET') {
+      return await requireAdmin(request, env, corsHeaders, () => handleGetModerationConfig(env, corsHeaders));
     }
 
     if (path === '/api/admin/imports/trigger' && method === 'POST') {

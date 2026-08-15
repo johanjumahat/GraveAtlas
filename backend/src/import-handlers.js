@@ -6,25 +6,27 @@
  *
  * All endpoints are admin-authenticated (Bearer token).
  *
- * Endpoints:
- *   POST /api/admin/imports/trigger          — Trigger an import (specify source)
- *   GET  /api/admin/imports                   — List all import jobs
- *   GET  /api/admin/imports/:importId         — Get import job details
- *   POST /api/admin/imports/:importId/approve — Approve & publish import
- *   POST /api/admin/imports/:importId/reject  — Reject import (with reason)
- *   GET  /api/admin/imports/sources            — List available import sources
+ * Import lifecycle (AI auto-moderation — no human admin required):
+ *   1. Trigger import → fetch + process → AI auto-moderation reviews report
+ *   2. AI approves → records published to data repo (cemeteries/, graves/)
+ *   3. AI rejects → import marked rejected, records not published
+ *   4. All decisions logged to audit trail with reasoning
  *
- * Import lifecycle:
- *   1. Admin triggers import → fetch + process → stored in pending/imports/
- *   2. Admin reviews import report
- *   3. Admin approves → records published to data repo (cemeteries/, graves/)
- *   4. Admin rejects → import marked rejected, records not published
+ * Endpoints:
+ *   POST /api/admin/imports/trigger          — Trigger import + AI auto-moderation
+ *   GET  /api/admin/imports                   — List all import jobs
+ *   GET  /api/admin/imports/:importId         — Get import job details (incl. AI decision)
+ *   POST /api/admin/imports/:importId/approve — Manual override: force-approve (re-publish)
+ *   POST /api/admin/imports/:importId/reject  — Manual override: force-reject
+ *   GET  /api/admin/imports/sources            — List available import sources
+ *   GET  /api/admin/imports/moderation/config  — Get AI moderation config
  *
  * Security:
- * - All endpoints require admin authentication
- * - Import data is stored in pending/imports/ until approved
- * - No auto-publish — human moderation is always required
- * - All import actions are logged to audit trail
+ * - All endpoints require admin authentication (Bearer token)
+ * - AI moderation never bypasses the state machine
+ * - All AI decisions are auditable with full reasoning
+ * - Manual override endpoints available for edge cases
+ * - Decisions are reversible via rollback
  */
 
 import { writeFile, readFile, listFiles, sanitizePathSegment } from './github.js';
@@ -35,6 +37,13 @@ import {
   MAX_IMPORT_SIZE,
   MAX_RECORDS
 } from './import-framework.js';
+import {
+  reviewImport,
+  validateModerationDecision,
+  buildAuditEntry,
+  MODERATION_CONFIG,
+  RECOGNIZED_LICENSES
+} from './ai-moderation.js';
 
 // ── Available Import Sources ──
 
@@ -84,6 +93,18 @@ export async function handleListImportSources(env, cors) {
     success: true,
     sources,
     count: sources.length
+  }, 200, cors);
+}
+
+
+// ── Handler: Get AI Moderation Config ──
+
+export async function handleGetModerationConfig(env, cors) {
+  return jsonResponse({
+    success: true,
+    config: MODERATION_CONFIG,
+    recognizedLicenses: RECOGNIZED_LICENSES,
+    description: 'AI auto-moderation configuration. All imports are automatically reviewed and approved/rejected based on these criteria.'
   }, 200, cors);
 }
 
@@ -169,13 +190,85 @@ export async function handleTriggerImport(request, env, cors) {
       timestamp: new Date().toISOString()
     });
 
-    // Return the import summary (without full records to keep response small)
+    // ── AI Auto-Moderation ──
+    // No human admin — AI reviews and decides automatically
+    const moderationResult = reviewImport(report);
+
+    // Validate state transition is legal
+    const transitionCheck = validateModerationDecision('PENDING_APPROVAL', moderationResult.decision);
+    if (!transitionCheck.valid) {
+      // Should never happen, but guard anyway
+      return jsonResponse({
+        success: false,
+        error: `Moderation decision invalid: ${transitionCheck.error}`,
+        importId
+      }, 500, cors);
+    }
+
+    // Update report status based on AI decision
+    report.status = moderationResult.decision === 'APPROVED' ? 'APPROVED' : 'REJECTED';
+    report.moderatedBy = 'ai-auto-moderator';
+    report.moderatedAt = new Date().toISOString();
+    report.moderationReason = moderationResult.reason;
+    report.moderationDetails = moderationResult.details;
+
+    // If approved, publish records immediately
+    let publishedCount = 0;
+    let publishErrors = [];
+
+    if (moderationResult.decision === 'APPROVED' && report.records && report.records.length > 0) {
+      for (const record of report.records) {
+        try {
+          let targetDir;
+          if (record.cemeteryType || record.osmType || record.neaObjectId) {
+            targetDir = 'cemeteries';
+          } else {
+            targetDir = 'graves';
+          }
+          const recordPath = `${targetDir}/${record.id}.json`;
+          await writeFile(
+            recordPath,
+            JSON.stringify(record, null, 2),
+            env,
+            `import: publish ${record.id} from ${importId} [AI-APPROVED]`
+          );
+          publishedCount++;
+        } catch (err) {
+          publishErrors.push({ recordId: record.id, error: err.message });
+        }
+      }
+      report.status = publishedCount === report.records.length ? 'COMPLETED' : 'PARTIAL';
+      report.publishedCount = publishedCount;
+      report.publishErrors = publishErrors;
+    }
+
+    // Save the updated report (with moderation decision + publish results)
+    await writeFile(
+      importPath,
+      JSON.stringify(report, null, 2),
+      env,
+      `import: ${importId} ${report.status} — AI auto-moderation`
+    );
+
+    // Write audit log
+    const auditEntry = buildAuditEntry(moderationResult, report, importId);
+    await writeAuditLog(env, auditEntry);
+
     return jsonResponse({
       success: true,
       importId,
       source: sourceId,
       sourceName: sourceInfo.name,
-      status: 'PENDING_APPROVAL',
+      status: report.status,
+      moderatedBy: 'ai-auto-moderator',
+      moderation: {
+        decision: moderationResult.decision,
+        reason: moderationResult.reason,
+        checksPassed: moderationResult.summary.checksPassed,
+        totalChecks: moderationResult.summary.totalChecks,
+        qualityScore: report.qualityScore,
+        config: moderationResult.summary.config
+      },
       summary: {
         totalRecords: report.totalRecords || report.validRecords,
         validRecords: report.validRecords,
@@ -183,9 +276,13 @@ export async function handleTriggerImport(request, env, cors) {
         duplicates: report.duplicates,
         qualityScore: report.qualityScore,
         attribution: report.attribution,
-        license: report.license
+        license: report.license,
+        published: publishedCount,
+        publishErrors: publishErrors.length
       },
-      message: `Import processed. ${report.validRecords} records ready for review. Approve via /api/admin/imports/${importId}/approve`
+      message: moderationResult.decision === 'APPROVED'
+        ? `Import AI-approved and published: ${publishedCount} records.`
+        : `Import AI-rejected: ${moderationResult.reason}`
     }, 200, cors);
 
   } catch (err) {

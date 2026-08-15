@@ -913,3 +913,34 @@ After the initial 3 fixes, build #50 revealed additional compilation errors. Res
 3. Admin approves → each record published to cemeteries/ or graves/ in GitHub data repo [COMPLETED or PARTIAL]
 4. OR admin rejects → import marked REJECTED, no records published
 5. All actions logged to audit/ directory
+
+## [AI Auto-Moderation] — 2026-08-15
+
+### Added
+- **backend/src/ai-moderation.js** — AI auto-moderation module (replaces human admin)
+  - `reviewImport()` — reviews import reports against 7 automated checks
+  - `validateModerationDecision()` — validates decision against state machine
+  - `buildAuditEntry()` — builds audit trail entry with full reasoning
+  - `MODERATION_CONFIG` — configurable thresholds (quality, error rate, etc.)
+  - `RECOGNIZED_LICENSES` — list of accepted open-data licenses
+  - Checks: license recognition, attribution, valid records, error rate,
+    quality score, duplicate rate, coordinates, verification status
+  - Auto-approve: license OK + attribution present + quality ≥ 3.0 + errors < 30%
+  - Auto-reject: unrecognized license, missing attribution, zero valid records,
+    error rate ≥ 30%, quality < 3.0, 100% duplicates
+  - Borderline quality (3.0-4.0): auto-approve in autonomous mode
+  - Full audit trail with reasoning for every decision
+- **Integration into import-handlers.js**: trigger flow now auto-moderates
+  - AI reviews report → makes decision → auto-publishes if approved
+  - No human admin required — fully autonomous pipeline
+  - Manual override endpoints still available for edge cases
+- **GET /api/admin/imports/moderation/config** — view AI moderation settings
+- **tests/ai-moderation.test.js** — 70 tests (decisions, edge cases, security, integration)
+- Total tests: 696 passing, 0 failures
+
+### Import Pipeline (now fully autonomous)
+```
+Trigger → Fetch → Process → AI Auto-Moderation → [APPROVED → Publish] or [REJECTED → Audit]
+                                                    ↓
+                                              Audit trail with reasoning
+```

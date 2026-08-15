@@ -320,3 +320,42 @@ All import actions are logged to `audit/` in the GitHub data repo:
 - No auto-publish — PENDING_APPROVAL is always set first
 - GitHub configuration checked before any operation
 - OSM area codes validated (ISO 3166-1 alpha-2 format)
+
+## AI Auto-Moderation
+
+No human admin required — the AI moderator reviews and decides on every import automatically.
+
+### How It Works
+
+1. Import is triggered (NEA or OSM)
+2. Data is fetched, normalized, validated, deduped, quality-scored
+3. **AI moderator reviews the report** against 7 automated checks
+4. Decision is made: APPROVED or REJECTED
+5. If approved → records are published to the GitHub data repo immediately
+6. Every decision is logged to the audit trail with full reasoning
+
+### Decision Criteria
+
+| Check | Auto-Approve | Auto-Reject |
+|-------|-------------|-------------|
+| License | Recognized (ODbL, CC0, CC-BY, etc.) | Unrecognized or missing |
+| Attribution | Present and non-empty | Missing |
+| Valid Records | ≥ 1 | 0 |
+| Error Rate | < 30% | ≥ 30% |
+| Quality Score | ≥ 3.0 (borderline 3.0-4.0 auto-approved) | < 3.0 |
+| Duplicate Rate | < 100% | 100% (all duplicates) |
+| Coordinates | At least some records have valid coords | All missing coords |
+
+### Audit Trail
+
+Every AI decision is logged with:
+- Decision (APPROVED/REJECTED)
+- Reasoning (which checks passed/failed)
+- Quality score, error rate, duplicate count
+- Moderation config used
+- Timestamp
+- `moderatedBy: ai-auto-moderator`
+
+### Manual Override
+
+Manual approve/reject endpoints remain available for edge cases, but the normal flow is fully autonomous.

@@ -11,6 +11,7 @@ try {
   execSync('node tests/nea-importer.test.js', { stdio: 'inherit' });
   execSync('node tests/osm-importer.test.js', { stdio: 'inherit' });
   execSync('node tests/import-admin.test.js', { stdio: 'inherit' });
+  execSync('node tests/ai-moderation.test.js', { stdio: 'inherit' });
 } catch (e) {
   process.exit(1);
 }
