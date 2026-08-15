@@ -1,6 +1,6 @@
 # GraveAtlas — Project Status
 
-**Last updated:** 2026-08-15 (post-merge)
+**Last updated:** 2026-08-15 (Phase 16.3 complete)
 **Version:** Backend 7.1.0 | Android 1.0.0 | Schema 1.0.0
 **Tests:** 1477 passing, 0 failed
 
@@ -13,42 +13,60 @@
 | 3. Contributions, Auth, Moderation & Data Quality | ✅ COMPLETE | 100% |
 | 4. GitHub Publication, Data Pipeline & Release | ✅ COMPLETE | 100% |
 | 5. Advanced Search, Discovery & UX | ✅ COMPLETE | 100% |
+| 5.5. Security Audit | ✅ COMPLETE | 100% |
 | 6. Security, Privacy & Hardening | ✅ COMPLETE | 100% |
 | 7. Reliability, Observability & CI/CD | ✅ COMPLETE | 100% |
 | 8. Production Release & Store Readiness | ✅ COMPLETE | 100% |
-| 16.1. AI Database Integration (RAG) | 🔧 IN PROGRESS | 60% |
+| 16.1. AI Database Integration (RAG) | ✅ COMPLETE | 100% |
+| 16.2. Smart Record Cards & AI Command Bar | ✅ COMPLETE | 100% |
+| 16.3. AI Timelines | ✅ COMPLETE | 100% |
 
-**All 8 phases complete. Phase 9 post-launch audit done. 415 tests passing. Ready for release.**
-- Security: Dependabot enabled, SECURITY.md added (2026-08-11)
-- Feedback: in-app "Send Feedback" action added to Settings
-- CI failure rate investigated (40% historical, all compilation errors from unreviewed pushes)
+**All 8 core phases complete. Phase 16 AI-native features complete. 1477 tests passing.**
+
+## Recent Milestones
+
+1a. ~~Phase 16.1 — AI Database RAG Integration~~ ✅ AIDataInterceptor, evidence badges, NEA + OSM importers, 44 tests
+1b. ~~Phase 16.2 — Evidence badges in search~~ ✅ KNOWN/SOURCE-BACKED badges in global search, transparency feature, 29 tests
+1c. ~~Phase 16.2 — AI command bar persistent~~ ✅ Command bar visible on all screens, research session persistence with 50-session limit, 41 tests
+1d. ~~Phase 5.5 — Security audit~~ ✅ 82 security checks across 14 categories, 0 security issues found
+1e. ~~Phase 16.3 — AI Timelines~~ ✅ Interactive chronological timelines, decade grouping, /api/timeline endpoint, 90 tests
 
 ## Architecture
 
-- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 60+ API routes
-- **Android:** 17 screens with navigation host, external maps handoff (geo: intent), offline support
+- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 65+ API routes
+- **Android:** 18+ screens with navigation host, external maps handoff (geo: intent), offline support
 - **Data:** GitHub repository (graveatlas-data) with JSON schemas
-- **Auth:** Session tokens, roles (user/moderator/admin), 24h expiry
-- **Publication:** Safe retry, change diff, merge safety, PR option
+- **Auth:** Google Sign-In with ID token verification, session tokens, ban system
+- **AI:** RAG-based database integration, evidence-first system prompts, command bar
+- **Timeline:** Chronological event visualization with decade grouping, backend endpoint
 
-## Key Metrics
+## Test Suite (1477 tests)
 
-- Backend routes: 60+
-- Android screens: 17
-- Tests: 415
-- Documentation: 60+ docs
-- Schemas: 6 (grave, cemetery, person, source, correction, audit-event)
+| Test File | Tests | Area |
+|---|---|---|
+| backend.test.js | 370 | Core API endpoints |
+| phase6a.test.js | 123 | Phase 6 security & hardening |
+| phase7a.test.js | 105 | Phase 7 reliability & observability |
+| phase16-3.test.js | 90 | Phase 16.3 AI Timelines |
+| security-audit.test.js | 82 | Phase 5.5 security audit |
+| phase7b.test.js | 76 | Phase 7b reliability |
+| ai-moderation.test.js | 70 | AI auto-moderation |
+| google-auth.test.js | 66 | Google auth + session tokens |
+| phase5-import-pipeline.test.js | 64 | Import pipeline |
+| import-admin.test.js | 59 | Import admin interface |
+| phase55-e2e.test.js | 59 | End-to-end security tests |
+| osm-importer.test.js | 67 | OpenStreetMap importer |
+| phase5.test.js | 47 | Phase 5 global discovery |
+| android-auth.test.js | 43 | Android auth integration |
+| phase16.test.js | 44 | Phase 16 AI-native features |
+| phase16-2-command-bar.test.js | 41 | AI command bar persistence |
+| nea-importer.test.js | 42 | Singapore NEA importer |
+| phase16-2.test.js | 29 | Evidence badges & transparency |
 
-## Next Steps
+## Next Steps (LATER Roadmap)
 
-1. ~~Merge phase-16.1/ai-database-integration branch~~ ✅ MERGED
-1a. ~~Integrate Singapore NEA data.gov.sg cemetery GeoJSON~~ ✅ Importer built, 42 tests passing
-1b. ~~Integrate OpenStreetMap cemetery data via Overpass API~~ ✅ Importer built, 67 tests passing
-1c. ~~Admin import API endpoints~~ ✅ 6 endpoints built, 59 tests passing
-1d. ~~AI auto-moderation~~ ✅ No human admin needed — AI reviews/approves/rejects automatically, 70 tests passing
-1e. ~~Google auth & abuse prevention~~ ✅ Users must login with Google, all submissions logged with account/IP/user-agent, 66 tests passing
-1f. ~~Android Google auth integration~~ ✅ Android app requires Google login for submissions, session token management, login gates, 43 tests passing
-1g. ~~Phase 16.2 — Evidence badges in search~~ ✅ Search results show evidence badges, "Why am I seeing this?" transparency dialogs, 29 tests passing
-2. Deploy backend to Cloudflare Workers
-3. Build signed release APK
-4. Submit to Google Play Console
+- **AI Map** — Natural-language map queries, historical layers, source overlays
+- **Research Canvas** — Visual graph: PERSON → CEMETERY → RECORD → SOURCE
+- **Adaptive Interface Modes** — Research/Map/Archive/Institution/Public modes
+- **TalkBack Testing** — Needs physical device
+- **Large Text Testing** — Needs physical device
