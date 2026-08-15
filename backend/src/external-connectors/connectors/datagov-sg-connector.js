@@ -18,6 +18,7 @@
  */
 
 import { BaseConnector } from '../connector-base.js';
+import { createNormalizedRecord } from '../normalized-schema.js';
 
 // ── Dataset Registry ──
 
@@ -270,6 +271,110 @@ export class DataGovSgConnector extends BaseConnector {
         timestamp: new Date().toISOString()
       };
     }
+  }
+
+
+  // ── BaseConnector pipeline methods (required by execute()) ──
+
+  /**
+   * Step 5: REQUEST — Fetch data from all SG datasets.
+   * Downloads every dataset via poll-download API, then filters
+   * features by the query string (name/description/address match).
+   * Returns a raw response object for validate() and normalize().
+   */
+  async request(query) {
+    const queryText = (typeof query === 'string' ? query :
+      (query && (query.q || query.name || query.query)) || '').toLowerCase();
+    const allFeatures = [];
+
+    for (const datasetKey of Object.keys(SG_DATASETS)) {
+      try {
+        const fetched = await this.fetchDataset(datasetKey);
+        const features = (fetched.data.features || []).map(function(f) {
+          f._datasetKey = datasetKey;
+          return f;
+        });
+        allFeatures.push.apply(allFeatures, features);
+      } catch (err) {
+        // Continue with other datasets even if one fails
+        console.warn('data.gov.sg: failed to fetch ' + datasetKey + ': ' + err.message);
+      }
+    }
+
+    // If no query text, return all features (browse mode)
+    let matched = allFeatures;
+    if (queryText) {
+      matched = allFeatures.filter(function(f) {
+        const props = f.properties || {};
+        const searchText = [
+          props.NAME, props.DESCRIPTION, props.ADDRESSSTREETNAME,
+          props.ADDRESSBUILDINGNAME
+        ].filter(Boolean).join(' ').toLowerCase();
+        return searchText.includes(queryText);
+      });
+    }
+
+    return {
+      sourceId: this.sourceId,
+      features: matched,
+      totalFeatures: allFeatures.length,
+      matchedCount: matched.length,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Step 6: VALIDATE — Check raw response structure.
+   */
+  validate(rawResponse) {
+    if (!rawResponse || typeof rawResponse !== 'object') {
+      throw new Error('Invalid data.gov.sg response: not an object');
+    }
+    if (!Array.isArray(rawResponse.features)) {
+      throw new Error('Invalid data.gov.sg response: missing features array');
+    }
+    return true;
+  }
+
+  /**
+   * Step 7: NORMALIZE — Convert SG GeoJSON features to normalized records.
+   */
+  normalize(rawResponse) {
+    const records = [];
+    const features = rawResponse.features || [];
+
+    for (const feature of features) {
+      const datasetKey = feature._datasetKey;
+      const ds = datasetKey ? SG_DATASETS[datasetKey] : null;
+      if (!ds) continue;
+
+      const props = feature.properties || {};
+      const coords = feature.geometry ? feature.geometry.coordinates : [null, null];
+
+      const name = props.NAME || props.DESCRIPTION || 'Unnamed';
+      const objectId = props.OBJECTID || props.INC_CRC || 'unknown';
+      const externalRecordId = 'sg-' + ds.agency.toLowerCase() + '-' + String(objectId).replace(/[^a-zA-Z0-9]/g, '');
+
+      const latitude = coords[1] !== undefined ? coords[1] : null;
+      const longitude = coords[0] !== undefined ? coords[0] : null;
+
+      records.push(createNormalizedRecord({
+        externalRecordId: externalRecordId,
+        cemetery: name,
+        latitude: latitude,
+        longitude: longitude,
+        sourceOrganization: ds.agency === 'NEA' ? 'National Environment Agency' : 'National Heritage Board',
+        sourceId: this.sourceId,
+        sourceTimestamp: rawResponse.timestamp || new Date().toISOString(),
+        sourceVersion: 'live',
+        license: ds.license,
+        confidence: 'high',
+        status: 'external',
+        recordUrl: props.HYPERLINK || ('https://data.gov.sg/datasets/' + ds.datasetId + '/view')
+      }));
+    }
+
+    return records;
   }
 
   /**

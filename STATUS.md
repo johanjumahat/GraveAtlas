@@ -1,8 +1,9 @@
 # GraveAtlas — Project Status
 
-**Last updated:** 2026-08-15 (AI search compiled-sources fix, v7.2.2)
+**Last updated:** 2026-08-15 (backend deployment fix + SG connector request() implementation, v7.2.3)
 **Version:** Backend 7.1.0 | Android 7.2.2 | Schema 1.0.0
 **Tests:** 1562 passing, 0 failed (pre-existing unrelated failures in import-admin/phase16-3/phase16-5 tracked separately)
+**Backend Live:** https://graveatlas.putraworks-2026.workers.dev (Cloudflare Worker, version 8256720c)
 
 ## Phase Completion
 
@@ -29,22 +30,19 @@
 
 0. **Fix — AI search now compiles GraveAtlas DB + external official sources together** ✅ Fixed `AIDataInterceptor` mutually-exclusive routing bug; every search query now queries internal DB and all external sources (OSM, Wikidata, Singapore gov) in parallel and compiles both into one `[COMPILED CONTEXT]` block. PR #25, merged as `c678e4f`, v7.2.2.
 
-1a. ~~Phase 16.1 — AI Database RAG Integration~~ ✅ AIDataInterceptor, evidence badges, NEA + OSM importers, 44 tests
-1b. ~~Phase 16.2 — Evidence badges in search~~ ✅ KNOWN/SOURCE-BACKED badges in global search, transparency feature, 29 tests
-1c. ~~Phase 16.2 — AI command bar persistent~~ ✅ Command bar visible on all screens, research session persistence with 50-session limit, 41 tests
-1d. ~~Phase 5.5 — Security audit~~ ✅ 82 security checks across 14 categories, 0 security issues found
-1e. ~~Phase 16.3 — AI Timelines~~ ✅ Interactive chronological timelines, decade grouping, /api/timeline endpoint, 90 tests
-1f. ~~Phase 16.4 — AI Map~~ ✅ Natural-language map queries, historical layers, /api/map/query endpoint, 80+ tests
-1g. ~~Phase 16.5 — Research Canvas~~ ✅ Visual graph PERSON→CEMETERY→RECORD→SOURCE, 80+ tests
+1. **Fix — Backend deployment to Cloudflare (9 build/runtime errors fixed)** ✅ Backend was never deployed — all Phase 5+ features existed in code but were not live. Fixed: unclosed template literal in `generateId()`, stray template remnants after `generateRequestId()`, undefined `_currentRequestId` in `jsonResponse()`, duplicate `auth` variable in `handleSubmitDraft()`, reversed `readFile()` args in `listUsers`, duplicate exports in `google-auth.js`, missing closing brace + double `];` in `registry.js`, orphaned code in `github.js`, wrong base class in `datagov-sg-connector.js`. Deployed version 8256720c. All endpoints verified live: `/api/health`, `/api/external/sources`, `/api/external/query-all`, `/api/timeline`, `/api/admin/imports/sources`, `/api/graves/search`. v7.2.3.
+
+2. **Implement — SG data.gov.sg connector `request()` method** ✅ Implemented missing `request()` method on `DataGovSgConnector` so it can participate in `/api/external/query-all` searches. Previously returned "request() not implemented for connector: datagov-sg". v7.2.3.
 
 ## Architecture
 
-- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 65+ API routes
+- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 65+ API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
 - **Android:** 18+ screens with navigation host, external maps handoff (geo: intent), offline support
 - **Data:** GitHub repository (graveatlas-data) with JSON schemas
 - **Auth:** Google Sign-In with ID token verification, session tokens, ban system
 - **AI:** RAG-based database integration, evidence-first system prompts, command bar
 - **Timeline:** Chronological event visualization with decade grouping, backend endpoint
+- **External Sources:** OpenStreetMap (Overpass API), Wikidata (SPARQL), Singapore Government Open Data (data.gov.sg)
 
 ## Test Suite (1477 tests)
 
@@ -71,8 +69,7 @@
 
 ## Next Steps (LATER Roadmap)
 
-- **AI Map** — Natural-language map queries, historical layers, source overlays
-- **Research Canvas** — Visual graph: PERSON → CEMETERY → RECORD → SOURCE
 - **Adaptive Interface Modes** — Research/Map/Archive/Institution/Public modes
 - **TalkBack Testing** — Needs physical device
 - **Large Text Testing** — Needs physical device
+- **Bukit Brown burial registers** — NAS digitised PDFs, not API-accessible (documented)

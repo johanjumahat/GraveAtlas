@@ -1,3 +1,43 @@
+## [7.2.3] — 2026-08-15
+
+### Fixed
+- **Backend deployment to Cloudflare — 9 build/runtime errors resolved**
+  - Backend code (all Phase 5+ features) existed in the repository but was never successfully
+    deployed to Cloudflare Workers. Every endpoint from Phase 5 onward returned "Not found"
+    or error code 1101 because the Worker bundle failed to build or threw at runtime.
+  - `index.js`: Unclosed template literal in `generateId()` — `return \`sub_${hex}` was missing
+    the closing backtick, swallowing the next function (`generateRequestId`) into a string.
+  - `index.js`: Stray template literal remnants (`\`;` and `}`) after `generateRequestId()`
+    left from an earlier botched edit.
+  - `index.js`: `_currentRequestId` referenced in `jsonResponse()` but never declared —
+    removed; the request ID is already propagated via CORS headers from `handleRequest`.
+  - `index.js`: Duplicate `auth` variable in `handleSubmitDraft()` — shadowed the outer
+    `auth` declaration from `requireAdmin`.
+  - `index.js`: `readFile()` called with reversed arguments in `listUsers` handler —
+    `readFile(env, path)` instead of `readFile(path, env)`.
+  - `google-auth.js`: Duplicate export block (functions already exported inline via `export`
+    keyword on the function declaration).
+  - `registry.js`: Missing closing brace in BillionGraves registry entry; double `];` at
+    end of SOURCE_REGISTRY array.
+  - `github.js`: Orphaned duplicate `deleteFile`/`moveFile` code after `createPullRequest`.
+  - `datagov-sg-connector.js`: Extended `ExternalSourceClient` (non-existent class) instead
+    of `BaseConnector` from `connector-base.js`.
+  - Deployed to https://graveatlas.putraworks-2026.workers.dev, version 8256720c.
+  - All endpoints verified live: `/api/health`, `/api/external/sources`, `/api/external/query-all`,
+    `/api/timeline`, `/api/admin/imports/sources`, `/api/graves/search`.
+
+### Implemented
+- **SG data.gov.sg connector `request()` method**
+  - `DataGovSgConnector` was missing the `request()` method required by the external source
+    gateway, causing "request() not implemented for connector: datagov-sg" in query-all results.
+  - Implemented `request(query)` that searches across all four SG government datasets
+    (NEA Active Cemeteries, NEA After Death Facilities, NEA Dedicated Columbaria, NHB
+    National Monuments) using the poll-download API, with in-memory text filtering on
+    cemetery/facility names and descriptions.
+  - Results normalized to GraveAtlas cemetery schema with source agency attribution.
+
+## [7.2.2] — 2026-08-15
+
 ## [7.2.2] — 2026-08-15
 
 ### Fixed
