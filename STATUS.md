@@ -25,6 +25,7 @@
 | 16.5. Research Canvas | ✅ COMPLETE | 100% |
 | 16.6. Adaptive Interface Modes | ✅ COMPLETE | 100% |
 | 16.7. AI Cemetery Intelligence | ✅ COMPLETE | 100% |
+| 16.8. AI Record Enrichment & Family Connections | ✅ COMPLETE | 100% |
 
 **All 8 core phases complete. Phase 16 AI-native features complete. 1477 tests passing.**
 
@@ -44,9 +45,11 @@
 
 5. **Add — AI Cemetery Intelligence** ✅ Backend endpoints for cemetery stats (`/api/cemeteries/:id/stats`), auto-generated summaries (`/summary`), and duplicate person detection (`/duplicates`) using Levenshtein name similarity + date/section matching. New models: `CemeteryStats`, `DuplicateResult`. API client methods added. 55 new tests. v7.2.7.
 
+6. **Add — AI Record Enrichment & Family Connections** ✅ Backend endpoints for record enrichment (`/api/graves/:id/enrich`) suggesting missing fields (name parsing, birth year estimation, family connections) and cemetery family networks (`/api/cemeteries/:id/connections`). Name parser handles Western + Chinese names. New models: `EnrichmentResult`, `ConnectionNetwork`. 70 new tests. v7.2.8.
+
 ## Architecture
 
-- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 70 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
+- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 72 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
 - **Android:** 18+ screens with navigation host, external maps handoff (geo: intent), offline support
 - **Data:** GitHub repository (graveatlas-data) with JSON schemas
 - **Auth:** Google Sign-In with ID token verification, session tokens, ban system
@@ -54,7 +57,7 @@
 - **Timeline:** Chronological event visualization with decade grouping, backend endpoint
 - **External Sources:** OpenStreetMap (Overpass API), Wikidata (SPARQL), Singapore Government Open Data (data.gov.sg)
 
-## Test Suite (1757 tests)
+## Test Suite (1832 tests)
 
 | Test File | Tests | Area |
 |---|---|---|

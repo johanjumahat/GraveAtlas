@@ -519,6 +519,40 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.8] — 2026-08-16
+
+### Phase 16.8: AI Record Enrichment & Family Connections
+
+**Added:**
+- `GET /api/graves/:id/enrich` — AI-suggested missing field values:
+  - Name parsing (Western given/family split, Chinese surname detection)
+  - Birth year estimation from death date + age in inscription
+  - Rough birth estimate from death date alone (~70 year lifespan)
+  - Family connection detection (surname matching across cemetery records)
+  - Source reference suggestions for unattributed records
+  - Inscription transcription suggestions for records with photos
+- `GET /api/cemeteries/:id/connections` — family connection network:
+  - Surname-based grouping into family groups
+  - Pairwise connections with confidence scoring (high/medium/low)
+  - Date proximity analysis (within 10/30/50 years)
+  - Plot adjacency detection (same section, same plot)
+  - Top 50 connections + top 20 family groups
+- `EnrichmentResult` model with confidence filtering helpers
+- `ConnectionNetwork` model with family group accessors
+- `ApiClient` methods: `getRecordEnrichment()`, `getCemeteryConnections()`
+- `parseName()` backend function — handles Western + Chinese name parsing
+- AI system prompt updated with enrichment + connections endpoint awareness
+- 4 new suggested prompts
+- 70 new tests (phase16-8.test.js)
+
+**Algorithm:**
+- Name parsing: CJK detection (U+4E00–U+9FFF), 2-4 char Chinese surnames,
+  Western split by spaces, suffix handling (Jr./Sr./III/IV)
+- Birth estimation: death year - age (from inscription regex), or death year - 70
+- Connection scoring: same surname (base), date within 10yr (high),
+  same section (medium→high), same plot (high)
+
+
 ## [7.2.7] — 2026-08-16
 
 ### Phase 16.7: AI Cemetery Intelligence

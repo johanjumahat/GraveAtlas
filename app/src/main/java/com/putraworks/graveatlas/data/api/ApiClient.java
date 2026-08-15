@@ -3,6 +3,8 @@ package com.putraworks.graveatlas.data.api;
 import com.putraworks.graveatlas.data.model.CemeteryRecord;
 import com.putraworks.graveatlas.data.model.CemeteryStats;
 import com.putraworks.graveatlas.data.model.DuplicateResult;
+import com.putraworks.graveatlas.data.model.EnrichmentResult;
+import com.putraworks.graveatlas.data.model.ConnectionNetwork;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -874,6 +876,74 @@ public class ApiClient {
         } catch (java.io.UnsupportedEncodingException e) {
             return value; // UTF-8 is always available on Android
         }
+    }
+
+    // ── Phase 16.8: AI Record Enrichment ──
+
+    /**
+     * Get AI enrichment suggestions for a grave record.
+     * GET /api/graves/{id}/enrich
+     */
+    public void getRecordEnrichment(String recordId, final ApiCallback<EnrichmentResult> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/graves/" + recordId + "/enrich")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        callback.onSuccess(EnrichmentResult.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse enrichment suggestions.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get family connection network for a cemetery.
+     * GET /api/cemeteries/{id}/connections
+     */
+    public void getCemeteryConnections(String cemeteryId, final ApiCallback<ConnectionNetwork> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/cemeteries/" + cemeteryId + "/connections")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        callback.onSuccess(ConnectionNetwork.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse connection network.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
     }
 
     // ── Phase 16.7: Cemetery Intelligence ──

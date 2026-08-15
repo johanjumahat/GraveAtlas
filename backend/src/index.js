@@ -373,6 +373,17 @@ async function handleRequest(request, env, ctx) {
       return await handleCemeteryDuplicates(id, request, env, corsHeaders);
     }
 
+    // Phase 16.8: AI Record Enrichment — suggest missing fields, detect family connections
+    if (path.startsWith('/api/graves/') && path.endsWith('/enrich') && method === 'GET') {
+      const id = path.split('/')[3];
+      return await handleRecordEnrichment(id, request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/cemeteries/') && path.endsWith('/connections') && method === 'GET') {
+      const id = path.split('/')[3];
+      return await handleCemeteryConnections(id, request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -3434,6 +3445,389 @@ function safeTokenCompare(a, b) {
 }
 
 // ── Utils ──
+
+// ── Phase 16.8: AI Record Enrichment Handlers ──
+
+/**
+ * GET /api/graves/:id/enrich
+ * Analyzes a grave record and suggests missing field values:
+ * - Parses full name into given/family components
+ * - Estimates birth year from death date + age at death (if inscription has age)
+ * - Suggests family connections based on same surname + same cemetery
+ * - Suggests source references if missing
+ */
+async function handleRecordEnrichment(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      recordId: safeId,
+      suggestions: [],
+      message: 'GitHub not configured — no enrichment available'
+    }, 200, cors);
+  }
+
+  try {
+    const content = await readFile(`graves/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Record not found' }, 404, cors);
+    }
+
+    const record = JSON.parse(content);
+    const suggestions = [];
+
+    // ── Name parsing ──
+    if (record.name && !record.givenNames && !record.familyName) {
+      const parsed = parseName(record.name);
+      if (parsed.given || parsed.family) {
+        suggestions.push({
+          field: 'givenNames',
+          suggestedValue: parsed.given,
+          confidence: parsed.given ? 'medium' : 'low',
+          reason: 'Parsed from full name field'
+        });
+        suggestions.push({
+          field: 'familyName',
+          suggestedValue: parsed.family,
+          confidence: parsed.family ? 'medium' : 'low',
+          reason: 'Parsed from full name field'
+        });
+      }
+    }
+
+    // ── Birth year estimation from death age ──
+    if (!record.birthDate && record.deathDate && record.inscription) {
+      const ageMatch = record.inscription.match(/(?:aged?|age|died at)\s+(\d{1,3})/i);
+      if (ageMatch) {
+        const age = parseInt(ageMatch[1]);
+        if (age >= 0 && age <= 120) {
+          const deathYear = parseInt(record.deathDate.substring(0, 4));
+          if (!isNaN(deathYear)) {
+            const birthYear = deathYear - age;
+            suggestions.push({
+              field: 'birthDate',
+              suggestedValue: String(birthYear),
+              confidence: 'high',
+              reason: `Estimated from death date (${deathYear}) minus age at death (${age}) found in inscription`
+            });
+          }
+        }
+      }
+    }
+
+    // ── Birth year estimation from death date + typical lifespan ──
+    if (!record.birthDate && record.deathDate && !record.inscription) {
+      const deathYear = parseInt(record.deathDate.substring(0, 4));
+      if (!isNaN(deathYear)) {
+        // Use median life expectancy as rough estimate
+        const estimatedBirth = deathYear - 70;
+        suggestions.push({
+          field: 'birthDate',
+          suggestedValue: `~${estimatedBirth}`,
+          confidence: 'low',
+          reason: 'Rough estimate assuming ~70 year lifespan (no age data available)'
+        });
+      }
+    }
+
+    // ── Family connection suggestions ──
+    if (record.cemeteryId && record.name) {
+      const familyName = record.familyName || parseName(record.name).family;
+      if (familyName) {
+        const files = await listFiles('graves', env);
+        const connections = [];
+
+        for (const file of files) {
+          if (file === `${safeId}.json`) continue;
+          try {
+            const otherContent = await readFile(`graves/${file}`, env);
+            if (!otherContent) continue;
+            const other = JSON.parse(otherContent);
+          if (other.status !== 'published') continue;
+            if (other.cemeteryId !== record.cemeteryId) continue;
+
+            const otherFamily = other.familyName || parseName(other.name || '').family;
+            if (otherFamily && otherFamily.toLowerCase() === familyName.toLowerCase()) {
+              // Check for date proximity (within 50 years)
+              let dateProximity = false;
+              if (record.deathDate && other.deathDate) {
+                const y1 = parseInt(record.deathDate.substring(0, 4));
+                const y2 = parseInt(other.deathDate.substring(0, 4));
+                if (!isNaN(y1) && !isNaN(y2) && Math.abs(y1 - y2) <= 50) {
+                  dateProximity = true;
+                }
+              }
+
+              // Check for adjacent plots
+              let adjacentPlot = false;
+              if (record.section && other.section && record.section === other.section) {
+                if (record.plot && other.plot && record.plot !== other.plot) {
+                  adjacentPlot = true; // Same section, different plot = potentially related
+                }
+              }
+
+              connections.push({
+                recordId: other.id || file.replace('.json', ''),
+                name: other.name,
+                relationship: 'Possible relative',
+                confidence: dateProximity && adjacentPlot ? 'high' : dateProximity ? 'medium' : 'low',
+                reasons: [
+                  `Same surname: ${familyName}`,
+                  dateProximity ? 'Death dates within 50 years' : null,
+                  adjacentPlot ? 'Same cemetery section' : null
+                ].filter(Boolean)
+              });
+            }
+          } catch (e) { /* skip */ }
+        }
+
+        if (connections.length > 0) {
+          // Sort by confidence then limit to 10
+          const confOrder = { high: 0, medium: 1, low: 2 };
+          connections.sort((a, b) => confOrder[a.confidence] - confOrder[b.confidence]);
+          suggestions.push({
+            field: 'familyConnections',
+            suggestedValue: connections.slice(0, 10),
+            confidence: connections[0].confidence,
+            reason: `${connections.length} potential family connection${connections.length !== 1 ? 's' : ''} found by surname matching`
+          });
+        }
+      }
+    }
+
+    // ── Source reference suggestion ──
+    if ((!record.sourceRefs || record.sourceRefs.length === 0) && record.cemeteryId) {
+      suggestions.push({
+        field: 'sourceRefs',
+        suggestedValue: ['community-attribution-needed'],
+        confidence: 'low',
+        reason: 'Record has no source references — consider adding attribution'
+      });
+    }
+
+    // ── Inscription transcription suggestion ──
+    if (!record.inscription && record.photoRefs && record.photoRefs.length > 0) {
+      suggestions.push({
+        field: 'inscription',
+        suggestedValue: null,
+        confidence: 'medium',
+        reason: 'Record has photos but no transcribed inscription — consider transcribing'
+      });
+    }
+
+    return jsonResponse({
+      success: true,
+      recordId: safeId,
+      recordName: record.name || null,
+      suggestionsCount: suggestions.length,
+      suggestions: suggestions
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to enrich record',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * Parses a full name string into given names and family name.
+ * Handles Western name order (given ... family) and Chinese name order
+ * (family + given for 2-3 character names).
+ */
+function parseName(fullName) {
+  if (!fullName || typeof fullName !== 'string') return { given: null, family: null };
+
+  const name = fullName.trim();
+  if (!name) return { given: null, family: null };
+
+  // Check for Chinese characters (CJK Unified Ideographs)
+  const isChinese = /[\u4e00-\u9fff]/.test(name);
+
+  if (isChinese) {
+    // Chinese names: typically 2-3 characters, family name is first 1-2 chars
+    if (name.length <= 2) {
+      return { given: name.substring(1), family: name.substring(0, 1) };
+    } else if (name.length === 3) {
+      // Could be 1+2 or 2+1 — most Chinese surnames are 1 char
+      return { given: name.substring(1), family: name.substring(0, 1) };
+    } else if (name.length === 4) {
+      // Could be 2+2 (compound surname) or 1+3
+      return { given: name.substring(2), family: name.substring(0, 2) };
+    } else {
+      // Longer names: assume first 2 chars are family name
+      return { given: name.substring(2), family: name.substring(0, 2) };
+    }
+  }
+
+  // Western names: split by spaces, last part is family name
+  const parts = name.split(/\s+/);
+  if (parts.length === 1) {
+    return { given: null, family: parts[0] };
+  } else if (parts.length === 2) {
+    return { given: parts[0], family: parts[1] };
+  } else {
+    // Handle middle names: given = all but last, family = last
+    // But handle suffixes like Jr., Sr., III
+    const lastTwo = parts.slice(-2).join(' ');
+    const suffixes = ['Jr.', 'Sr.', 'II', 'III', 'IV', 'Jr', 'Sr'];
+    if (suffixes.includes(parts[parts.length - 1])) {
+      return { given: parts.slice(0, -2).join(' '), family: parts[parts.length - 2] };
+    }
+    return { given: parts.slice(0, -1).join(' '), family: parts[parts.length - 1] };
+  }
+}
+
+/**
+ * GET /api/cemeteries/:id/connections
+ * Returns a network of family connections within a cemetery based on
+ * surname matching, date proximity, and plot adjacency.
+ */
+async function handleCemeteryConnections(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid cemetery ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      cemeteryId: safeId,
+      connections: [],
+      familyGroups: [],
+      message: 'GitHub not configured — no connections available'
+    }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('graves', env);
+    const records = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        if (record.cemeteryId !== safeId && record.cemeteryId !== id) continue;
+        records.push(record);
+      } catch (e) { /* skip */ }
+    }
+
+    // Group by surname
+    const surnameGroups = {};
+    for (const rec of records) {
+      const familyName = rec.familyName || parseName(rec.name || '').family;
+      if (!familyName) continue;
+      const key = familyName.toLowerCase();
+      if (!surnameGroups[key]) surnameGroups[key] = [];
+      surnameGroups[key].push(rec);
+    }
+
+    // Build connection pairs and family groups
+    const connections = [];
+    const familyGroups = [];
+
+    for (const [surname, group] of Object.entries(surnameGroups)) {
+      if (group.length < 2) continue;
+
+      // Create family group
+      const familyGroup = {
+        surname: group[0].familyName || surname,
+        memberCount: group.length,
+        members: group.map(r => ({
+          id: r.id,
+          name: r.name,
+          birthDate: r.birthDate || null,
+          deathDate: r.deathDate || null,
+          section: r.section || null,
+          plot: r.plot || null
+        })).sort((a, b) => {
+          const aYear = a.deathDate ? parseInt(a.deathDate.substring(0, 4)) : 9999;
+          const bYear = b.deathDate ? parseInt(b.deathDate.substring(0, 4)) : 9999;
+          return aYear - bYear;
+        })
+      };
+      familyGroups.push(familyGroup);
+
+      // Build pairwise connections
+      for (let i = 0; i < group.length; i++) {
+        for (let j = i + 1; j < group.length; j++) {
+          const a = group[i];
+          const b = group[j];
+
+          let confidence = 'low';
+          const reasons = [`Same surname: ${surname}`];
+
+          // Date proximity
+          if (a.deathDate && b.deathDate) {
+            const y1 = parseInt(a.deathDate.substring(0, 4));
+            const y2 = parseInt(b.deathDate.substring(0, 4));
+            if (!isNaN(y1) && !isNaN(y2)) {
+              const diff = Math.abs(y1 - y2);
+              if (diff <= 10) {
+                confidence = 'high';
+                reasons.push(`Death dates within ${diff} years`);
+              } else if (diff <= 30) {
+                confidence = 'medium';
+                reasons.push(`Death dates within ${diff} years`);
+              }
+            }
+          }
+
+          // Same section
+          if (a.section && b.section && a.section === b.section) {
+            if (confidence === 'low') confidence = 'medium';
+            if (confidence === 'medium') confidence = 'high';
+            reasons.push('Same cemetery section');
+            if (a.plot && b.plot && a.plot === b.plot) {
+              reasons.push('Same plot');
+              confidence = 'high';
+            }
+          }
+
+          connections.push({
+            sourceId: a.id,
+            targetId: b.id,
+            sourceName: a.name,
+            targetName: b.name,
+            relationship: 'Possible relative (same surname)',
+            confidence: confidence,
+            reasons: reasons
+          });
+        }
+      }
+    }
+
+    // Sort connections by confidence
+    const confOrder = { high: 0, medium: 1, low: 2 };
+    connections.sort((a, b) => confOrder[a.confidence] - confOrder[b.confidence]);
+
+    // Sort family groups by member count
+    familyGroups.sort((a, b) => b.memberCount - a.memberCount);
+
+    return jsonResponse({
+      success: true,
+      cemeteryId: safeId,
+      totalRecords: records.length,
+      totalConnections: connections.length,
+      totalFamilyGroups: familyGroups.length,
+      connections: connections.slice(0, 50),
+      familyGroups: familyGroups.slice(0, 20)
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to build connections',
+      message: error.message
+    }, 500, cors);
+  }
+}
 
 // ── Phase 16.7: Cemetery Intelligence Handlers ──
 
