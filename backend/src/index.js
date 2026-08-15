@@ -4013,8 +4013,109 @@ async function handleGlobalSearch(request, env, cors) {
   }
 
   try {
-    const result = await Phase7A.globalSearch(env, params);
-    return jsonResponse(result, 200, cors);
+    // 1) Query internal GraveAtlas database (GitHub repo)
+    const internalResult = await Phase7A.globalSearch(env, params);
+
+    // 2) Query external official sources in parallel (NEA, OSM, Wikidata)
+    const queryText = params.get('q') || '';
+    let externalResults = [];
+    let sourcesUsed = [];
+
+    if (queryText.length >= 2) {
+      try {
+        const externalRaw = await queryAllSources(queryText, env);
+
+        for (const source of externalRaw) {
+          const sourceRecords = source.records || [];
+          sourcesUsed.push({
+            sourceId: source.sourceId,
+            sourceName: source.sourceName,
+            status: source.status || 'ok',
+            recordCount: sourceRecords.length,
+            fromCache: source.fromCache || false,
+            reason: source.reason || null
+          });
+
+          // Convert external records to SearchResult format
+          for (const record of sourceRecords) {
+            const recName = record.cemetery || record.name || 'Unknown';
+            const nameLower = recName.toLowerCase();
+            const qLower = queryText.toLowerCase();
+
+            // Score: exact substring match = 0.8, word match = 0.5, otherwise 0.3
+            let score = 0.3;
+            if (nameLower.includes(qLower) || qLower.includes(nameLower)) {
+              score = 0.8;
+            } else {
+              const qWords = qLower.split(/\s+/).filter(function(w) { return w.length >= 3; });
+              const matched = qWords.some(function(word) { return nameLower.includes(word); });
+              if (matched) score = 0.5;
+            }
+
+            externalResults.push({
+              type: 'cemetery',
+              category: 'cemeteries',
+              id: 'ext-' + (record.externalRecordId || record.id || Math.random().toString(36).substr(2, 9)),
+              name: recName,
+              country: record.country || 'Singapore',
+              region: record.region || null,
+              city: record.city || null,
+              latitude: record.latitude || null,
+              longitude: record.longitude || null,
+              source: source.sourceId,
+              sourceName: source.sourceName,
+              sourceOrganization: record.sourceOrganization || null,
+              verificationStatus: 'verified',
+              license: record.license || null,
+              isExternal: true,
+              recordUrl: record.recordUrl || null,
+              score: score
+            });
+          }
+        }
+      } catch (extError) {
+        sourcesUsed.push({
+          sourceId: 'external',
+          sourceName: 'External Sources',
+          status: 'error',
+          recordCount: 0,
+          reason: extError.message
+        });
+      }
+    }
+
+    // 3) Merge internal + external results
+    const allResults = internalResult.results.concat(externalResults);
+
+    // Sort: internal results (higher scores) first, then external by relevance
+    allResults.sort(function(a, b) { return (b.score || 0) - (a.score || 0); });
+
+    // Re-paginate merged results
+    const page = parseInt(params.get('page') || '1', 10);
+    const pageSize = parseInt(params.get('pageSize') || '20', 10);
+    const total = allResults.length;
+    const offset = (page - 1) * pageSize;
+    const paged = allResults.slice(offset, offset + pageSize);
+    const hasMore = offset + pageSize < total;
+
+    // Recalculate category counts across all results
+    const categories = {};
+    for (const r of allResults) {
+      categories[r.category] = (categories[r.category] || 0) + 1;
+    }
+
+    return jsonResponse({
+      success: true,
+      results: paged,
+      categories,
+      count: paged.length,
+      total,
+      page,
+      pageSize,
+      hasMore,
+      query: params.get('q') || '',
+      sources: sourcesUsed
+    }, 200, cors);
   } catch (error) {
     return jsonResponse({ success: true, results: [], categories: {}, count: 0, message: 'Search temporarily unavailable.' }, 200, cors);
   }
