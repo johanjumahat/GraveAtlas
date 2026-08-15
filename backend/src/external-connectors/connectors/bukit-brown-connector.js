@@ -1,22 +1,24 @@
 /**
  * Bukit Brown Cemetery Connector
  *
- * Queries 70,000+ burial records (1922-1972) from the Bukit Brown Burial
+ * Queries 67,000+ burial records (1922-1972) from the Bukit Brown Burial
  * Record Transcription Project (Prof Kenneth Dean, NHB-supported).
  *
- * Data source: Published Google Sheets CSV (public, no API key required)
- * License: Data courtesy of Bukit Brown Burial Record Transcription Project
+ * Data source: Pre-processed JSON files in the graveatlas-data GitHub repo,
+ * split by first letter of name for fast loading.
+ * Original data: Published Google Sheets CSV from NAS digitised burial registers.
+ *
+ * License: Bukit Brown Burial Record Transcription Project (NHB-supported)
  * Attribution: Dean, K. (Bukit Brown Burial Record Transcription Project).
  *   National Heritage Board (NHB). National Archives of Singapore.
- *
- * Records are transcribed from original NAS burial registers.
- * Japanese Occupation period (June 1942-1944) not transcribed.
  */
 
 import { BaseConnector } from '../connector-base.js';
 import { createNormalizedRecord } from '../normalized-schema.js';
 
-const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSXqaQA_GRHRMjwpAkl3Z7jOnMZQLAwc26sbtvYsZv2kN9bIDCey9etC8Znc0CBVDmvNx0VXjg8p83y/pub?gid=1777942150&single=true&output=csv';
+const REPO_OWNER = 'putraworks2026';
+const REPO_NAME = 'graveatlas-data';
+const REPO_BRANCH = 'main';
 
 export class BukitBrownConnector extends BaseConnector {
   constructor() {
@@ -25,41 +27,148 @@ export class BukitBrownConnector extends BaseConnector {
   }
 
   /**
-   * Download CSV and parse burial records.
-   * Filters by name if query text is provided.
+   * Get a GitHub installation token using the App credentials in env.
    */
-  async request(query) {
-    const queryText = (typeof query === 'string' ? query :
-      (query && (query.q || query.name || query.query)) || '').toLowerCase();
+  async getGithubToken(env) {
+    // Use the existing getToken function from github.js if available
+    // Otherwise, use the GitHub API directly
+    const appId = env.GITHUB_APP_ID;
+    const privateKey = env.GITHUB_PRIVATE_KEY;
+    const installationId = env.GITHUB_INSTALLATION_ID;
 
-    const resp = await fetch(CSV_URL, {
+    if (!appId || !privateKey || !installationId) {
+      throw new Error('GitHub App credentials not configured');
+    }
+
+    // Generate JWT
+    const now = Math.floor(Date.now() / 1000);
+    const header = { alg: 'RS256', typ: 'JWT' };
+    const payload = { iat: now - 60, exp: now + 600, iss: appId };
+
+    // Base64url encode (using Web Crypto API for RS256)
+    const headerB64 = btoa(JSON.stringify(header)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const payloadB64 = btoa(JSON.stringify(payload)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const unsignedToken = headerB64 + '.' + payloadB64;
+
+    // Sign with private key using Web Crypto
+    const keyData = this.pemToDer(privateKey);
+    const key = await crypto.subtle.importKey(
+      'pkcs8', keyData,
+      { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+      false, ['sign']
+    );
+    const signature = await crypto.subtle.sign(
+      'RSASSA-PKCS1-v1_5', key,
+      new TextEncoder().encode(unsignedToken)
+    );
+    const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signature)))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+    const jwt = unsignedToken + '.' + signatureB64;
+
+    // Get installation token
+    const tokenResp = await fetch('https://api.github.com/app/installations/' + installationId + '/access_tokens', {
+      method: 'POST',
       headers: {
-        'Accept': 'text/csv',
-        'User-Agent': 'GraveAtlas/1.0 (cemetery research app)'
+        'Authorization': 'Bearer ' + jwt,
+        'Accept': 'application/vnd.github+json',
+        'User-Agent': 'GraveAtlas/1.0'
+      }
+    });
+
+    if (!tokenResp.ok) {
+      throw new Error('Failed to get GitHub installation token: HTTP ' + tokenResp.status);
+    }
+
+    const tokenData = await tokenResp.json();
+    return tokenData.token;
+  }
+
+  /**
+   * Convert PEM private key to DER for Web Crypto API.
+   */
+  pemToDer(pem) {
+    const pemContents = pem
+      .replace(/-----BEGIN.*?PRIVATE KEY-----/g, '')
+      .replace(/-----END.*?PRIVATE KEY-----/g, '')
+      .replace(/\s/g, '');
+    const binaryDer = atob(pemContents);
+    const derBytes = new Uint8Array(binaryDer.length);
+    for (let i = 0; i < binaryDer.length; i++) {
+      derBytes[i] = binaryDer.charCodeAt(i);
+    }
+    return derBytes;
+  }
+
+  /**
+   * Read a JSON file from the graveatlas-data repo via GitHub API.
+   */
+  async readRepoFile(path, env) {
+    const token = await this.getGithubToken(env);
+    const url = 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/contents/' + path + '?ref=' + REPO_BRANCH;
+
+    const resp = await fetch(url, {
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Accept': 'application/vnd.github+json',
+        'User-Agent': 'GraveAtlas/1.0'
       }
     });
 
     if (!resp.ok) {
-      throw new Error('Bukit Brown CSV fetch failed: HTTP ' + resp.status);
+      throw new Error('GitHub API failed for ' + path + ': HTTP ' + resp.status);
     }
 
-    const csvText = await resp.text();
-    const records = this.parseCSV(csvText);
+    const data = await resp.json();
+    const content = atob(data.content);
+    return JSON.parse(content);
+  }
+
+  /**
+   * Search burial records by name.
+   * Loads only the relevant letter file(s) from the repo.
+   */
+  async request(query, env) {
+    const queryText = (typeof query === 'string' ? query :
+      (query && (query.q || query.name || query.query)) || '').toLowerCase();
+
+    // Determine which letter files to load
+    const lettersToLoad = new Set();
+    if (queryText && queryText.length >= 1) {
+      const firstChar = queryText[0].toUpperCase();
+      if (firstChar.match(/[A-Z]/)) {
+        lettersToLoad.add(firstChar);
+      } else {
+        lettersToLoad.add('0'); // non-alpha
+      }
+    } else {
+      // No query — load a sample (first few letters)
+      ['A', 'B', 'C'].forEach(l => lettersToLoad.add(l));
+    }
+
+    const allRecords = [];
+    for (const letter of lettersToLoad) {
+      try {
+        const records = await this.readRepoFile('bukit-brown/' + letter + '.json', env);
+        allRecords.push.apply(allRecords, records);
+      } catch (err) {
+        console.warn('Bukit Brown: failed to load ' + letter + '.json: ' + err.message);
+      }
+    }
 
     // Filter by name if query provided
-    let matched = records;
+    let matched = allRecords;
     if (queryText && queryText.length >= 2) {
       // Exact substring match first
-      matched = records.filter(function(r) {
-        const name = (r['Name of Deceased'] || '').toLowerCase();
-        return name.includes(queryText);
+      matched = allRecords.filter(function(r) {
+        return (r.n || '').toLowerCase().includes(queryText);
       });
 
       // Fallback: word-level matching
       if (matched.length === 0) {
         const queryWords = queryText.split(/\s+/).filter(function(w) { return w.length >= 3; });
-        matched = records.filter(function(r) {
-          const name = (r['Name of Deceased'] || '').toLowerCase();
+        matched = allRecords.filter(function(r) {
+          const name = (r.n || '').toLowerCase();
           return queryWords.some(function(word) { return name.includes(word); });
         });
       }
@@ -68,62 +177,10 @@ export class BukitBrownConnector extends BaseConnector {
     return {
       sourceId: this.sourceId,
       records: matched,
-      totalRecords: records.length,
+      totalRecords: allRecords.length,
       matchedCount: matched.length,
       timestamp: new Date().toISOString()
     };
-  }
-
-  /**
-   * Simple CSV parser (handles quoted fields with commas)
-   */
-  parseCSV(text) {
-    const lines = text.split('\n');
-    if (lines.length < 2) return [];
-
-    const headers = this.parseCSVLine(lines[0]);
-    const records = [];
-
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i];
-      if (!line.trim()) continue;
-
-      const values = this.parseCSVLine(line);
-      const record = {};
-      for (let j = 0; j < headers.length && j < values.length; j++) {
-        record[headers[j]] = values[j];
-      }
-      if (record['Name of Deceased']) {
-        records.push(record);
-      }
-    }
-
-    return records;
-  }
-
-  parseCSVLine(line) {
-    const result = [];
-    let current = '';
-    let inQuotes = false;
-
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') {
-        if (inQuotes && line[i + 1] === '"') {
-          current += '"';
-          i++;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (ch === ',' && !inQuotes) {
-        result.push(current.trim());
-        current = '';
-      } else {
-        current += ch;
-      }
-    }
-    result.push(current.trim());
-    return result;
   }
 
   validate(rawResponse) {
@@ -134,28 +191,24 @@ export class BukitBrownConnector extends BaseConnector {
   }
 
   /**
-   * Convert CSV records to normalized GraveAtlas records.
+   * Convert compact records to normalized GraveAtlas records.
    */
   normalize(rawResponse) {
     const records = [];
     for (const row of rawResponse.records) {
-      const name = row['Name of Deceased'] || 'Unknown';
-      const block = row['Block'] || '';
-      const division = row['Division'] || '';
-      const graveNumber = row['Grave Number'] || '';
-      const sex = row['Sex'] || '';
-      const age = row['Age'] || '';
-      const dateOfDeath = row['Date of Death'] || '';
-      const dateOfInternment = row['Date of Internment'] || '';
-      const isPauper = row['Is Pauper Section'] === 'Yes';
+      const name = row.n || 'Unknown';
+      const block = row.b || '';
+      const division = row.d || '';
+      const graveNumber = row.g || '';
+      const sex = row.s || '';
+      const age = row.a || '';
+      const dateOfDeath = row.dd || '';
+      const dateOfInternment = row.di || '';
+      const isPauper = row.p === true;
 
-      // Build plot location
       const plot = [block, division, graveNumber].filter(function(s) { return s; }).join(' / ');
-
-      // Build external record ID
       const externalRecordId = 'bb-' + block + '-' + division + '-' + graveNumber;
 
-      // Parse dates to ISO format if possible
       const deathDate = this.parseDate(dateOfDeath);
       const internmentDate = this.parseDate(dateOfInternment);
 
@@ -186,9 +239,6 @@ export class BukitBrownConnector extends BaseConnector {
     return records;
   }
 
-  /**
-   * Parse DD/MM/YYYY date to ISO format
-   */
   parseDate(dateStr) {
     if (!dateStr) return null;
     const parts = dateStr.split('/');
