@@ -872,3 +872,19 @@ After the initial 3 fixes, build #50 revealed additional compilation errors. Res
 ### Changed
 - tests/run.js — Added nea-importer.test.js to test runner
 - Total tests: 501 (up from 459)
+
+## [OSM Importer] — 2026-08-15
+
+### Added
+- **backend/src/importers/osm-overpass.js** — OpenStreetMap cemetery importer via Overpass API
+  - Fetches cemetery data worldwide (or by country code) from 3 Overpass endpoints with fallback
+  - Supports landuse=cemetery, historic=cemetery, amenity=grave_yard, cemetery=grave
+  - Handles node, way, and relation OSM elements with centroid extraction
+  - Extracts localized names (name, name:en, name:fr, name:de, name:es, name:zh, name:ja, alt_name, loc_name)
+  - Extracts address, religion, denomination, operator, dates, Wikidata/Wikipedia refs
+  - Full pipeline: fetch → license (ODbL) → register → normalize → validate → dedup → quality
+  - Rate limiting between endpoint attempts (5s minimum)
+  - Output: PENDING_APPROVAL (no auto-publish)
+  - Dry-run mode (processOSMData) for testing without network
+- **tests/osm-importer.test.js** — 67 tests covering query building, coordinate extraction, normalization, validation, full pipeline, duplicate detection, cross-source compatibility, security
+- Total tests: 568 (up from 501)

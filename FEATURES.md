@@ -215,3 +215,44 @@ All official data imports follow the existing framework: Source Registration →
 - No auto-publish — human moderation required
 - No secrets, tokens, or credentials in importer code
 - Never executes imported content as code
+
+## OpenStreetMap Cemetery Importer
+
+### Source
+- **Provider:** OpenStreetMap contributors worldwide
+- **API:** Overpass API (3 endpoints with fallback: overpass-api.de, kumi.systems, openstreetmap.fr)
+- **License:** Open Database License (ODbL)
+- **Attribution:** © OpenStreetMap contributors (ODbL)
+
+### Coverage
+- Worldwide cemetery data (filterable by country via ISO 3166-1 alpha-2 code)
+- OSM tags supported: landuse=cemetery, historic=cemetery, amenity=grave_yard, cemetery=grave
+- OSM element types: node (point), way (polygon/boundary), relation (multipolygon)
+- Localized name extraction (English, French, German, Spanish, Chinese, Japanese + alt_name, loc_name)
+- Extracts: address, religion, denomination, operator, establishment/closure dates, Wikidata/Wikipedia refs
+
+### Pipeline
+1. Build Overpass QL query (country filter, tag filters, timeout)
+2. Fetch from Overpass API (3 endpoints with automatic fallback)
+3. License check (ODbL — recognized by import framework)
+4. Source registration
+5. Coordinate extraction (node: direct, way/relation: centroid)
+6. Normalization (OSM elements → GraveAtlas cemetery records)
+7. Validation (coordinates, required fields, data integrity)
+8. Duplicate detection (against existing records)
+9. Quality scoring (community-verified open data)
+10. Output: PENDING_APPROVAL (awaits human moderation)
+
+### Security
+- All data treated as untrusted input
+- File size limits enforced (10 MB max)
+- Record count limits enforced (10,000 max)
+- Rate limiting (5s minimum between endpoint attempts)
+- No auto-publish — human moderation required
+- No secrets, tokens, or credentials
+- Never executes imported content as code
+- Proper User-Agent header for OSM community etiquette
+
+### Verification Status
+- OSM records: `source-backed` (community-verified, ODbL licensed)
+- NEA records: `verified` (government official data)

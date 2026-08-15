@@ -7,7 +7,10 @@
 
 ## 1. Singapore — NEA (National Environment Agency) via data.gov.sg
 
-### Status: ✅ AVAILABLE — Cemetery locations only (no individual grave records)
+### Status: ✅ IMPORTER BUILT — Cemetery locations from NEA data.gov.sg
+
+**Importer:** `backend/src/importers/nea-singapore.js`
+**Tests:** `tests/nea-importer.test.js` (42 tests, all passing)
 
 **Datasets:**
 
@@ -154,7 +157,10 @@ GET https://api-open.data.gov.sg/v1/public/api/datasets/{dataset_id}/poll-downlo
 
 ## 8. OpenStreetMap (OSM)
 
-### Status: ✅ AVAILABLE — Cemetery boundaries and locations
+### Status: ✅ IMPORTER BUILT — Cemetery boundaries worldwide via Overpass API
+
+**Importer:** `backend/src/importers/osm-overpass.js`
+**Tests:** `tests/osm-importer.test.js` (67 tests, all passing)
 
 **What exists:**
 - Tag: `landuse=cemetery` — cemetery boundaries
