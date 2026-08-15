@@ -16,6 +16,7 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -24,14 +25,22 @@ import java.util.regex.Pattern;
  *
  * Before sending a user message to the AI provider, this class:
  * 1. Detects whether the message is a search/research query about graves/cemeteries
- * 2. If so, queries the GraveAtlas API for relevant records
- * 3. Formats the results as context to inject into the AI conversation
+ * 2. If so, queries BOTH the GraveAtlas internal database AND all configured
+ *    external official sources (OpenStreetMap, Wikidata, Singapore government
+ *    data, etc.) IN PARALLEL, and compiles both result sets into a single
+ *    combined context.
+ * 3. Formats the combined results as context to inject into the AI conversation.
+ *
+ * IMPORTANT: A search query must never answer from GraveAtlas's own database
+ * alone. Every search intent triggers both the internal DB lookup and the
+ * external sources gateway, and both results (even "no records found") are
+ * compiled together before being handed to the AI. This ensures a query like
+ * "Find graves of people born before 1850" is answered using GraveAtlas
+ * records AND live official-API data, not GitHub-sourced data only.
  *
  * This bridges the gap between the AI (which has no database access) and the
- * GraveAtlas backend (which has the actual records).
- *
- * The AI then receives both the user's question AND the real data, enabling
- * evidence-grounded responses instead of generic "search the app" suggestions.
+ * GraveAtlas backend (which has the actual records), while also pulling in
+ * live official-source coverage the internal database doesn't have yet.
  */
 public class AIDataInterceptor {
 
@@ -48,7 +57,11 @@ public class AIDataInterceptor {
         "list cemeteries", "list graves", "what cemeteries", "what graves"
     };
 
-    // Keywords that indicate the user wants to search external sources
+    // Keywords that indicate the user explicitly called out external sources.
+    // NOTE: these no longer gate whether external sources are queried — every
+    // search query now always queries external sources too. This list is kept
+    // only to detect explicit external-only intent phrasing for search term
+    // extraction purposes.
     private static final String[] EXTERNAL_SEARCH_TRIGGERS = {
         "external sources", "external cemetery", "external records",
         "search external", "compare graveatlas", "compare records",
@@ -83,66 +96,162 @@ public class AIDataInterceptor {
     }
 
     /**
-     * Intercept a user message, detect search intent, and augment with data.
+     * Intercept a user message, detect search intent, and augment with data
+     * compiled from BOTH the internal GraveAtlas database AND all external
+     * official sources.
      *
      * @param userMessage  The user's raw input text
      * @param history      Existing chat history (for context)
      * @param callback     Called with augmented messages (if search detected) or original messages (if not)
      */
     public void intercept(String userMessage, List<ChatMessage> history, InterceptorCallback callback) {
-        // Check if user wants external source search (Part 16-17)
-        if (isExternalSearchQuery(userMessage)) {
-            handleExternalSearch(userMessage, history, callback);
-            return;
-        }
-        
-        if (!isSearchQuery(userMessage)) {
+        boolean wantsSearch = isSearchQuery(userMessage) || isExternalSearchQuery(userMessage);
+        if (!wantsSearch) {
             callback.onSkipped(history);
             return;
         }
 
         String searchTerms = extractSearchTerms(userMessage);
         if (searchTerms == null || searchTerms.trim().isEmpty()) {
-            callback.onSkipped(history);
-            return;
+            searchTerms = userMessage.trim();
         }
+        final String finalSearchTerms = searchTerms;
 
-        // Query the GraveAtlas API
-        apiClient.search(searchTerms, null, 0, 10, new ApiClient.ApiCallback<List<SearchResult>>() {
+        // Compile data from BOTH sources in parallel: internal DB + all
+        // external official APIs (OSM, Wikidata, Singapore gov, etc.).
+        // Neither source answers alone — both are always queried together.
+        final CombinedResultCollector collector = new CombinedResultCollector(history, finalSearchTerms, callback);
+
+        // 1) Internal GraveAtlas database
+        apiClient.search(finalSearchTerms, null, 0, 10, new ApiClient.ApiCallback<List<SearchResult>>() {
             @Override
             public void onSuccess(List<SearchResult> results) {
-                String context = formatSearchContext(results, searchTerms);
-                List<ChatMessage> augmented = new ArrayList<>(history);
-
-                // Add a system-context message that provides the real data
-                // This goes right before the latest user message
-                if (!context.isEmpty()) {
-                    // Insert data context as a system-level note before the user's last message
-                    // We'll prepend the context to the last user message instead
-                    // to avoid confusing the AI with a fake assistant message
-                    if (!augmented.isEmpty()) {
-                        ChatMessage lastMsg = augmented.get(augmented.size() - 1);
-                        if (lastMsg.isUser()) {
-                            String augmentedContent = "[DATABASE CONTEXT]\n" + context + "\n[/DATABASE CONTEXT]\n\n" + lastMsg.getContent();
-                            augmented.set(augmented.size() - 1, new ChatMessage(augmentedContent, true));
-                        }
-                    }
-                    callback.onReady(augmented, context);
-                } else {
-                    callback.onReady(history, "");
-                }
+                collector.setDatabaseContext(formatSearchContext(results, finalSearchTerms));
             }
 
             @Override
             public void onError(String error) {
-                // On API error, proceed without data — AI will still try to help
-                callback.onReady(history, "");
+                // On API error, still proceed — external results (or lack
+                // thereof) will be compiled and returned.
+                collector.setDatabaseContext("");
             }
         });
+
+        // 2) All external official sources (OSM, Wikidata, Singapore gov, ...)
+        try {
+            JSONObject query = new JSONObject();
+            query.put("search", finalSearchTerms);
+
+            externalClient.queryAllSources(query, new ApiClient.ApiCallback<ExternalSourceClient.ExternalSearchResult>() {
+                @Override
+                public void onSuccess(ExternalSourceClient.ExternalSearchResult result) {
+                    collector.setExternalContext(formatExternalContext(result));
+                }
+
+                @Override
+                public void onError(String error) {
+                    collector.setExternalContext("");
+                }
+            });
+        } catch (Exception e) {
+            collector.setExternalContext("");
+        }
+    }
+
+    /**
+     * Collects results from the internal DB call and the external sources
+     * call (both async, in parallel) and fires the callback once when both
+     * have completed, with a single COMPILED context combining both.
+     */
+    private class CombinedResultCollector {
+        private final List<ChatMessage> history;
+        private final String searchTerms;
+        private final InterceptorCallback callback;
+        private final AtomicInteger pending = new AtomicInteger(2);
+        private volatile String databaseContext;
+        private volatile String externalContext;
+
+        CombinedResultCollector(List<ChatMessage> history, String searchTerms, InterceptorCallback callback) {
+            this.history = history;
+            this.searchTerms = searchTerms;
+            this.callback = callback;
+        }
+
+        void setDatabaseContext(String ctx) {
+            this.databaseContext = ctx;
+            maybeFinish();
+        }
+
+        void setExternalContext(String ctx) {
+            this.externalContext = ctx;
+            maybeFinish();
+        }
+
+        private void maybeFinish() {
+            if (pending.decrementAndGet() == 0) {
+                mainHandler.post(this::finish);
+            }
+        }
+
+        private void finish() {
+            String combined = compileCombinedContext(databaseContext, externalContext, searchTerms);
+            List<ChatMessage> augmented = new ArrayList<>(history);
+
+            if (!combined.isEmpty() && !augmented.isEmpty()) {
+                ChatMessage lastMsg = augmented.get(augmented.size() - 1);
+                if (lastMsg.isUser()) {
+                    String augmentedContent = "[COMPILED CONTEXT]\n" + combined + "\n[/COMPILED CONTEXT]\n\n" + lastMsg.getContent();
+                    augmented.set(augmented.size() - 1, new ChatMessage(augmentedContent, true));
+                }
+                callback.onReady(augmented, combined);
+            } else {
+                callback.onReady(history, "");
+            }
+        }
+    }
+
+    /**
+     * Compile the internal DB context and external sources context into a
+     * single block. Always labels which part came from GraveAtlas's own
+     * (community/GitHub-backed) database vs. live official external APIs, so
+     * the AI — and the user — can see both were checked, not just one.
+     */
+    private String compileCombinedContext(String databaseContext, String externalContext, String searchTerms) {
+        boolean hasDb = databaseContext != null && !databaseContext.trim().isEmpty();
+        boolean hasExternal = externalContext != null && !externalContext.trim().isEmpty();
+
+        if (!hasDb && !hasExternal) {
+            return "";
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("Query: \"").append(searchTerms).append("\"\n");
+        sb.append("This query was checked against BOTH the GraveAtlas internal database ");
+        sb.append("AND all configured external official sources (OpenStreetMap, Wikidata, ");
+        sb.append("Singapore government data, etc.). Compile and present findings from both.\n\n");
+
+        sb.append("=== GRAVEATLAS DATABASE (community-contributed) ===\n");
+        sb.append(hasDb ? databaseContext : "No response from GraveAtlas database.");
+        sb.append("\n\n");
+
+        sb.append("=== EXTERNAL OFFICIAL SOURCES (OpenStreetMap, Wikidata, government data, etc.) ===\n");
+        sb.append(hasExternal ? externalContext : "No response from external sources.");
+        sb.append("\n\n");
+
+        sb.append("INSTRUCTIONS FOR AI: Combine findings from BOTH sections above into one answer. ");
+        sb.append("Never claim 'no records found' based on the GraveAtlas database section alone — ");
+        sb.append("always check whether the external sources section found anything before telling ");
+        sb.append("the user there is nothing available. Clearly attribute each record to its source ");
+        sb.append("(GraveAtlas community record vs. named external source). If both sections report ");
+        sb.append("zero records, say so plainly and suggest next steps.");
+
+        return sb.toString();
     }
 
     /**
      * Determine if the user wants to search external sources.
+     * (Retained for search-term extraction; no longer gates whether external
+     * sources are queried — that now always happens for any search intent.)
      */
     private boolean isExternalSearchQuery(String message) {
         String lower = message.toLowerCase();
@@ -151,52 +260,16 @@ public class AIDataInterceptor {
         }
         return false;
     }
-    
-    /**
-     * Handle an external source search query (Part 16-17).
-     * Queries external sources and injects results as [EXTERNAL CONTEXT].
-     */
-    private void handleExternalSearch(String userMessage, List<ChatMessage> history, InterceptorCallback callback) {
-        try {
-            JSONObject query = new JSONObject();
-            query.put("search", userMessage);
-            
-            externalClient.queryAllSources(query, new ApiClient.ApiCallback<ExternalSourceClient.ExternalSearchResult>() {
-                @Override
-                public void onSuccess(ExternalSourceClient.ExternalSearchResult result) {
-                    String context = formatExternalContext(result);
-                    List<ChatMessage> augmented = new ArrayList<>(history);
-                    
-                    if (!context.isEmpty() && !augmented.isEmpty()) {
-                        ChatMessage lastMsg = augmented.get(augmented.size() - 1);
-                        if (lastMsg.isUser()) {
-                            String augmentedContent = "[EXTERNAL SOURCE CONTEXT]\n" + context + "\n[/EXTERNAL SOURCE CONTEXT]\n\n" + lastMsg.getContent();
-                            augmented.set(augmented.size() - 1, new ChatMessage(augmentedContent, true));
-                        }
-                    }
-                    callback.onReady(augmented, context);
-                }
-                
-                @Override
-                public void onError(String error) {
-                    // On external search error, proceed without external data
-                    callback.onReady(history, "");
-                }
-            });
-        } catch (Exception e) {
-            callback.onReady(history, "");
-        }
-    }
-    
+
     /**
      * Format external source search results as context for the AI.
      */
     private String formatExternalContext(ExternalSourceClient.ExternalSearchResult result) {
         if (result == null || result.results.isEmpty()) return "";
-        
+
         StringBuilder sb = new StringBuilder();
         int totalRecords = result.getTotalRecordCount();
-        
+
         if (totalRecords == 0) {
             sb.append("External search found 0 records from ").append(result.results.size()).append(" sources.\n");
             for (ExternalSourceClient.ExternalSourceResult r : result.results) {
@@ -204,9 +277,9 @@ public class AIDataInterceptor {
             }
             return sb.toString();
         }
-        
+
         sb.append("External search found ").append(totalRecords).append(" record(s) from ").append(result.results.size()).append(" source(s):\n\n");
-        
+
         for (ExternalSourceClient.ExternalSourceResult srcResult : result.results) {
             sb.append("SOURCE: ").append(srcResult.sourceName).append("\n");
             sb.append("  Status: ").append(srcResult.status).append(srcResult.fromCache ? " (cached)" : "").append("\n");
@@ -224,13 +297,13 @@ public class AIDataInterceptor {
             }
             sb.append("\n");
         }
-        
+
         sb.append("IMPORTANT: These are EXTERNAL records with source provenance.\n");
         sb.append("They are NOT GraveAtlas native records. Always cite the source.\n");
-        
+
         return sb.toString();
     }
-    
+
     /**
      * Determine if the user's message is a search/research query about records.
      */
@@ -298,9 +371,8 @@ public class AIDataInterceptor {
      */
     private String formatSearchContext(List<SearchResult> results, String searchTerms) {
         if (results == null || results.isEmpty()) {
-            return "No records found in GraveAtlas for \"" + searchTerms + "\". " +
-                   "The database may not contain records matching this query yet. " +
-                   "Let the user know and suggest they try the Search tab with different terms or contribute new records.";
+            return "No records found in the GraveAtlas database for \"" + searchTerms + "\". " +
+                   "This does NOT mean no data exists — check the external official sources section too.";
         }
 
         StringBuilder sb = new StringBuilder();
@@ -326,8 +398,6 @@ public class AIDataInterceptor {
             if (sr.cemetery != null) sb.append("   Cemetery: ").append(sr.cemetery).append("\n");
             if (sr.birthDate != null) sb.append("   Born: ").append(sr.birthDate).append("\n");
             if (sr.deathDate != null) sb.append("   Died: ").append(sr.deathDate).append("\n");
-
-            // Verification status if available
 
             sb.append("\n");
         }
