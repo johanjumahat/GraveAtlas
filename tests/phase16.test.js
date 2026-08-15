@@ -224,8 +224,16 @@ test('System prompt mentions DATABASE ACCESS', () => {
     assert.ok(promptFile.includes('DATABASE ACCESS'), 'Missing DATABASE ACCESS section');
 });
 
-test('System prompt mentions [DATABASE CONTEXT]', () => {
-    assert.ok(promptFile.includes('[DATABASE CONTEXT]'), 'Missing [DATABASE CONTEXT] reference');
+test('System prompt mentions [COMPILED CONTEXT]', () => {
+    assert.ok(promptFile.includes('[COMPILED CONTEXT]'), 'Missing [COMPILED CONTEXT] reference');
+});
+
+test('System prompt instructs AI to compile BOTH database and external sections', () => {
+    assert.ok(promptFile.includes('BOTH sections') || promptFile.includes('pull from BOTH'),
+        'System prompt should instruct combining both GraveAtlas DB and external sources');
+    assert.ok(promptFile.toLowerCase().includes("never tell the user 'no records found' based on the graveatlas database section alone".toLowerCase())
+        || promptFile.includes('database section alone'),
+        'System prompt should forbid answering "no records" from the internal DB alone');
 });
 
 test('System prompt does NOT say "You do NOT have direct access"', () => {
@@ -320,7 +328,23 @@ test('AIDataInterceptor only uses public search endpoint', () => {
 test('AIDataInterceptor handles API errors gracefully', () => {
     const interceptor = fs.readFileSync('app/src/main/java/com/putraworks/graveatlas/chat/AIDataInterceptor.java', 'utf8');
     assert.ok(interceptor.includes('onError'), 'Missing error callback');
-    assert.ok(interceptor.includes('proceed without data'), 'Missing graceful degradation on error');
+    assert.ok(interceptor.includes('still proceed'), 'Missing graceful degradation on error');
+});
+
+test('AIDataInterceptor queries BOTH internal DB and external sources for every search (never one alone)', () => {
+    const interceptor = fs.readFileSync('app/src/main/java/com/putraworks/graveatlas/chat/AIDataInterceptor.java', 'utf8');
+    assert.ok(interceptor.includes('apiClient.search'), 'Missing internal DB search call');
+    assert.ok(interceptor.includes('externalClient.queryAllSources'), 'Missing external sources call');
+    assert.ok(interceptor.includes('CombinedResultCollector'), 'Missing combined result collector — sources must not be mutually exclusive');
+    // Guard against regressing to the old mutually-exclusive if/else routing
+    assert.ok(!interceptor.includes('handleExternalSearch'), 'Old mutually-exclusive external-only handler should be removed');
+});
+
+test('AIDataInterceptor compiles a single combined context labeling both sources', () => {
+    const interceptor = fs.readFileSync('app/src/main/java/com/putraworks/graveatlas/chat/AIDataInterceptor.java', 'utf8');
+    assert.ok(interceptor.includes('compileCombinedContext'), 'Missing compileCombinedContext method');
+    assert.ok(interceptor.includes('GRAVEATLAS DATABASE'), 'Missing GraveAtlas DB section label');
+    assert.ok(interceptor.includes('EXTERNAL OFFICIAL SOURCES'), 'Missing external sources section label');
 });
 
 console.log('\nPart 8: Updated Suggested Prompts');
