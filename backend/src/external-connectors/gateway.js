@@ -11,6 +11,7 @@
 import { getSource, getImplementedSources } from './registry.js';
 import { OSMConnector } from './connectors/osm-connector.js';
 import { WikidataConnector } from './connectors/wikidata-connector.js';
+import { DataGovSgConnector } from './connectors/datagov-sg-connector.js';
 import { evaluateLicense } from './licensing.js';
 import { handleFailure, createFallbackResponse } from './failure-handler.js';
 import { writeAuditEntry, createSuccessAudit, createFailureAudit } from './audit-log.js';
@@ -29,6 +30,9 @@ function getConnector(sourceId) {
       break;
     case 'wikidata-sparql':
       connector = new WikidataConnector();
+      break;
+    case 'datagov-sg':
+      connector = new DataGovSgConnector();
       break;
     default:
       return null;
