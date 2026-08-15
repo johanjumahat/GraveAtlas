@@ -1,0 +1,23 @@
+{
+  "id": "community-template-001",
+  "name": "Example Cemetery",
+  "cemetery": "Example Cemetery",
+  "personName": "",
+  "givenNames": "",
+  "familyName": "",
+  "birthDate": "",
+  "deathDate": "",
+  "burialDate": "",
+  "country": "",
+  "city": "",
+  "region": "",
+  "latitude": 0,
+  "longitude": 0,
+  "gravePlot": "",
+  "section": "",
+  "description": "Template record — replace with real data",
+  "photoUrl": "",
+  "contributedDate": "2026-08-15",
+  "contributorName": "anonymous",
+  "verificationStatus": "unverified"
+}
