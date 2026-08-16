@@ -5,6 +5,8 @@ import com.putraworks.graveatlas.data.model.CemeteryStats;
 import com.putraworks.graveatlas.data.model.DuplicateResult;
 import com.putraworks.graveatlas.data.model.EnrichmentResult;
 import com.putraworks.graveatlas.data.model.ConnectionNetwork;
+import com.putraworks.graveatlas.data.model.ImportQualityScore;
+import com.putraworks.graveatlas.data.model.ImportBatchReport;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -876,6 +878,97 @@ public class ApiClient {
         } catch (java.io.UnsupportedEncodingException e) {
             return value; // UTF-8 is always available on Android
         }
+    }
+
+    // ── Phase 16.9: AI Import Quality Scoring ──
+
+    /**
+     * Score a batch of import records for quality.
+     * POST /api/import/score
+     */
+    public void scoreImportBatch(org.json.JSONArray records, String sourceName,
+                                  final ApiCallback<ImportQualityScore> callback) {
+        org.json.JSONObject body = new org.json.JSONObject();
+        try {
+            body.put("records", records);
+            body.put("sourceName", sourceName != null ? sourceName : "Unknown source");
+        } catch (Exception e) {
+            callback.onError("Failed to build request body");
+            return;
+        }
+
+        RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/import/score")
+                .post(requestBody)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String respBody = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(respBody);
+                        callback.onSuccess(ImportQualityScore.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse quality score response.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Generate a full batch report for import records.
+     * POST /api/import/batch-report
+     */
+    public void getImportBatchReport(org.json.JSONArray records, String sourceName, String license,
+                                     final ApiCallback<ImportBatchReport> callback) {
+        org.json.JSONObject body = new org.json.JSONObject();
+        try {
+            body.put("records", records);
+            body.put("sourceName", sourceName != null ? sourceName : "Unknown source");
+            body.put("license", license != null ? license : "Not specified");
+        } catch (Exception e) {
+            callback.onError("Failed to build request body");
+            return;
+        }
+
+        RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/import/batch-report")
+                .post(requestBody)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String respBody = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(respBody);
+                        callback.onSuccess(ImportBatchReport.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse batch report response.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
     }
 
     // ── Phase 16.8: AI Record Enrichment ──

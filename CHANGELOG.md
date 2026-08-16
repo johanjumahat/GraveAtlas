@@ -519,6 +519,46 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.9] — 2026-08-16
+
+### Phase 16.9: AI Import Quality Scoring
+
+**Added:**
+- `POST /api/import/score` — evaluates a batch of records (max 1000) and returns:
+  - Completeness score (40% weight): % of essential fields filled (name, birthDate, deathDate, cemeteryId)
+  - Coverage score (30% weight): % of optional fields filled (photoRefs, inscription, sourceRefs, coordinates, section, plot)
+  - Consistency score (30% weight): date validity, name format, ID uniqueness
+  - Overall weighted score + recommendation (accept ≥80% no errors / review ≥50% / reject <50%)
+  - Per-record scores with individual errors and warnings
+  - Field coverage percentages
+  - Duplicate ID detection within batch
+
+- `POST /api/import/batch-report` — full batch report with quality scores + metadata:
+  - Unique cemeteries and countries count
+  - Records with photos, inscriptions, sources, coordinates
+  - Date range (earliest birth, latest death)
+  - License attribution
+  - Generated-at timestamp
+
+- `ImportQualityScore` model with getRecommendationLabel, getLowQualityRecords, getRecordsWithErrors
+- `ImportBatchReport` model with QualitySummary and BatchMetadata inner classes
+- `ApiClient` methods: `scoreImportBatch()`, `getImportBatchReport()`
+- AI system prompt updated with import quality scoring awareness
+- 3 new suggested prompts
+- 60 new tests (phase16-9.test.js)
+
+**Scoring Algorithm:**
+- Completeness: 4 essential fields, each worth 25%
+- Coverage: 8 optional fields, each worth 12.5%
+- Consistency: starts at 100, penalties:
+  - Birth after death: -25
+  - Lifespan > 120 years: -10
+  - Future birth/death date: -15 each
+  - Name < 2 chars: -10
+- Overall: completeness×0.4 + coverage×0.3 + consistency×0.3
+- Recommendation: ≥80 & no errors → accept, ≥50 → review, else → reject
+
+
 ## [7.2.8] — 2026-08-16
 
 ### Phase 16.8: AI Record Enrichment & Family Connections

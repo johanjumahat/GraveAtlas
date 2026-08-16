@@ -384,6 +384,15 @@ async function handleRequest(request, env, ctx) {
       return await handleCemeteryConnections(id, request, env, corsHeaders);
     }
 
+    // Phase 16.9: AI Import Quality Scoring
+    if (path === '/api/import/score' && method === 'POST') {
+      return await handleImportQualityScore(request, env, corsHeaders);
+    }
+
+    if (path === '/api/import/batch-report' && method === 'POST') {
+      return await handleImportBatchReport(request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -3445,6 +3454,298 @@ function safeTokenCompare(a, b) {
 }
 
 // ── Utils ──
+
+// ── Phase 16.9: AI Import Quality Scoring Handlers ──
+
+/**
+ * POST /api/import/score
+ * Body: { records: [...], sourceName: string }
+ * Evaluates a batch of records and returns quality scores.
+ *
+ * Scoring dimensions:
+ * - Completeness: % of essential fields filled (name, dates, cemetery)
+ * - Coverage: % of optional fields filled (photos, inscriptions, sources, coordinates)
+ * - Consistency: date validity checks, name format, ID uniqueness
+ * - Overall: weighted average
+ * - Recommendation: accept / review / reject
+ */
+async function handleImportQualityScore(request, env, cors) {
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ success: false, error: 'Invalid JSON body' }, 400, cors);
+  }
+
+  const records = body.records;
+  const sourceName = body.sourceName || 'Unknown source';
+
+  if (!Array.isArray(records) || records.length === 0) {
+    return jsonResponse({ success: false, error: 'No records provided for scoring' }, 400, cors);
+  }
+
+  if (records.length > 1000) {
+    return jsonResponse({ success: false, error: 'Too many records (max 1000 per batch)' }, 413, cors);
+  }
+
+  // Scoring
+  const essentialFields = ['name', 'birthDate', 'deathDate', 'cemeteryId'];
+  const optionalFields = ['photoRefs', 'photoRefs', 'inscription', 'sourceRefs', 'latitude', 'longitude', 'section', 'plot'];
+
+  let totalCompleteness = 0;
+  let totalCoverage = 0;
+  let totalConsistency = 0;
+  const recordScores = [];
+  const errors = [];
+  const warnings = [];
+  const fieldCoverage = {};
+
+  // Initialize field coverage tracking
+  for (const f of [...essentialFields, ...optionalFields]) {
+    fieldCoverage[f] = { filled: 0, total: records.length };
+  }
+
+  for (let i = 0; i < records.length; i++) {
+    const rec = records[i];
+    let recCompleteness = 0;
+    let recCoverage = 0;
+    let recConsistency = 100;
+    const recErrors = [];
+    const recWarnings = [];
+
+    // Check essential fields
+    for (const field of essentialFields) {
+      if (rec[field] !== undefined && rec[field] !== null && rec[field] !== '') {
+        recCompleteness += 100 / essentialFields.length;
+        fieldCoverage[field].filled++;
+      } else {
+        recWarnings.push(`Missing essential field: ${field}`);
+      }
+    }
+
+    // Check optional fields
+    for (const field of optionalFields) {
+      // Handle both photoRef and photoRefs
+      const checkField = field === 'photoRef' ? 'photoRefs' : field;
+      if (rec[checkField] !== undefined && rec[checkField] !== null && rec[checkField] !== '') {
+        if (Array.isArray(rec[checkField]) ? rec[checkField].length > 0 : true) {
+          recCoverage += 100 / optionalFields.length;
+          fieldCoverage[checkField].filled++;
+        }
+      }
+    }
+
+    // Consistency checks
+    // Date validity: birth before death
+    if (rec.birthDate && rec.deathDate) {
+      const birthYear = parseInt(String(rec.birthDate).substring(0, 4));
+      const deathYear = parseInt(String(rec.deathDate).substring(0, 4));
+      if (!isNaN(birthYear) && !isNaN(deathYear)) {
+        if (birthYear > deathYear) {
+          recConsistency -= 25;
+          recErrors.push('Birth date is after death date');
+        } else if (deathYear - birthYear > 120) {
+          recConsistency -= 10;
+          recWarnings.push('Lifespan exceeds 120 years (verify dates)');
+        }
+        // Check for future dates
+        const currentYear = new Date().getFullYear();
+        if (birthYear > currentYear) {
+          recConsistency -= 15;
+          recErrors.push('Birth date is in the future');
+        }
+        if (deathYear > currentYear) {
+          recConsistency -= 15;
+          recErrors.push('Death date is in the future');
+        }
+      }
+    }
+
+    // Name format check
+    if (rec.name) {
+      if (rec.name.trim().length < 2) {
+        recConsistency -= 10;
+        recWarnings.push('Name is very short (less than 2 characters)');
+      }
+      if (rec.name === rec.name.toUpperCase() && rec.name.length > 3) {
+        recWarnings.push('Name is all uppercase (consider title case)');
+      }
+    }
+
+    // ID uniqueness (within batch)
+    if (rec.id) {
+      // Will be checked in batch-level dedup below
+    }
+
+    recConsistency = Math.max(0, recConsistency);
+
+    totalCompleteness += recCompleteness;
+    totalCoverage += recCoverage;
+    totalConsistency += recConsistency;
+
+    recordScores.push({
+      index: i,
+      id: rec.id || null,
+      name: rec.name || null,
+      completeness: Math.round(recCompleteness),
+      coverage: Math.round(recCoverage),
+      consistency: Math.round(recConsistency),
+      overall: Math.round(recCompleteness * 0.4 + recCoverage * 0.3 + recConsistency * 0.3),
+      errors: recErrors,
+      warnings: recWarnings
+    });
+
+    for (const e of recErrors) errors.push({ recordIndex: i, error: e });
+    for (const w of recWarnings) warnings.push({ recordIndex: i, warning: w });
+  }
+
+  // Check for duplicate IDs within batch
+  const idCounts = {};
+  for (const rec of records) {
+    if (rec.id) {
+      idCounts[rec.id] = (idCounts[rec.id] || 0) + 1;
+    }
+  }
+  const duplicateIds = Object.entries(idCounts).filter(([_, count]) => count > 1);
+  for (const [id, count] of duplicateIds) {
+    errors.push({ error: `Duplicate ID "${id}" appears ${count} times in batch` });
+  }
+
+  // Compute batch averages
+  const batchCompleteness = Math.round(totalCompleteness / records.length);
+  const batchCoverage = Math.round(totalCoverage / records.length);
+  const batchConsistency = Math.round(totalConsistency / records.length);
+  const batchOverall = Math.round(batchCompleteness * 0.4 + batchCoverage * 0.3 + batchConsistency * 0.3);
+
+  // Recommendation
+  let recommendation;
+  if (batchOverall >= 80 && errors.length === 0) {
+    recommendation = 'accept';
+  } else if (batchOverall >= 50) {
+    recommendation = 'review';
+  } else {
+    recommendation = 'reject';
+  }
+
+  // Compute field coverage percentages
+  const fieldCoveragePct = {};
+  for (const [field, data] of Object.entries(fieldCoverage)) {
+    fieldCoveragePct[field] = Math.round((data.filled / data.total) * 100);
+  }
+
+  return jsonResponse({
+    success: true,
+    sourceName: sourceName,
+    batchSize: records.length,
+    scores: {
+      completeness: batchCompleteness,
+      coverage: batchCoverage,
+      consistency: batchConsistency,
+      overall: batchOverall
+    },
+    recommendation: recommendation,
+    fieldCoverage: fieldCoveragePct,
+    errorCount: errors.length,
+    warningCount: warnings.length,
+    errors: errors.slice(0, 50),
+    warnings: warnings.slice(0, 50),
+    recordScores: recordScores
+  }, 200, cors);
+}
+
+/**
+ * POST /api/import/batch-report
+ * Body: { records: [...], sourceName: string, license: string }
+ * Returns a full batch report with quality score + metadata summary.
+ */
+async function handleImportBatchReport(request, env, cors) {
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ success: false, error: 'Invalid JSON body' }, 400, cors);
+  }
+
+  const records = body.records;
+  const sourceName = body.sourceName || 'Unknown source';
+  const license = body.license || 'Not specified';
+
+  if (!Array.isArray(records) || records.length === 0) {
+    return jsonResponse({ success: false, error: 'No records provided' }, 400, cors);
+  }
+
+  // Get quality scores by calling the scoring logic inline
+  // (reuse the same scoring but return a different structure)
+  let qualityResult;
+  try {
+    const scoreResponse = await handleImportQualityScore(request, env, cors);
+    const scoreText = await scoreResponse.text();
+    qualityResult = JSON.parse(scoreText);
+  } catch (e) {
+    return jsonResponse({ success: false, error: 'Failed to compute quality scores' }, 500, cors);
+  }
+
+  if (!qualityResult.success) {
+    return jsonResponse(qualityResult, 500, cors);
+  }
+
+  // Build batch metadata summary
+  const cemeteries = new Set();
+  const countries = new Set();
+  let withPhotos = 0;
+  let withInscriptions = 0;
+  let withSources = 0;
+  let withCoordinates = 0;
+  let dateRangeStart = null;
+  let dateRangeEnd = null;
+
+  for (const rec of records) {
+    if (rec.cemeteryId) cemeteries.add(rec.cemeteryId);
+    if (rec.countryCode) countries.add(rec.countryCode);
+    if (rec.photoRefs && rec.photoRefs.length > 0) withPhotos++;
+    if (rec.inscription && rec.inscription.trim()) withInscriptions++;
+    if (rec.sourceRefs && rec.sourceRefs.length > 0) withSources++;
+    if (rec.latitude && rec.longitude) withCoordinates++;
+
+    if (rec.birthDate) {
+      const y = parseInt(String(rec.birthDate).substring(0, 4));
+      if (!isNaN(y) && (dateRangeStart === null || y < dateRangeStart)) dateRangeStart = y;
+    }
+    if (rec.deathDate) {
+      const y = parseInt(String(rec.deathDate).substring(0, 4));
+      if (!isNaN(y) && (dateRangeEnd === null || y > dateRangeEnd)) dateRangeEnd = y;
+    }
+  }
+
+  return jsonResponse({
+    success: true,
+    batchReport: {
+      sourceName: sourceName,
+      license: license,
+      batchSize: records.length,
+      generatedAt: new Date().toISOString(),
+      quality: {
+        completeness: qualityResult.scores.completeness,
+        coverage: qualityResult.scores.coverage,
+        consistency: qualityResult.scores.consistency,
+        overall: qualityResult.scores.overall,
+        recommendation: qualityResult.recommendation
+      },
+      metadata: {
+        uniqueCemeteries: cemeteries.size,
+        uniqueCountries: countries.size,
+        recordsWithPhotos: withPhotos,
+        recordsWithInscriptions: withInscriptions,
+        recordsWithSources: withSources,
+        recordsWithCoordinates: withCoordinates,
+        dateRange: { start: dateRangeStart, end: dateRangeEnd }
+      },
+      fieldCoverage: qualityResult.fieldCoverage,
+      errorCount: qualityResult.errorCount,
+      warningCount: qualityResult.warningCount
+    }
+  }, 200, cors);
+}
 
 // ── Phase 16.8: AI Record Enrichment Handlers ──
 
