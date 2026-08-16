@@ -24,6 +24,10 @@ import com.putraworks.graveatlas.data.model.GlobalReport;
 import com.putraworks.graveatlas.data.model.WatchlistItem;
 import com.putraworks.graveatlas.data.model.WatchlistCheckResult;
 import com.putraworks.graveatlas.data.model.WatchlistStatus;
+import com.putraworks.graveatlas.data.model.MergeProposal;
+import com.putraworks.graveatlas.data.model.MergeResult;
+import com.putraworks.graveatlas.data.model.MergeSuggestion;
+import com.putraworks.graveatlas.data.model.MergeHistory;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -895,6 +899,159 @@ public class ApiClient {
         } catch (java.io.UnsupportedEncodingException e) {
             return value; // UTF-8 is always available on Android
         }
+    }
+
+    // ── Phase 16.17: AI Merge Resolution ──
+
+    /**
+     * Preview a merge between two records.
+     * POST /api/graves/{idA}/merge/preview/{idB}
+     */
+    public void previewMerge(String recordIdA, String recordIdB,
+                               final ApiCallback<MergeProposal> callback) {
+        RequestBody rb = RequestBody.create("{}", MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/graves/" + recordIdA + "/merge/preview/" + recordIdB)
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        callback.onSuccess(MergeProposal.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse merge proposal.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Apply a merge between two records.
+     * POST /api/graves/{idA}/merge/apply/{idB}
+     * Body: { fieldOverrides: { fieldName: value }, mergedBy: string }
+     */
+    public void applyMerge(String recordIdA, String recordIdB,
+                             java.util.Map<String, Object> fieldOverrides, String mergedBy,
+                             final ApiCallback<MergeResult> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            if (fieldOverrides != null && !fieldOverrides.isEmpty()) {
+                JSONObject overrides = new JSONObject();
+                for (java.util.Map.Entry<String, Object> entry : fieldOverrides.entrySet()) {
+                    overrides.put(entry.getKey(), entry.getValue());
+                }
+                body.put("fieldOverrides", overrides);
+            }
+            if (mergedBy != null) body.put("mergedBy", mergedBy);
+        } catch (Exception e) { /* ignore */ }
+
+        RequestBody rb = RequestBody.create(body.toString(), MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/graves/" + recordIdA + "/merge/apply/" + recordIdB)
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        callback.onSuccess(MergeResult.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse merge result.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get merge suggestions for a cemetery.
+     * GET /api/cemeteries/{id}/merge/suggestions
+     */
+    public void getMergeSuggestions(String cemeteryId,
+                                       final ApiCallback<java.util.List<MergeSuggestion>> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/cemeteries/" + cemeteryId + "/merge/suggestions")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        callback.onSuccess(MergeSuggestion.fromJsonArray(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse merge suggestions.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get global merge history.
+     * GET /api/merge/history
+     */
+    public void getMergeHistory(final ApiCallback<MergeHistory> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/merge/history")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        callback.onSuccess(MergeHistory.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse merge history.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
     }
 
     // ── Phase 16.16: AI Watchlist & Monitoring ──

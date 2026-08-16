@@ -519,6 +519,44 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.17] — 2026-08-16
+
+### Phase 16.17: AI Merge Resolution
+
+**Added:**
+- `POST /api/graves/:idA/merge/preview/:idB` — generate a field-by-field merge
+  proposal comparing two records. For each field: shows both values, recommends
+  which to keep, provides confidence level and reasoning. Computes similarity
+  score and recommended action (safe_to_merge, merge_with_caution, manual_review_required).
+
+- `POST /api/graves/:idA/merge/apply/:idB` — apply a merge. Combines record B
+  into A using auto-apply for high/medium confidence fields, accepts field
+  overrides for manual decisions. Marks B as merged, preserves B for provenance.
+  Adds full merge history entry: mergedFromId, mergedAt, mergedBy, fieldsApplied,
+  fieldsSkipped, similarityScore.
+
+- `GET /api/cemeteries/:id/merge/suggestions` — find potential duplicate pairs
+  within a cemetery. Scores by name match (50pts exact), death date (30pts),
+  birth date (20pts), plot (15pts). Filters at 50+ score, returns top 50 pairs
+  with recommended action (high_confidence_merge >= 80, likely_duplicate >= 60).
+
+- `GET /api/merge/history` — global merge history across all records.
+  Returns up to 100 entries sorted by date, with target record info.
+
+**Merge Heuristics:**
+- Verified record preferred in conflicts (high confidence)
+- Longer/more complete text preferred for inscription, notes, sources, photos
+- More precise coordinates preferred (decimal places)
+- Arrays merged with unique items from both records
+- Longer name preferred for name fields
+
+New models: MergeProposal (3 inner classes), MergeResult (3 inner classes),
+MergeSuggestion (1 inner class), MergeHistory (1 inner class)
+API client: previewMerge(), applyMerge(), getMergeSuggestions(), getMergeHistory()
+AI system prompt updated, 3 new suggested prompts
+90+ new tests (phase16-17.test.js)
+
+
 ## [7.2.16] — 2026-08-16
 
 ### Phase 16.16: AI Watchlist & Monitoring

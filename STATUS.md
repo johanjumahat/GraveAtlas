@@ -34,6 +34,7 @@
 | 16.14. AI Batch Operations | ✅ COMPLETE | 100% |
 | 16.15. AI Export & Reporting | ✅ COMPLETE | 100% |
 | 16.16. AI Watchlist & Monitoring | ✅ COMPLETE | 100% |
+| 16.17. AI Merge Resolution | ✅ COMPLETE | 100% |
 
 **All 8 core phases complete. Phase 16 AI-native features complete. 1477 tests passing.**
 
@@ -71,9 +72,11 @@
 
 14. **Add — AI Watchlist & Monitoring** ✅ Ongoing quality monitoring with 5 endpoints: list (`/watchlist`), add (`/watchlist` POST), remove (`/watchlist/:id` DELETE), check (`/watchlist/check`), and status (`/watchlist/status`). 5 watch types (health degradation, new anomalies, unapplied fixes, duplicate detected, missing data) with severity-based alerts (critical/high/medium/low). Persists watch state per item (lastChecked, lastStatus). 24-hour needsCheck threshold. New models: `WatchlistItem`, `WatchAlert`, `WatchlistCheckResult`, `WatchlistStatus`. 90+ new tests. v7.2.16.
 
+15. **Add — AI Merge Resolution** ✅ Intelligent duplicate record merging with 4 endpoints: merge preview (`/merge/preview`), merge apply (`/merge/apply`), merge suggestions (`/merge/suggestions`), and merge history (`/merge/history`). Field-by-field comparison with confidence levels, heuristics (verified preference, completeness, precision, array merge), match scoring (name 50pts, death date 30pts, birth date 20pts, plot 15pts), and full provenance tracking (mergeHistory with mergedFromId, mergedAt, mergedBy, fieldsApplied/skipped, similarityScore). Source records preserved with status "merged" and mergedIntoId. New models: `MergeProposal`, `MergeResult`, `MergeSuggestion`, `MergeHistory`. 90+ new tests. v7.2.17.
+
 ## Architecture
 
-- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 95 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
+- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 99 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
 - **Android:** 18+ screens with navigation host, external maps handoff (geo: intent), offline support
 - **Data:** GitHub repository (graveatlas-data) with JSON schemas
 - **Auth:** Google Sign-In with ID token verification, session tokens, ban system
@@ -81,7 +84,7 @@
 - **Timeline:** Chronological event visualization with decade grouping, backend endpoint
 - **External Sources:** OpenStreetMap (Overpass API), Wikidata (SPARQL), Singapore Government Open Data (data.gov.sg)
 
-## Test Suite (2464 tests)
+## Test Suite (2538 tests)
 
 | Test File | Tests | Area |
 |---|---|---|

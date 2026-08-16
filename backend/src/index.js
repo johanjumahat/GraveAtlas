@@ -497,6 +497,30 @@ async function handleRequest(request, env, ctx) {
       return await handleWatchlistStatus(request, env, corsHeaders);
     }
 
+    // Phase 16.17: AI Merge Resolution
+    if (path.startsWith('/api/graves/') && path.endsWith('/merge/preview') && method === 'POST') {
+      const parts = path.split('/');
+      const idA = parts[3];
+      const idB = parts[5];
+      return await handleMergePreview(idA, idB, request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/graves/') && path.endsWith('/merge/apply') && method === 'POST') {
+      const parts = path.split('/');
+      const idA = parts[3];
+      const idB = parts[5];
+      return await handleMergeApply(idA, idB, request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/cemeteries/') && path.endsWith('/merge/suggestions') && method === 'GET') {
+      const id = path.split('/')[3];
+      return await handleMergeSuggestions(id, request, env, corsHeaders);
+    }
+
+    if (path === '/api/merge/history' && method === 'GET') {
+      return await handleMergeHistory(request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -3559,6 +3583,549 @@ function safeTokenCompare(a, b) {
 
 // ── Utils ──
 
+// ── Phase 16.17: AI Merge Resolution Handlers ──
+
+/**
+ * Compare two records field by field and generate a merge proposal.
+ * For each field: shows value from both records, recommends which to keep,
+ * and provides a confidence level.
+ */
+function generateMergeProposal(recordA, recordB) {
+  const fields = [
+    'name', 'givenNames', 'familyName', 'birthDate', 'deathDate',
+    'cemeteryId', 'cemeteryName', 'section', 'plot', 'block',
+    'latitude', 'longitude', 'inscription', 'notes',
+    'verificationStatus', 'submitterName', 'sourceRefs', 'photoRefs',
+    'graveIdentifier', 'birthPlace', 'deathPlace', 'occupation',
+    'spouseName', 'parents', 'children'
+  ];
+
+  const proposals = [];
+  let resolvedCount = 0;
+  let conflictCount = 0;
+  let identicalCount = 0;
+
+  for (const field of fields) {
+    const valA = recordA[field];
+    const valB = recordB[field];
+
+    // Both null/undefined — skip
+    if (!valA && !valB) continue;
+
+    // Both have value
+    if (valA && valB) {
+      const strA = JSON.stringify(valA);
+      const strB = JSON.stringify(valB);
+
+      if (strA === strB) {
+        // Identical — no conflict
+        identicalCount++;
+        proposals.push({
+          field,
+          valueA: valA,
+          valueB: valB,
+          recommendation: 'keep_either',
+          recommendedValue: valA,
+          confidence: 'high',
+          reason: 'Both records have identical values'
+        });
+      } else {
+        // Conflict — need to decide
+        conflictCount++;
+        let recommendation = 'manual_review';
+        let recommendedValue = null;
+        let confidence = 'low';
+        let reason = 'Values differ — manual review recommended';
+
+        // Heuristic: prefer verified record
+        if (recordA.verificationStatus === 'verified' && recordB.verificationStatus !== 'verified') {
+          recommendation = 'keep_a';
+          recommendedValue = valA;
+          confidence = 'high';
+          reason = 'Record A is verified, Record B is not';
+        } else if (recordB.verificationStatus === 'verified' && recordA.verificationStatus !== 'verified') {
+          recommendation = 'keep_b';
+          recommendedValue = valB;
+          confidence = 'high';
+          reason = 'Record B is verified, Record A is not';
+        } else {
+          // Heuristic: prefer longer/more complete value for text fields
+          const lenA = typeof valA === 'string' ? valA.length : JSON.stringify(valA).length;
+          const lenB = typeof valB === 'string' ? valB.length : JSON.stringify(valB).length;
+          if (field === 'inscription' || field === 'notes' || field === 'sourceRefs' || field === 'photoRefs') {
+            if (lenA > lenB * 1.5) {
+              recommendation = 'keep_a';
+              recommendedValue = valA;
+              confidence = 'medium';
+              reason = `Record A has more complete ${field} (${lenA} vs ${lenB} chars)`;
+            } else if (lenB > lenA * 1.5) {
+              recommendation = 'keep_b';
+              recommendedValue = valB;
+              confidence = 'medium';
+              reason = `Record B has more complete ${field} (${lenB} vs ${lenA} chars)`;
+            }
+          } else if (field === 'name' || field === 'givenNames' || field === 'familyName') {
+            // Prefer longer name (more complete)
+            if (lenA > lenB) {
+              recommendation = 'keep_a';
+              recommendedValue = valA;
+              confidence = 'medium';
+              reason = `Record A has more complete name (${lenA} vs ${lenB} chars)`;
+            } else if (lenB > lenA) {
+              recommendation = 'keep_b';
+              recommendedValue = valB;
+              confidence = 'medium';
+              reason = `Record B has more complete name (${lenB} vs ${lenA} chars)`;
+            }
+          } else if (field === 'latitude' || field === 'longitude') {
+            // Prefer more precise coordinates
+            const precA = valA ? String(valA).split('.').length > 1 ? String(valA).split('.')[1].length : 0 : 0;
+            const precB = valB ? String(valB).split('.').length > 1 ? String(valB).split('.')[1].length : 0 : 0;
+            if (precA > precB) {
+              recommendation = 'keep_a';
+              recommendedValue = valA;
+              confidence = 'medium';
+              reason = `Record A has more precise coordinates (${precA} vs ${precB} decimal places)`;
+            } else if (precB > precA) {
+              recommendation = 'keep_b';
+              recommendedValue = valB;
+              confidence = 'medium';
+              reason = `Record B has more precise coordinates (${precB} vs ${precA} decimal places)`;
+            }
+          } else if (Array.isArray(valA) || Array.isArray(valB)) {
+            // For arrays, merge unique items
+            const arrA = Array.isArray(valA) ? valA : [valA];
+            const arrB = Array.isArray(valB) ? valB : [valB];
+            const merged = [...new Set([...arrA, ...arrB])];
+            recommendation = 'merge_both';
+            recommendedValue = merged;
+            confidence = 'medium';
+            reason = `Merged unique items from both records (${merged.length} total)`;
+          }
+        }
+
+        proposals.push({
+          field,
+          valueA: valA,
+          valueB: valB,
+          recommendation,
+          recommendedValue,
+          confidence,
+          reason
+        });
+      }
+    } else {
+      // Only one has a value — keep that one
+      resolvedCount++;
+      proposals.push({
+        field,
+        valueA: valA || null,
+        valueB: valB || null,
+        recommendation: valA ? 'keep_a' : 'keep_b',
+        recommendedValue: valA || valB,
+        confidence: 'high',
+        reason: `Only ${valA ? 'Record A' : 'Record B'} has this field`
+      });
+    }
+  }
+
+  return {
+    proposals,
+    summary: {
+      totalFields: proposals.length,
+      identicalFields: identicalCount,
+      conflictFields: conflictCount,
+      resolvedFields: resolvedCount,
+      autoResolvable: proposals.filter(p => p.confidence !== 'low').length,
+      needsManualReview: proposals.filter(p => p.confidence === 'low').length
+    }
+  };
+}
+
+/**
+ * POST /api/graves/:idA/merge/preview/:idB
+ * Generate a merge proposal for two records.
+ */
+async function handleMergePreview(idA, idB, request, env, cors) {
+  const safeIdA = sanitizePathSegment(idA);
+  const safeIdB = sanitizePathSegment(idB);
+
+  if (!safeIdA || safeIdA !== idA || !safeIdB || safeIdB !== idB) {
+    return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      message: 'GitHub not configured — merge preview unavailable'
+    }, 200, cors);
+  }
+
+  try {
+    // Load both records
+    let recordA = null, recordB = null;
+
+    try {
+      const contentA = await readFile(`graves/${safeIdA}.json`, env);
+      if (contentA) recordA = JSON.parse(contentA);
+    } catch (e) { /* not found */ }
+
+    try {
+      const contentB = await readFile(`graves/${safeIdB}.json`, env);
+      if (contentB) recordB = JSON.parse(contentB);
+    } catch (e) { /* not found */ }
+
+    if (!recordA || !recordB) {
+      return jsonResponse({
+        success: false,
+        error: 'One or both records not found',
+        recordAFound: !!recordA,
+        recordBFound: !!recordB
+      }, 404, cors);
+    }
+
+    const proposal = generateMergeProposal(recordA, recordB);
+
+    // Compute a similarity score
+    const allFields = proposal.proposals.length;
+    const identical = proposal.summary.identicalFields;
+    const similarity = allFields > 0 ? Math.round((identical / allFields) * 100) : 0;
+
+    return jsonResponse({
+      success: true,
+      recordA: {
+        id: safeIdA,
+        name: recordA.name || recordA.graveIdentifier || 'Unknown',
+        verificationStatus: recordA.verificationStatus || 'unverified',
+        cemeteryId: recordA.cemeteryId || null
+      },
+      recordB: {
+        id: safeIdB,
+        name: recordB.name || recordB.graveIdentifier || 'Unknown',
+        verificationStatus: recordB.verificationStatus || 'unverified',
+        cemeteryId: recordB.cemeteryId || null
+      },
+      similarityScore: similarity,
+      proposal: proposal.proposals,
+      summary: proposal.summary,
+      recommendedAction: proposal.summary.needsManualReview === 0
+        ? 'safe_to_merge'
+        : proposal.summary.needsManualReview <= 2
+        ? 'merge_with_caution'
+        : 'manual_review_required'
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to generate merge preview',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/graves/:idA/merge/apply/:idB
+ * Apply a merge: combine record B into record A, mark B as merged.
+ * Body: { fieldOverrides: { fieldName: value } }
+ */
+async function handleMergeApply(idA, idB, request, env, cors) {
+  const safeIdA = sanitizePathSegment(idA);
+  const safeIdB = sanitizePathSegment(idB);
+
+  if (!safeIdA || safeIdA !== idA || !safeIdB || safeIdB !== idB) {
+    return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: false,
+      error: 'GitHub not configured — merge unavailable'
+    }, 503, cors);
+  }
+
+  try {
+    let recordA = null, recordB = null;
+
+    try {
+      const contentA = await readFile(`graves/${safeIdA}.json`, env);
+      if (contentA) recordA = JSON.parse(contentA);
+    } catch (e) { /* not found */ }
+
+    try {
+      const contentB = await readFile(`graves/${safeIdB}.json`, env);
+      if (contentB) recordB = JSON.parse(contentB);
+    } catch (e) { /* not found */ }
+
+    if (!recordA || !recordB) {
+      return jsonResponse({
+        success: false,
+        error: 'One or both records not found'
+      }, 404, cors);
+    }
+
+    // Generate proposal
+    const proposal = generateMergeProposal(recordA, recordB);
+
+    // Apply proposed values, with optional overrides
+    const body = await request.json().catch(() => ({}));
+    const overrides = (body && body.fieldOverrides) || {};
+
+    const mergedRecord = { ...recordA };
+    const appliedFields = [];
+    const skippedFields = [];
+
+    for (const p of proposal.proposals) {
+      // Check for override
+      if (overrides[p.field] !== undefined) {
+        mergedRecord[p.field] = overrides[p.field];
+        appliedFields.push({
+          field: p.field,
+          source: 'override',
+          value: overrides[p.field]
+        });
+        continue;
+      }
+
+      // Auto-apply high and medium confidence
+      if (p.confidence === 'high' || p.confidence === 'medium') {
+        mergedRecord[p.field] = p.recommendedValue;
+        appliedFields.push({
+          field: p.field,
+          source: p.recommendation,
+          value: p.recommendedValue,
+          confidence: p.confidence
+        });
+      } else {
+        // Low confidence — skip unless overridden
+        skippedFields.push({
+          field: p.field,
+          reason: 'Low confidence — requires manual override'
+        });
+      }
+    }
+
+    // Add merge provenance
+    mergedRecord.mergeHistory = mergedRecord.mergeHistory || [];
+    mergedRecord.mergeHistory.push({
+      mergedFromId: safeIdB,
+      mergedFromName: recordB.name || recordB.graveIdentifier || 'Unknown',
+      mergedAt: new Date().toISOString(),
+      mergedBy: body.mergedBy || 'system',
+      fieldsApplied: appliedFields.length,
+      fieldsSkipped: skippedFields.length,
+      similarityScore: proposal.summary.identicalFields > 0
+        ? Math.round((proposal.summary.identicalFields / proposal.proposals.length) * 100)
+        : 0
+    });
+
+    // Update record A with merged data
+    mergedRecord.updatedDate = new Date().toISOString();
+    await writeFile(`graves/${safeIdA}.json`, JSON.stringify(mergedRecord, null, 2), env);
+
+    // Mark record B as merged (keep it for provenance, but change status)
+    recordB.status = 'merged';
+    recordB.mergedIntoId = safeIdA;
+    recordB.mergedAt = new Date().toISOString();
+    recordB.updatedDate = new Date().toISOString();
+    await writeFile(`graves/${safeIdB}.json`, JSON.stringify(recordB, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      mergedRecordId: safeIdA,
+      mergedFromId: safeIdB,
+      appliedFields: appliedFields,
+      skippedFields: skippedFields,
+      totalApplied: appliedFields.length,
+      totalSkipped: skippedFields.length,
+      mergeHistory: mergedRecord.mergeHistory[mergedRecord.mergeHistory.length - 1]
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to apply merge',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/cemeteries/:id/merge/suggestions
+ * Find potential duplicate pairs within a cemetery and suggest merges.
+ */
+async function handleMergeSuggestions(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid cemetery ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      suggestions: [],
+      message: 'GitHub not configured'
+    }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('graves', env);
+    const records = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status === 'merged') continue;
+        if (record.status !== 'published') continue;
+        if (record.cemeteryId !== safeId && record.cemeteryId !== id) continue;
+        records.push(record);
+      } catch (e) { /* skip */ }
+    }
+
+    if (records.length < 2) {
+      return jsonResponse({
+        success: true,
+        suggestions: [],
+        totalRecords: records.length,
+        message: 'Not enough records to suggest merges'
+      }, 200, cors);
+    }
+
+    // Find potential duplicates
+    const suggestions = [];
+    const seen = new Set();
+
+    for (let i = 0; i < records.length; i++) {
+      for (let j = i + 1; j < records.length; j++) {
+        const a = records[i];
+        const b = records[j];
+        const pairKey = [a.id, b.id].sort().join('|');
+        if (seen.has(pairKey)) continue;
+
+        let matchScore = 0;
+        let matchReasons = [];
+
+        // Name match
+        const nameA = (a.name || a.graveIdentifier || '').toLowerCase().trim();
+        const nameB = (b.name || b.graveIdentifier || '').toLowerCase().trim();
+        if (nameA && nameB && nameA === nameB) {
+          matchScore += 50;
+          matchReasons.push('exact_name_match');
+        } else if (nameA && nameB && (nameA.includes(nameB) || nameB.includes(nameA))) {
+          matchScore += 30;
+          matchReasons.push('partial_name_match');
+        }
+
+        // Death date match
+        if (a.deathDate && b.deathDate && a.deathDate === b.deathDate) {
+          matchScore += 30;
+          matchReasons.push('death_date_match');
+        }
+
+        // Birth date match
+        if (a.birthDate && b.birthDate && a.birthDate === b.birthDate) {
+          matchScore += 20;
+          matchReasons.push('birth_date_match');
+        }
+
+        // Plot match
+        if (a.plot && b.plot && a.plot === b.plot && a.section === b.section) {
+          matchScore += 15;
+          matchReasons.push('same_plot');
+        }
+
+        if (matchScore >= 50) {
+          seen.add(pairKey);
+          suggestions.push({
+            recordA: {
+              id: a.id,
+              name: a.name || a.graveIdentifier || 'Unknown',
+              deathDate: a.deathDate || null,
+              verificationStatus: a.verificationStatus || 'unverified'
+            },
+            recordB: {
+              id: b.id,
+              name: b.name || b.graveIdentifier || 'Unknown',
+              deathDate: b.deathDate || null,
+              verificationStatus: b.verificationStatus || 'unverified'
+            },
+            matchScore: matchScore,
+            matchReasons: matchReasons,
+            recommendedAction: matchScore >= 80 ? 'high_confidence_merge' :
+              matchScore >= 60 ? 'likely_duplicate' : 'possible_duplicate'
+          });
+        }
+      }
+    }
+
+    suggestions.sort((a, b) => b.matchScore - a.matchScore);
+
+    return jsonResponse({
+      success: true,
+      suggestions: suggestions.slice(0, 50),
+      totalSuggestions: suggestions.length,
+      totalRecords: records.length,
+      checkedAt: new Date().toISOString()
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to generate merge suggestions',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/merge/history
+ * Returns merge history across all records.
+ */
+async function handleMergeHistory(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      history: [],
+      message: 'GitHub not configured'
+    }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('graves', env);
+    const history = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.mergeHistory && record.mergeHistory.length > 0) {
+          for (const entry of record.mergeHistory) {
+            history.push({
+              ...entry,
+              targetRecordId: record.id,
+              targetRecordName: record.name || record.graveIdentifier || 'Unknown'
+            });
+          }
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    history.sort((a, b) => new Date(b.mergedAt || 0) - new Date(a.mergedAt || 0));
+
+    return jsonResponse({
+      success: true,
+      history: history.slice(0, 100),
+      totalMerges: history.length
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to fetch merge history',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
 // ── Phase 16.16: AI Watchlist & Monitoring Handlers ──
 
 /**
@@ -4207,6 +4774,549 @@ function generateRecommendations(records, stats, anomalySummary) {
   }
 
   return recommendations;
+}
+
+// ── Phase 16.17: AI Merge Resolution Handlers ──
+
+/**
+ * Compare two records field by field and generate a merge proposal.
+ * For each field: shows value from both records, recommends which to keep,
+ * and provides a confidence level.
+ */
+function generateMergeProposal(recordA, recordB) {
+  const fields = [
+    'name', 'givenNames', 'familyName', 'birthDate', 'deathDate',
+    'cemeteryId', 'cemeteryName', 'section', 'plot', 'block',
+    'latitude', 'longitude', 'inscription', 'notes',
+    'verificationStatus', 'submitterName', 'sourceRefs', 'photoRefs',
+    'graveIdentifier', 'birthPlace', 'deathPlace', 'occupation',
+    'spouseName', 'parents', 'children'
+  ];
+
+  const proposals = [];
+  let resolvedCount = 0;
+  let conflictCount = 0;
+  let identicalCount = 0;
+
+  for (const field of fields) {
+    const valA = recordA[field];
+    const valB = recordB[field];
+
+    // Both null/undefined — skip
+    if (!valA && !valB) continue;
+
+    // Both have value
+    if (valA && valB) {
+      const strA = JSON.stringify(valA);
+      const strB = JSON.stringify(valB);
+
+      if (strA === strB) {
+        // Identical — no conflict
+        identicalCount++;
+        proposals.push({
+          field,
+          valueA: valA,
+          valueB: valB,
+          recommendation: 'keep_either',
+          recommendedValue: valA,
+          confidence: 'high',
+          reason: 'Both records have identical values'
+        });
+      } else {
+        // Conflict — need to decide
+        conflictCount++;
+        let recommendation = 'manual_review';
+        let recommendedValue = null;
+        let confidence = 'low';
+        let reason = 'Values differ — manual review recommended';
+
+        // Heuristic: prefer verified record
+        if (recordA.verificationStatus === 'verified' && recordB.verificationStatus !== 'verified') {
+          recommendation = 'keep_a';
+          recommendedValue = valA;
+          confidence = 'high';
+          reason = 'Record A is verified, Record B is not';
+        } else if (recordB.verificationStatus === 'verified' && recordA.verificationStatus !== 'verified') {
+          recommendation = 'keep_b';
+          recommendedValue = valB;
+          confidence = 'high';
+          reason = 'Record B is verified, Record A is not';
+        } else {
+          // Heuristic: prefer longer/more complete value for text fields
+          const lenA = typeof valA === 'string' ? valA.length : JSON.stringify(valA).length;
+          const lenB = typeof valB === 'string' ? valB.length : JSON.stringify(valB).length;
+          if (field === 'inscription' || field === 'notes' || field === 'sourceRefs' || field === 'photoRefs') {
+            if (lenA > lenB * 1.5) {
+              recommendation = 'keep_a';
+              recommendedValue = valA;
+              confidence = 'medium';
+              reason = `Record A has more complete ${field} (${lenA} vs ${lenB} chars)`;
+            } else if (lenB > lenA * 1.5) {
+              recommendation = 'keep_b';
+              recommendedValue = valB;
+              confidence = 'medium';
+              reason = `Record B has more complete ${field} (${lenB} vs ${lenA} chars)`;
+            }
+          } else if (field === 'name' || field === 'givenNames' || field === 'familyName') {
+            // Prefer longer name (more complete)
+            if (lenA > lenB) {
+              recommendation = 'keep_a';
+              recommendedValue = valA;
+              confidence = 'medium';
+              reason = `Record A has more complete name (${lenA} vs ${lenB} chars)`;
+            } else if (lenB > lenA) {
+              recommendation = 'keep_b';
+              recommendedValue = valB;
+              confidence = 'medium';
+              reason = `Record B has more complete name (${lenB} vs ${lenA} chars)`;
+            }
+          } else if (field === 'latitude' || field === 'longitude') {
+            // Prefer more precise coordinates
+            const precA = valA ? String(valA).split('.').length > 1 ? String(valA).split('.')[1].length : 0 : 0;
+            const precB = valB ? String(valB).split('.').length > 1 ? String(valB).split('.')[1].length : 0 : 0;
+            if (precA > precB) {
+              recommendation = 'keep_a';
+              recommendedValue = valA;
+              confidence = 'medium';
+              reason = `Record A has more precise coordinates (${precA} vs ${precB} decimal places)`;
+            } else if (precB > precA) {
+              recommendation = 'keep_b';
+              recommendedValue = valB;
+              confidence = 'medium';
+              reason = `Record B has more precise coordinates (${precB} vs ${precA} decimal places)`;
+            }
+          } else if (Array.isArray(valA) || Array.isArray(valB)) {
+            // For arrays, merge unique items
+            const arrA = Array.isArray(valA) ? valA : [valA];
+            const arrB = Array.isArray(valB) ? valB : [valB];
+            const merged = [...new Set([...arrA, ...arrB])];
+            recommendation = 'merge_both';
+            recommendedValue = merged;
+            confidence = 'medium';
+            reason = `Merged unique items from both records (${merged.length} total)`;
+          }
+        }
+
+        proposals.push({
+          field,
+          valueA: valA,
+          valueB: valB,
+          recommendation,
+          recommendedValue,
+          confidence,
+          reason
+        });
+      }
+    } else {
+      // Only one has a value — keep that one
+      resolvedCount++;
+      proposals.push({
+        field,
+        valueA: valA || null,
+        valueB: valB || null,
+        recommendation: valA ? 'keep_a' : 'keep_b',
+        recommendedValue: valA || valB,
+        confidence: 'high',
+        reason: `Only ${valA ? 'Record A' : 'Record B'} has this field`
+      });
+    }
+  }
+
+  return {
+    proposals,
+    summary: {
+      totalFields: proposals.length,
+      identicalFields: identicalCount,
+      conflictFields: conflictCount,
+      resolvedFields: resolvedCount,
+      autoResolvable: proposals.filter(p => p.confidence !== 'low').length,
+      needsManualReview: proposals.filter(p => p.confidence === 'low').length
+    }
+  };
+}
+
+/**
+ * POST /api/graves/:idA/merge/preview/:idB
+ * Generate a merge proposal for two records.
+ */
+async function handleMergePreview(idA, idB, request, env, cors) {
+  const safeIdA = sanitizePathSegment(idA);
+  const safeIdB = sanitizePathSegment(idB);
+
+  if (!safeIdA || safeIdA !== idA || !safeIdB || safeIdB !== idB) {
+    return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      message: 'GitHub not configured — merge preview unavailable'
+    }, 200, cors);
+  }
+
+  try {
+    // Load both records
+    let recordA = null, recordB = null;
+
+    try {
+      const contentA = await readFile(`graves/${safeIdA}.json`, env);
+      if (contentA) recordA = JSON.parse(contentA);
+    } catch (e) { /* not found */ }
+
+    try {
+      const contentB = await readFile(`graves/${safeIdB}.json`, env);
+      if (contentB) recordB = JSON.parse(contentB);
+    } catch (e) { /* not found */ }
+
+    if (!recordA || !recordB) {
+      return jsonResponse({
+        success: false,
+        error: 'One or both records not found',
+        recordAFound: !!recordA,
+        recordBFound: !!recordB
+      }, 404, cors);
+    }
+
+    const proposal = generateMergeProposal(recordA, recordB);
+
+    // Compute a similarity score
+    const allFields = proposal.proposals.length;
+    const identical = proposal.summary.identicalFields;
+    const similarity = allFields > 0 ? Math.round((identical / allFields) * 100) : 0;
+
+    return jsonResponse({
+      success: true,
+      recordA: {
+        id: safeIdA,
+        name: recordA.name || recordA.graveIdentifier || 'Unknown',
+        verificationStatus: recordA.verificationStatus || 'unverified',
+        cemeteryId: recordA.cemeteryId || null
+      },
+      recordB: {
+        id: safeIdB,
+        name: recordB.name || recordB.graveIdentifier || 'Unknown',
+        verificationStatus: recordB.verificationStatus || 'unverified',
+        cemeteryId: recordB.cemeteryId || null
+      },
+      similarityScore: similarity,
+      proposal: proposal.proposals,
+      summary: proposal.summary,
+      recommendedAction: proposal.summary.needsManualReview === 0
+        ? 'safe_to_merge'
+        : proposal.summary.needsManualReview <= 2
+        ? 'merge_with_caution'
+        : 'manual_review_required'
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to generate merge preview',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/graves/:idA/merge/apply/:idB
+ * Apply a merge: combine record B into record A, mark B as merged.
+ * Body: { fieldOverrides: { fieldName: value } }
+ */
+async function handleMergeApply(idA, idB, request, env, cors) {
+  const safeIdA = sanitizePathSegment(idA);
+  const safeIdB = sanitizePathSegment(idB);
+
+  if (!safeIdA || safeIdA !== idA || !safeIdB || safeIdB !== idB) {
+    return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: false,
+      error: 'GitHub not configured — merge unavailable'
+    }, 503, cors);
+  }
+
+  try {
+    let recordA = null, recordB = null;
+
+    try {
+      const contentA = await readFile(`graves/${safeIdA}.json`, env);
+      if (contentA) recordA = JSON.parse(contentA);
+    } catch (e) { /* not found */ }
+
+    try {
+      const contentB = await readFile(`graves/${safeIdB}.json`, env);
+      if (contentB) recordB = JSON.parse(contentB);
+    } catch (e) { /* not found */ }
+
+    if (!recordA || !recordB) {
+      return jsonResponse({
+        success: false,
+        error: 'One or both records not found'
+      }, 404, cors);
+    }
+
+    // Generate proposal
+    const proposal = generateMergeProposal(recordA, recordB);
+
+    // Apply proposed values, with optional overrides
+    const body = await request.json().catch(() => ({}));
+    const overrides = (body && body.fieldOverrides) || {};
+
+    const mergedRecord = { ...recordA };
+    const appliedFields = [];
+    const skippedFields = [];
+
+    for (const p of proposal.proposals) {
+      // Check for override
+      if (overrides[p.field] !== undefined) {
+        mergedRecord[p.field] = overrides[p.field];
+        appliedFields.push({
+          field: p.field,
+          source: 'override',
+          value: overrides[p.field]
+        });
+        continue;
+      }
+
+      // Auto-apply high and medium confidence
+      if (p.confidence === 'high' || p.confidence === 'medium') {
+        mergedRecord[p.field] = p.recommendedValue;
+        appliedFields.push({
+          field: p.field,
+          source: p.recommendation,
+          value: p.recommendedValue,
+          confidence: p.confidence
+        });
+      } else {
+        // Low confidence — skip unless overridden
+        skippedFields.push({
+          field: p.field,
+          reason: 'Low confidence — requires manual override'
+        });
+      }
+    }
+
+    // Add merge provenance
+    mergedRecord.mergeHistory = mergedRecord.mergeHistory || [];
+    mergedRecord.mergeHistory.push({
+      mergedFromId: safeIdB,
+      mergedFromName: recordB.name || recordB.graveIdentifier || 'Unknown',
+      mergedAt: new Date().toISOString(),
+      mergedBy: body.mergedBy || 'system',
+      fieldsApplied: appliedFields.length,
+      fieldsSkipped: skippedFields.length,
+      similarityScore: proposal.summary.identicalFields > 0
+        ? Math.round((proposal.summary.identicalFields / proposal.proposals.length) * 100)
+        : 0
+    });
+
+    // Update record A with merged data
+    mergedRecord.updatedDate = new Date().toISOString();
+    await writeFile(`graves/${safeIdA}.json`, JSON.stringify(mergedRecord, null, 2), env);
+
+    // Mark record B as merged (keep it for provenance, but change status)
+    recordB.status = 'merged';
+    recordB.mergedIntoId = safeIdA;
+    recordB.mergedAt = new Date().toISOString();
+    recordB.updatedDate = new Date().toISOString();
+    await writeFile(`graves/${safeIdB}.json`, JSON.stringify(recordB, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      mergedRecordId: safeIdA,
+      mergedFromId: safeIdB,
+      appliedFields: appliedFields,
+      skippedFields: skippedFields,
+      totalApplied: appliedFields.length,
+      totalSkipped: skippedFields.length,
+      mergeHistory: mergedRecord.mergeHistory[mergedRecord.mergeHistory.length - 1]
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to apply merge',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/cemeteries/:id/merge/suggestions
+ * Find potential duplicate pairs within a cemetery and suggest merges.
+ */
+async function handleMergeSuggestions(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid cemetery ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      suggestions: [],
+      message: 'GitHub not configured'
+    }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('graves', env);
+    const records = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status === 'merged') continue;
+        if (record.status !== 'published') continue;
+        if (record.cemeteryId !== safeId && record.cemeteryId !== id) continue;
+        records.push(record);
+      } catch (e) { /* skip */ }
+    }
+
+    if (records.length < 2) {
+      return jsonResponse({
+        success: true,
+        suggestions: [],
+        totalRecords: records.length,
+        message: 'Not enough records to suggest merges'
+      }, 200, cors);
+    }
+
+    // Find potential duplicates
+    const suggestions = [];
+    const seen = new Set();
+
+    for (let i = 0; i < records.length; i++) {
+      for (let j = i + 1; j < records.length; j++) {
+        const a = records[i];
+        const b = records[j];
+        const pairKey = [a.id, b.id].sort().join('|');
+        if (seen.has(pairKey)) continue;
+
+        let matchScore = 0;
+        let matchReasons = [];
+
+        // Name match
+        const nameA = (a.name || a.graveIdentifier || '').toLowerCase().trim();
+        const nameB = (b.name || b.graveIdentifier || '').toLowerCase().trim();
+        if (nameA && nameB && nameA === nameB) {
+          matchScore += 50;
+          matchReasons.push('exact_name_match');
+        } else if (nameA && nameB && (nameA.includes(nameB) || nameB.includes(nameA))) {
+          matchScore += 30;
+          matchReasons.push('partial_name_match');
+        }
+
+        // Death date match
+        if (a.deathDate && b.deathDate && a.deathDate === b.deathDate) {
+          matchScore += 30;
+          matchReasons.push('death_date_match');
+        }
+
+        // Birth date match
+        if (a.birthDate && b.birthDate && a.birthDate === b.birthDate) {
+          matchScore += 20;
+          matchReasons.push('birth_date_match');
+        }
+
+        // Plot match
+        if (a.plot && b.plot && a.plot === b.plot && a.section === b.section) {
+          matchScore += 15;
+          matchReasons.push('same_plot');
+        }
+
+        if (matchScore >= 50) {
+          seen.add(pairKey);
+          suggestions.push({
+            recordA: {
+              id: a.id,
+              name: a.name || a.graveIdentifier || 'Unknown',
+              deathDate: a.deathDate || null,
+              verificationStatus: a.verificationStatus || 'unverified'
+            },
+            recordB: {
+              id: b.id,
+              name: b.name || b.graveIdentifier || 'Unknown',
+              deathDate: b.deathDate || null,
+              verificationStatus: b.verificationStatus || 'unverified'
+            },
+            matchScore: matchScore,
+            matchReasons: matchReasons,
+            recommendedAction: matchScore >= 80 ? 'high_confidence_merge' :
+              matchScore >= 60 ? 'likely_duplicate' : 'possible_duplicate'
+          });
+        }
+      }
+    }
+
+    suggestions.sort((a, b) => b.matchScore - a.matchScore);
+
+    return jsonResponse({
+      success: true,
+      suggestions: suggestions.slice(0, 50),
+      totalSuggestions: suggestions.length,
+      totalRecords: records.length,
+      checkedAt: new Date().toISOString()
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to generate merge suggestions',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/merge/history
+ * Returns merge history across all records.
+ */
+async function handleMergeHistory(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      history: [],
+      message: 'GitHub not configured'
+    }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('graves', env);
+    const history = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.mergeHistory && record.mergeHistory.length > 0) {
+          for (const entry of record.mergeHistory) {
+            history.push({
+              ...entry,
+              targetRecordId: record.id,
+              targetRecordName: record.name || record.graveIdentifier || 'Unknown'
+            });
+          }
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    history.sort((a, b) => new Date(b.mergedAt || 0) - new Date(a.mergedAt || 0));
+
+    return jsonResponse({
+      success: true,
+      history: history.slice(0, 100),
+      totalMerges: history.length
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to fetch merge history',
+      message: error.message
+    }, 500, cors);
+  }
 }
 
 // ── Phase 16.16: AI Watchlist & Monitoring Handlers ──
