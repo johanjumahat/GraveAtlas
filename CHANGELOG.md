@@ -519,6 +519,52 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.13] — 2026-08-16
+
+### Phase 16.13: AI Data Quality Auto-Fix
+
+**Added:**
+- `GET /api/cemeteries/:id/autofix/preview` — scans all records and returns proposed fixes
+  without applying them. Summary with fix counts by action and confidence level.
+
+- `POST /api/cemeteries/:id/autofix` — applies high-confidence fixes to cemetery records.
+  Body: `{ dryRun: boolean, fixTypes: string[] }`. Only high-confidence fixes are auto-applied;
+  medium-confidence fixes are flagged for manual review.
+
+- `POST /api/graves/:id/autofix` — generates auto-fix proposals for a single record.
+
+- `POST /api/graves/:id/autofix/apply` — applies high-confidence fixes to a single record.
+
+**Auto-Fix Types:**
+- `add`: Parse name into givenNames/familyName (high confidence)
+- `normalize`: Normalize date format to ISO (high confidence)
+- `normalize`: Fix ALL CAPS/lowercase names to title case (high confidence)
+- `trim`: Trim whitespace in text fields (high confidence)
+- `swap`: Fix swapped lat/lng when latitude > 90 (high confidence)
+- `estimate`: Estimate birth year from death date + inscription age (medium confidence)
+- `swap_dates`: Swap birth/death when birth is after death (medium confidence)
+
+**Helper Functions:**
+- `parseName()`: Handles "Surname, Given", multi-word surnames (del/la/van/von),
+  title prefix stripping (Dr./Mr./Mrs./Rev./etc.)
+- `normalizeDate()`: Handles ISO, slash, long month, "Month DD, YYYY", year-only
+- `estimateBirthYear()`: Parses "aged N", "N years" from inscription
+- `fixNameCase()`: Preserves Roman numerals, handles initials
+
+New models: AutoFixProposal, CemeteryAutoFixPreview, CemeteryAutoFixResult,
+RecordAutoFixResult (with AppliedChange inner classes)
+API client: previewCemeteryAutoFix(), applyCemeteryAutoFix(),
+getRecordAutoFixProposals(), applyRecordAutoFix()
+AI system prompt updated, 3 new suggested prompts
+100+ new tests (phase16-13.test.js)
+
+**Safety:**
+- Only high-confidence fixes auto-applied; medium-confidence flagged for review
+- Dry run mode returns proposals without writing
+- Fix type filtering via fixTypes parameter
+- Records get updated_date timestamp on write
+
+
 ## [7.2.12] — 2026-08-16
 
 ### Phase 16.12: AI Smart Recommendations

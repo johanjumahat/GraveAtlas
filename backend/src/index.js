@@ -424,6 +424,27 @@ async function handleRequest(request, env, ctx) {
       return await handleGlobalRecommendations(request, env, corsHeaders);
     }
 
+    // Phase 16.13: AI Data Quality Auto-Fix
+    if (path.startsWith('/api/cemeteries/') && path.endsWith('/autofix') && method === 'POST') {
+      const id = path.split('/')[3];
+      return await handleCemeteryAutoFix(id, request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/graves/') && path.endsWith('/autofix') && method === 'POST') {
+      const id = path.split('/')[3];
+      return await handleRecordAutoFix(id, request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/cemeteries/') && path.endsWith('/autofix/preview') && method === 'GET') {
+      const id = path.split('/')[3];
+      return await handleCemeteryAutoFixPreview(id, request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/graves/') && path.endsWith('/autofix/apply') && method === 'POST') {
+      const id = path.split('/')[3];
+      return await handleRecordAutoFixApply(id, request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -3485,6 +3506,667 @@ function safeTokenCompare(a, b) {
 }
 
 // ── Utils ──
+
+// ── Phase 16.13: AI Data Quality Auto-Fix Handlers ──
+
+/**
+ * Parse a full name into given names and family name.
+ * Handles: "John Smith", "John Michael Smith", "Smith, John",
+ *          "Dr. John Smith", "Maria del Carmen Rodriguez"
+ */
+function parseName(fullName) {
+  if (!fullName || typeof fullName !== 'string') return null;
+  const name = fullName.trim();
+  if (name.length < 2) return null;
+
+  let givenNames = '';
+  let familyName = '';
+
+  // Handle "Surname, Given" format
+  if (name.includes(',')) {
+    const parts = name.split(',').map(s => s.trim());
+    if (parts.length >= 2) {
+      familyName = parts[0];
+      givenNames = parts.slice(1).join(' ');
+    }
+  } else {
+    const parts = name.split(/\s+/);
+
+    // Strip common prefixes
+    const prefixes = ['Dr.', 'Mr.', 'Mrs.', 'Ms.', 'Rev.', 'Fr.', 'Sir', 'Lady', 'Capt.', 'Lt.', 'Sgt.'];
+    const filteredParts = [];
+    let i = 0;
+    while (i < parts.length && prefixes.includes(parts[i])) {
+      i++; // skip prefix
+    }
+    const remaining = parts.slice(i);
+
+    if (remaining.length === 1) {
+      givenNames = remaining[0];
+      familyName = '';
+    } else if (remaining.length === 2) {
+      givenNames = remaining[0];
+      familyName = remaining[1];
+    } else {
+      // Handle multi-word surnames (del, de, la, van, von, etc.)
+      const surnamePrefixes = ['del', 'de', 'la', 'van', 'von', 'di', 'da', 'du', 'le', 'el'];
+      if (remaining.length >= 3 && surnamePrefixes.includes(remaining[remaining.length - 2].toLowerCase())) {
+        givenNames = remaining.slice(0, -2).join(' ');
+        familyName = remaining.slice(-2).join(' ');
+      } else {
+        givenNames = remaining.slice(0, -1).join(' ');
+        familyName = remaining[remaining.length - 1];
+      }
+    }
+  }
+
+  return { givenNames, familyName };
+}
+
+/**
+ * Estimate birth year from death date and age-at-death in inscription.
+ * Looks for patterns like "died 1920 aged 75", "aged 75", "Æ 75", "Æt 75"
+ */
+function estimateBirthYear(deathDate, inscription) {
+  if (!deathDate || !inscription) return null;
+  const deathYear = parseInt(String(deathDate).substring(0, 4));
+  if (isNaN(deathYear)) return null;
+
+  const insc = inscription.toLowerCase();
+  let age = null;
+
+  // Pattern: "aged 75", "age 75", "Æ 75", "aet 75"
+  const agePatterns = [
+    /(?:aged|age|æ|aet)\s*(\d{1,3})/i,
+    /\b(\d{1,3})\s*(?:years|yrs)\b/i,
+    /\b(\d{1,3})\s*(?:years old|yrs old)\b/i
+  ];
+
+  for (const pattern of agePatterns) {
+    const match = insc.match(pattern);
+    if (match) {
+      age = parseInt(match[1]);
+      break;
+    }
+  }
+
+  if (age === null || age < 0 || age > 120) return null;
+  return String(deathYear - age);
+}
+
+/**
+ * Normalize a date string to ISO format (YYYY-MM-DD or YYYY-MM or YYYY).
+ * Handles: "1920", "1920-01", "1920-01-15", "15 Jan 1920", "January 15, 1920"
+ */
+function normalizeDate(dateStr) {
+  if (!dateStr || typeof dateStr !== 'string') return null;
+  const s = dateStr.trim();
+
+  // Already ISO format
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  if (/^\d{4}-\d{2}$/.test(s)) return s;
+  if (/^\d{4}$/.test(s)) return s;
+
+  // "YYYY/MM/DD" or "YYYY.MM.DD"
+  const slashMatch = s.match(/^(\d{4})[/.](\d{1,2})[/.](\d{1,2})$/);
+  if (slashMatch) {
+    const [, y, m, d] = slashMatch;
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+
+  // "DD Month YYYY" or "DD Mon YYYY"
+  const monthMap = {
+    'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
+    'may': '05', 'jun': '06', 'jul': '07', 'aug': '08',
+    'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12',
+    'january': '01', 'february': '02', 'march': '03', 'april': '04',
+    'june': '06', 'july': '07', 'august': '08', 'september': '09',
+    'october': '10', 'november': '11', 'december': '12'
+  };
+
+  const longMatch = s.match(/^(\d{1,2})\s+(\w+)\s+(\d{4})$/i);
+  if (longMatch) {
+    const [, d, mon, y] = longMatch;
+    const m = monthMap[mon.toLowerCase()];
+    if (m) return `${y}-${m}-${d.padStart(2, '0')}`;
+  }
+
+  // "Month DD, YYYY"
+  const monthFirst = s.match(/^(\w+)\s+(\d{1,2}),?\s+(\d{4})$/i);
+  if (monthFirst) {
+    const [, mon, d, y] = monthFirst;
+    const m = monthMap[mon.toLowerCase()];
+    if (m) return `${y}-${m}-${d.padStart(2, '0')}`;
+  }
+
+  // Just a year at the start
+  const yearMatch = s.match(/^(\d{4})/);
+  if (yearMatch) return yearMatch[1];
+
+  return null;
+}
+
+/**
+ * Fix name case (ALL CAPS -> Title Case, all lower -> Title Case).
+ */
+function fixNameCase(name) {
+  if (!name || typeof name !== 'string') return null;
+  const s = name.trim();
+  if (s.length < 2) return null;
+
+  // Check if all uppercase (has letters) and not just initials
+  const hasLower = /[a-z]/.test(s);
+  const hasUpper = /[A-Z]/.test(s);
+  if (!hasLower && hasUpper && s.length > 3) {
+    // Convert to title case, preserving common all-caps words
+    return s.split(/\s+/).map(word => {
+      // Keep initials uppercase (single letters)
+      if (word.length === 1) return word;
+      // Keep Roman numerals
+      if (/^[IVXLCDM]+$/.test(word)) return word;
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    }).join(' ');
+  }
+
+  // Check if all lowercase
+  if (!hasUpper && hasLower && s.length > 3) {
+    return s.split(/\s+/).map(word => {
+      if (word.length === 1) return word.toUpperCase();
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    }).join(' ');
+  }
+
+  return null; // Already mixed case, no fix needed
+}
+
+/**
+ * Generate auto-fix proposals for a single record.
+ * Returns an array of proposed changes (diff items).
+ */
+function generateAutoFixes(record) {
+  const fixes = [];
+
+  // 1. Parse name into given/family
+  if (record.name && !record.givenNames && !record.familyName) {
+    const parsed = parseName(record.name);
+    if (parsed && (parsed.givenNames || parsed.familyName)) {
+      fixes.push({
+        field: 'givenNames',
+        action: 'add',
+        currentValue: null,
+        proposedValue: parsed.givenNames,
+        confidence: 'high',
+        reason: 'Parsed from full name field'
+      });
+      fixes.push({
+        field: 'familyName',
+        action: 'add',
+        currentValue: null,
+        proposedValue: parsed.familyName,
+        confidence: 'high',
+        reason: 'Parsed from full name field'
+      });
+    }
+  }
+
+  // 2. Fix name case
+  if (record.name) {
+    const fixedName = fixNameCase(record.name);
+    if (fixedName && fixedName !== record.name) {
+      fixes.push({
+        field: 'name',
+        action: 'normalize',
+        currentValue: record.name,
+        proposedValue: fixedName,
+        confidence: 'high',
+        reason: 'Converted from ALL CAPS/lowercase to title case'
+      });
+    }
+  }
+
+  // 3. Normalize dates
+  if (record.birthDate) {
+    const normalized = normalizeDate(record.birthDate);
+    if (normalized && normalized !== record.birthDate) {
+      fixes.push({
+        field: 'birthDate',
+        action: 'normalize',
+        currentValue: record.birthDate,
+        proposedValue: normalized,
+        confidence: 'high',
+        reason: 'Normalized date format to ISO'
+      });
+    }
+  }
+  if (record.deathDate) {
+    const normalized = normalizeDate(record.deathDate);
+    if (normalized && normalized !== record.deathDate) {
+      fixes.push({
+        field: 'deathDate',
+        action: 'normalize',
+        currentValue: record.deathDate,
+        proposedValue: normalized,
+        confidence: 'high',
+        reason: 'Normalized date format to ISO'
+      });
+    }
+  }
+
+  // 4. Estimate birth year from inscription
+  if (!record.birthDate && record.deathDate && record.inscription) {
+    const birthYear = estimateBirthYear(record.deathDate, record.inscription);
+    if (birthYear) {
+      fixes.push({
+        field: 'birthDate',
+        action: 'estimate',
+        currentValue: null,
+        proposedValue: birthYear,
+        confidence: 'medium',
+        reason: `Estimated from death year and age in inscription`
+      });
+    }
+  }
+
+  // 5. Fix invalid coordinates (swap lat/lng if latitude > 90)
+  if (record.latitude !== undefined && record.latitude !== null &&
+      record.longitude !== undefined && record.longitude !== null) {
+    if (Math.abs(record.latitude) > 90 && Math.abs(record.longitude) <= 90) {
+      fixes.push({
+        field: 'latitude',
+        action: 'swap',
+        currentValue: record.latitude,
+        proposedValue: record.longitude,
+        confidence: 'high',
+        reason: 'Latitude out of range (-90 to 90) — appears swapped with longitude'
+      });
+      fixes.push({
+        field: 'longitude',
+        action: 'swap',
+        currentValue: record.longitude,
+        proposedValue: record.latitude,
+        confidence: 'high',
+        reason: 'Swapped with latitude (which was out of range)'
+      });
+    }
+  }
+
+  // 6. Trim whitespace in text fields
+  for (const field of ['name', 'inscription', 'section', 'plot', 'cemeteryId']) {
+    if (record[field] && typeof record[field] === 'string') {
+      const trimmed = record[field].trim();
+      if (trimmed !== record[field]) {
+        fixes.push({
+          field: field,
+          action: 'trim',
+          currentValue: record[field],
+          proposedValue: trimmed,
+          confidence: 'high',
+          reason: 'Trimmed leading/trailing whitespace'
+        });
+      }
+    }
+  }
+
+  // 7. Fix birth after death (swap if exactly swapped)
+  if (record.birthDate && record.deathDate) {
+    const by = parseInt(String(record.birthDate).substring(0, 4));
+    const dy = parseInt(String(record.deathDate).substring(0, 4));
+    if (!isNaN(by) && !isNaN(dy) && by > dy) {
+      // Check if swapping makes sense (birth < death)
+      fixes.push({
+        field: 'birthDate',
+        action: 'swap_dates',
+        currentValue: record.birthDate,
+        proposedValue: record.deathDate,
+        confidence: 'medium',
+        reason: 'Birth date is after death date — dates appear swapped'
+      });
+      fixes.push({
+        field: 'deathDate',
+        action: 'swap_dates',
+        currentValue: record.deathDate,
+        proposedValue: record.birthDate,
+        confidence: 'medium',
+        reason: 'Swapped with birth date (was after death)'
+      });
+    }
+  }
+
+  return fixes;
+}
+
+/**
+ * GET /api/cemeteries/:id/autofix/preview
+ * Scans all records in a cemetery and returns proposed fixes without applying them.
+ */
+async function handleCemeteryAutoFixPreview(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid cemetery ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      cemeteryId: safeId,
+      proposedFixes: [],
+      message: 'GitHub not configured — no auto-fix available'
+    }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('graves', env);
+    const proposedFixes = [];
+    let recordsScanned = 0;
+
+    const fixCounts = {
+      add: 0,
+      normalize: 0,
+      estimate: 0,
+      swap: 0,
+      trim: 0,
+      swap_dates: 0
+    };
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        if (record.cemeteryId !== safeId && record.cemeteryId !== id) continue;
+        recordsScanned++;
+
+        const fixes = generateAutoFixes(record);
+        for (const fix of fixes) {
+          fixCounts[fix.action] = (fixCounts[fix.action] || 0) + 1;
+          proposedFixes.push({
+            recordId: record.id,
+            recordName: record.name || 'Unknown',
+            ...fix
+          });
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    const summary = {
+      totalFixes: proposedFixes.length,
+      recordsScanned: recordsScanned,
+      recordsWithFixes: new Set(proposedFixes.map(f => f.recordId)).size,
+      byAction: fixCounts,
+      highConfidence: proposedFixes.filter(f => f.confidence === 'high').length,
+      mediumConfidence: proposedFixes.filter(f => f.confidence === 'medium').length
+    };
+
+    return jsonResponse({
+      success: true,
+      cemeteryId: safeId,
+      proposedFixes: proposedFixes.slice(0, 200),
+      totalProposed: proposedFixes.length,
+      summary: summary
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to generate auto-fix preview',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/cemeteries/:id/autofix
+ * Applies auto-fixes to records in a cemetery.
+ * Body: { dryRun: boolean, fixTypes: string[] }
+ * If dryRun is true, returns proposed fixes without applying.
+ */
+async function handleCemeteryAutoFix(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid cemetery ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      cemeteryId: safeId,
+      applied: 0,
+      message: 'GitHub not configured — no auto-fix available'
+    }, 200, cors);
+  }
+
+  try {
+    const body = await request.json();
+    const dryRun = body && body.dryRun === true;
+    const allowedTypes = body && Array.isArray(body.fixTypes) ? body.fixTypes : null;
+
+    const files = await listFiles('graves', env);
+    const applied = [];
+    const skipped = [];
+    let recordsScanned = 0;
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        if (record.cemeteryId !== safeId && record.cemeteryId !== id) continue;
+        recordsScanned++;
+
+        const fixes = generateAutoFixes(record);
+        const filteredFixes = allowedTypes
+          ? fixes.filter(f => allowedTypes.includes(f.action))
+          : fixes;
+
+        if (filteredFixes.length === 0) continue;
+
+        // Only apply high-confidence fixes automatically
+        const safeFixes = filteredFixes.filter(f => f.confidence === 'high');
+        const riskyFixes = filteredFixes.filter(f => f.confidence === 'medium');
+
+        if (dryRun) {
+          applied.push({
+            recordId: record.id,
+            recordName: record.name || 'Unknown',
+            fixes: filteredFixes,
+            wouldApply: safeFixes.length,
+            wouldFlag: riskyFixes.length
+          });
+          continue;
+        }
+
+        // Apply high-confidence fixes
+        const updatedRecord = { ...record };
+        for (const fix of safeFixes) {
+          updatedRecord[fix.field] = fix.proposedValue;
+        }
+
+        // Write back if we applied anything
+        if (safeFixes.length > 0) {
+          updatedRecord.updated_date = new Date().toISOString();
+          await writeFile(`graves/${record.id}.json`, JSON.stringify(updatedRecord, null, 2), env);
+
+          applied.push({
+            recordId: record.id,
+            recordName: record.name || 'Unknown',
+            appliedFixes: safeFixes.map(f => ({
+              field: f.field,
+              action: f.action,
+              oldValue: f.currentValue,
+              newValue: f.proposedValue,
+              reason: f.reason
+            })),
+            flaggedFixes: riskyFixes.map(f => ({
+              field: f.field,
+              action: f.action,
+              proposedValue: f.proposedValue,
+              reason: f.reason,
+              confidence: f.confidence
+            }))
+          });
+        } else if (riskyFixes.length > 0) {
+          skipped.push({
+            recordId: record.id,
+            recordName: record.name || 'Unknown',
+            flaggedFixes: riskyFixes
+          });
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    return jsonResponse({
+      success: true,
+      cemeteryId: safeId,
+      dryRun: dryRun,
+      recordsScanned: recordsScanned,
+      recordsFixed: applied.length,
+      recordsFlagged: skipped.length,
+      results: dryRun ? applied : {
+        applied: applied,
+        flagged: skipped
+      }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to apply auto-fixes',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/graves/:id/autofix
+ * Generates auto-fix proposals for a single record.
+ */
+async function handleRecordAutoFix(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      recordId: safeId,
+      proposedFixes: [],
+      message: 'GitHub not configured — no auto-fix available'
+    }, 200, cors);
+  }
+
+  try {
+    const content = await readFile(`graves/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Record not found' }, 404, cors);
+    }
+
+    const record = JSON.parse(content);
+    const fixes = generateAutoFixes(record);
+
+    return jsonResponse({
+      success: true,
+      recordId: safeId,
+      recordName: record.name || null,
+      proposedFixes: fixes,
+      totalFixes: fixes.length,
+      highConfidence: fixes.filter(f => f.confidence === 'high').length,
+      mediumConfidence: fixes.filter(f => f.confidence === 'medium').length,
+      hasSafeFixes: fixes.some(f => f.confidence === 'high'),
+      hasRiskyFixes: fixes.some(f => f.confidence === 'medium')
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to generate auto-fix proposals',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/graves/:id/autofix/apply
+ * Applies proposed fixes to a single record.
+ * Body: { fixTypes: string[] } — optional filter of fix actions to apply
+ */
+async function handleRecordAutoFixApply(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      recordId: safeId,
+      applied: 0,
+      message: 'GitHub not configured — no auto-fix available'
+    }, 200, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const allowedTypes = body && Array.isArray(body.fixTypes) ? body.fixTypes : null;
+
+    const content = await readFile(`graves/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Record not found' }, 404, cors);
+    }
+
+    const record = JSON.parse(content);
+    const fixes = generateAutoFixes(record);
+    const filteredFixes = allowedTypes
+      ? fixes.filter(f => allowedTypes.includes(f.action))
+      : fixes;
+
+    const safeFixes = filteredFixes.filter(f => f.confidence === 'high');
+    const riskyFixes = filteredFixes.filter(f => f.confidence === 'medium');
+
+    if (safeFixes.length === 0) {
+      return jsonResponse({
+        success: true,
+        recordId: safeId,
+        applied: 0,
+        flagged: riskyFixes.length,
+        message: 'No high-confidence fixes to apply. Medium-confidence fixes require manual review.',
+        flaggedFixes: riskyFixes
+      }, 200, cors);
+    }
+
+    const updatedRecord = { ...record };
+    const appliedChanges = [];
+
+    for (const fix of safeFixes) {
+      appliedChanges.push({
+        field: fix.field,
+        action: fix.action,
+        oldValue: fix.currentValue,
+        newValue: fix.proposedValue,
+        reason: fix.reason
+      });
+      updatedRecord[fix.field] = fix.proposedValue;
+    }
+
+    updatedRecord.updated_date = new Date().toISOString();
+    await writeFile(`graves/${safeId}.json`, JSON.stringify(updatedRecord, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      recordId: safeId,
+      recordName: record.name || null,
+      applied: safeFixes.length,
+      flagged: riskyFixes.length,
+      changes: appliedChanges,
+      flaggedFixes: riskyFixes.length > 0 ? riskyFixes : undefined
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to apply auto-fixes',
+      message: error.message
+    }, 500, cors);
+  }
+}
 
 // ── Phase 16.12: AI Smart Recommendations Handlers ──
 

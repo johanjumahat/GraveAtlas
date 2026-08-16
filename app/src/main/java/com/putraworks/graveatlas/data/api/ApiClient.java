@@ -13,6 +13,9 @@ import com.putraworks.graveatlas.data.model.CemeteryHealth;
 import com.putraworks.graveatlas.data.model.GlobalHealthOverview;
 import com.putraworks.graveatlas.data.model.CemeteryRecommendations;
 import com.putraworks.graveatlas.data.model.GlobalRecommendations;
+import com.putraworks.graveatlas.data.model.CemeteryAutoFixPreview;
+import com.putraworks.graveatlas.data.model.CemeteryAutoFixResult;
+import com.putraworks.graveatlas.data.model.RecordAutoFixResult;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -884,6 +887,169 @@ public class ApiClient {
         } catch (java.io.UnsupportedEncodingException e) {
             return value; // UTF-8 is always available on Android
         }
+    }
+
+    // ── Phase 16.13: AI Data Quality Auto-Fix ──
+
+    /**
+     * Preview auto-fixes for a cemetery (no changes applied).
+     * GET /api/cemeteries/{id}/autofix/preview
+     */
+    public void previewCemeteryAutoFix(String cemeteryId,
+                                        final ApiCallback<CemeteryAutoFixPreview> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/cemeteries/" + cemeteryId + "/autofix/preview")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        callback.onSuccess(CemeteryAutoFixPreview.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse auto-fix preview.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Apply auto-fixes to a cemetery.
+     * POST /api/cemeteries/{id}/autofix
+     * Body: { dryRun: boolean, fixTypes: string[] }
+     */
+    public void applyCemeteryAutoFix(String cemeteryId, boolean dryRun,
+                                      String[] fixTypes,
+                                      final ApiCallback<CemeteryAutoFixResult> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("dryRun", dryRun);
+            if (fixTypes != null) {
+                JSONArray arr = new JSONArray();
+                for (String t : fixTypes) arr.put(t);
+                body.put("fixTypes", arr);
+            }
+        } catch (Exception e) { /* ignore */ }
+
+        RequestBody rb = RequestBody.create(body.toString(), MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/cemeteries/" + cemeteryId + "/autofix")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String respBody = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(respBody);
+                        callback.onSuccess(CemeteryAutoFixResult.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse auto-fix result.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get auto-fix proposals for a single record.
+     * POST /api/graves/{id}/autofix
+     */
+    public void getRecordAutoFixProposals(String recordId,
+                                            final ApiCallback<RecordAutoFixResult> callback) {
+        RequestBody rb = RequestBody.create("{}", MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/graves/" + recordId + "/autofix")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        callback.onSuccess(RecordAutoFixResult.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse record auto-fix proposals.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Apply auto-fixes to a single record.
+     * POST /api/graves/{id}/autofix/apply
+     * Body: { fixTypes: string[] } — optional filter
+     */
+    public void applyRecordAutoFix(String recordId, String[] fixTypes,
+                                     final ApiCallback<RecordAutoFixResult> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            if (fixTypes != null) {
+                JSONArray arr = new JSONArray();
+                for (String t : fixTypes) arr.put(t);
+                body.put("fixTypes", arr);
+            }
+        } catch (Exception e) { /* ignore */ }
+
+        RequestBody rb = RequestBody.create(body.toString(), MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/graves/" + recordId + "/autofix/apply")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String respBody = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(respBody);
+                        callback.onSuccess(RecordAutoFixResult.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse auto-fix apply result.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
     }
 
     // ── Phase 16.12: AI Smart Recommendations ──

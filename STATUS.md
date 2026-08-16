@@ -30,6 +30,7 @@
 | 16.10. AI Anomaly Detection | ✅ COMPLETE | 100% |
 | 16.11. AI Cemetery Health Dashboard | ✅ COMPLETE | 100% |
 | 16.12. AI Smart Recommendations | ✅ COMPLETE | 100% |
+| 16.13. AI Data Quality Auto-Fix | ✅ COMPLETE | 100% |
 
 **All 8 core phases complete. Phase 16 AI-native features complete. 1477 tests passing.**
 
@@ -59,9 +60,11 @@
 
 10. **Add — AI Smart Recommendations** ✅ Prioritized actionable recommendations endpoint (`/api/cemeteries/:id/recommendations`) analyzing 6 categories (data quality, anomalies, enrichment, duplicates, content, connections) with 4 priority levels. Global recommendations endpoint (`/api/recommendations/global`) across all cemeteries. Each recommendation includes affected record count, estimated effort, and action endpoint. New models: `CemeteryRecommendations`, `GlobalRecommendations`. 90 new tests. v7.2.12.
 
+11. **Add — AI Data Quality Auto-Fix** ✅ Automated fix proposal and application system with 4 endpoints: cemetery preview (`/autofix/preview`), cemetery apply (`/autofix`), record proposals (`/autofix`), and record apply (`/autofix/apply`). 6 fix types (add, normalize, estimate, swap, trim, swap_dates) with confidence levels (high=auto-apply, medium=flag for review). Helper functions for name parsing, date normalization, birth year estimation, and name case fixing. Dry run support and fix type filtering. New models: `AutoFixProposal`, `CemeteryAutoFixPreview`, `CemeteryAutoFixResult`, `RecordAutoFixResult`. 100+ new tests. v7.2.13.
+
 ## Architecture
 
-- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 80 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
+- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 84 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
 - **Android:** 18+ screens with navigation host, external maps handoff (geo: intent), offline support
 - **Data:** GitHub repository (graveatlas-data) with JSON schemas
 - **Auth:** Google Sign-In with ID token verification, session tokens, ban system
@@ -69,7 +72,7 @@
 - **Timeline:** Chronological event visualization with decade grouping, backend endpoint
 - **External Sources:** OpenStreetMap (Overpass API), Wikidata (SPARQL), Singapore Government Open Data (data.gov.sg)
 
-## Test Suite (2113 tests)
+## Test Suite (2213 tests)
 
 | Test File | Tests | Area |
 |---|---|---|
