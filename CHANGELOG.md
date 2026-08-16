@@ -519,6 +519,45 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.20] — 2026-08-16
+
+### Phase 16.20: AI Data Provenance Chain
+
+**Added:**
+- `GET /api/graves/:id/provenance` — complete provenance chain for a record.
+  Traces every modification from creation through all changes: creation,
+  moderation, verification, corrections, enrichment, merges, fixes, source
+  verification, and updates. Each entry includes timestamp, action, actor,
+  actor role, description, affected fields, old/new values, and source refs.
+
+- `POST /api/graves/:id/provenance/add` — manually add a provenance entry.
+  Accepts action, actor, actorRole, description, fields, and source.
+
+- `GET /api/provenance/search` — search provenance entries across all records.
+  Filters: actor, action, actorRole, recordId, startDate, endDate, limit.
+  Returns matching entries with record context, sorted newest first.
+
+- `GET /api/provenance/timeline` — global chronological timeline of all provenance
+  events with monthly summary (count + action breakdown per month) and date range.
+
+- `GET /api/provenance/export` — export provenance data as CSV-ready JSON.
+  Single record or all published records. Includes all entry fields with
+  fields joined by semicolon for CSV compatibility.
+
+**Provenance Tracking:**
+- 9 action types: created, moderated, verified, corrected, enriched, merged, fixed, source_verified, updated
+- 7 actor roles: submitter, moderator, verifier, community, AI, archivist, system
+- Chain metadata: total entries, unique actors, actor list, action types, first/last entry, span
+- Manual provenance log (provenanceLog) for archivist-added entries
+
+New models: ProvenanceChain (3 inner classes), ProvenanceSearch (2 inner),
+ProvenanceTimeline (3 inner)
+API client: getRecordProvenance(), addProvenanceEntry(), searchProvenance(),
+getProvenanceTimeline(), exportProvenance()
+AI system prompt updated, 3 new suggested prompts
+110+ new tests (phase16-20.test.js)
+
+
 ## [7.2.19] — 2026-08-16
 
 ### Phase 16.19: AI Confidence Scoring

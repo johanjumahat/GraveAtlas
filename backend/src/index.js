@@ -559,6 +559,29 @@ async function handleRequest(request, env, ctx) {
       return await handleConfidenceLeaderboard(request, env, corsHeaders);
     }
 
+    // Phase 16.20: AI Data Provenance Chain
+    if (path.startsWith('/api/graves/') && path.endsWith('/provenance') && method === 'GET') {
+      const id = path.split('/')[3];
+      return await handleGetRecordProvenance(id, request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/graves/') && path.endsWith('/provenance/add') && method === 'POST') {
+      const id = path.split('/')[3];
+      return await handleAddProvenanceEntry(id, request, env, corsHeaders);
+    }
+
+    if (path === '/api/provenance/search' && method === 'GET') {
+      return await handleSearchProvenance(request, env, corsHeaders);
+    }
+
+    if (path === '/api/provenance/timeline' && method === 'GET') {
+      return await handleProvenanceTimeline(request, env, corsHeaders);
+    }
+
+    if (path === '/api/provenance/export' && method === 'GET') {
+      return await handleExportProvenance(request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -3621,6 +3644,533 @@ function safeTokenCompare(a, b) {
 
 // ── Utils ──
 
+// ── Phase 16.20: AI Data Provenance Chain Handlers ──
+
+/**
+ * Build a complete provenance chain for a record.
+ * Traces every modification from creation through all changes.
+ * Each entry: timestamp, action, actor, field changes, source.
+ */
+function buildProvenanceChain(record) {
+  const chain = [];
+
+  // 1. Creation event
+  chain.push({
+    timestamp: record.createdDate || record.submissionDate || record.updatedDate || 'unknown',
+    action: 'created',
+    actor: record.submitterName || record.createdBy || 'unknown',
+    actorRole: 'submitter',
+    description: `Record created for ${record.name || record.graveIdentifier || 'Unknown'}`,
+    fields: Object.keys(record).filter(k =>
+      !['id', 'createdDate', 'updatedDate', 'createdBy'].includes(k) &&
+      record[k] !== null && record[k] !== undefined
+    ),
+    source: record.sourceRefs || []
+  });
+
+  // 2. Submission/moderation events
+  if (record.moderationHistory) {
+    for (const entry of record.moderationHistory) {
+      chain.push({
+        timestamp: entry.timestamp || entry.date || 'unknown',
+        action: 'moderated',
+        actor: entry.moderator || entry.actor || 'moderator',
+        actorRole: 'moderator',
+        description: entry.action || entry.description || 'Record moderated',
+        fields: entry.fields || [],
+        source: []
+      });
+    }
+  }
+
+  // 3. Verification events
+  if (record.verificationStatus && record.verificationStatus !== 'unverified') {
+    chain.push({
+      timestamp: record.verifiedDate || record.updatedDate || 'unknown',
+      action: 'verified',
+      actor: record.verifiedBy || record.submitterName || 'verifier',
+      actorRole: 'verifier',
+      description: `Record marked as ${record.verificationStatus}`,
+      fields: ['verificationStatus'],
+      source: []
+    });
+  }
+
+  // 4. Correction events
+  if (record.corrections && record.corrections.length > 0) {
+    for (const correction of record.corrections) {
+      chain.push({
+        timestamp: correction.timestamp || correction.date || 'unknown',
+        action: 'corrected',
+        actor: correction.submitterName || correction.correctionBy || 'community',
+        actorRole: 'community',
+        description: correction.description || correction.reason || 'Field correction submitted',
+        fields: correction.fields || [correction.field].filter(Boolean),
+        oldValue: correction.oldValue || null,
+        newValue: correction.newValue || correction.suggestedValue || null,
+        source: correction.sourceRefs || []
+      });
+    }
+  }
+
+  // 5. Enrichment events
+  if (record.enrichmentHistory) {
+    for (const entry of record.enrichmentHistory) {
+      chain.push({
+        timestamp: entry.timestamp || entry.date || 'unknown',
+        action: 'enriched',
+        actor: entry.enrichedBy || entry.source || 'AI enrichment',
+        actorRole: 'AI',
+        description: entry.description || 'Record enriched with additional data',
+        fields: entry.fields || [],
+        source: entry.source ? [entry.source] : []
+      });
+    }
+  }
+
+  // 6. Merge events
+  if (record.mergeHistory && record.mergeHistory.length > 0) {
+    for (const merge of record.mergeHistory) {
+      chain.push({
+        timestamp: merge.mergedAt || 'unknown',
+        action: 'merged',
+        actor: merge.mergedBy || 'system',
+        actorRole: 'archivist',
+        description: `Merged from ${merge.mergedFromName || merge.mergedFromId || 'another record'}`,
+        fields: [],
+        mergeDetails: {
+          mergedFromId: merge.mergedFromId,
+          mergedFromName: merge.mergedFromName,
+          fieldsApplied: merge.fieldsApplied || 0,
+          fieldsSkipped: merge.fieldsSkipped || 0,
+          similarityScore: merge.similarityScore || 0
+        },
+        source: []
+      });
+    }
+  }
+
+  // 7. Fix events
+  if (record.fixHistory) {
+    for (const entry of record.fixHistory) {
+      chain.push({
+        timestamp: entry.timestamp || entry.date || 'unknown',
+        action: 'fixed',
+        actor: entry.fixedBy || entry.actor || 'system',
+        actorRole: entry.fixedBy ? 'archivist' : 'AI',
+        description: entry.description || entry.fixDescription || 'Automated fix applied',
+        fields: entry.fields || [],
+        source: []
+      });
+    }
+  }
+
+  // 8. Source verification events
+  if (record.sourceVerificationHistory) {
+    for (const entry of record.sourceVerificationHistory) {
+      chain.push({
+        timestamp: entry.timestamp || 'unknown',
+        action: 'source_verified',
+        actor: 'system',
+        actorRole: 'AI',
+        description: `Source verification: ${entry.live || 0} live, ${entry.dead || 0} dead, ${entry.archived || 0} archived`,
+        fields: ['sourceRefs'],
+        source: []
+      });
+    }
+  }
+
+  // 9. Last update
+  if (record.updatedDate && record.updatedDate !== (record.createdDate || record.submissionDate)) {
+    // Check if we haven't already captured this in another event
+    const lastEntry = chain[chain.length - 1];
+    if (!lastEntry || lastEntry.timestamp !== record.updatedDate) {
+      chain.push({
+        timestamp: record.updatedDate,
+        action: 'updated',
+        actor: record.updatedBy || 'system',
+        actorRole: 'system',
+        description: 'Record updated',
+        fields: [],
+        source: []
+      });
+    }
+  }
+
+  // Sort by timestamp (oldest first)
+  chain.sort((a, b) => {
+    const ta = new Date(a.timestamp).getTime() || 0;
+    const tb = new Date(b.timestamp).getTime() || 0;
+    return ta - tb;
+  });
+
+  // Compute chain metadata
+  const actors = [...new Set(chain.map(e => e.actor))];
+  const actions = [...new Set(chain.map(e => e.action))];
+  const actorRoles = [...new Set(chain.map(e => e.actorRole))];
+
+  return {
+    recordId: record.id,
+    recordName: record.name || record.graveIdentifier || 'Unknown',
+    chain: chain,
+    metadata: {
+      totalEntries: chain.length,
+      uniqueActors: actors.length,
+      actorList: actors,
+      actionTypes: actions,
+      actorRoles: actorRoles,
+      firstEntry: chain.length > 0 ? chain[0].timestamp : null,
+      lastEntry: chain.length > 0 ? chain[chain.length - 1].timestamp : null,
+      span: chain.length >= 2
+        ? `${chain[0].timestamp} → ${chain[chain.length - 1].timestamp}`
+        : (chain.length === 1 ? chain[0].timestamp : 'unknown')
+    }
+  };
+}
+
+/**
+ * GET /api/graves/:id/provenance
+ * Returns the complete provenance chain for a record.
+ */
+async function handleGetRecordProvenance(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      message: 'GitHub not configured — provenance unavailable',
+      provenance: { chain: [], metadata: { totalEntries: 0 } }
+    }, 200, cors);
+  }
+
+  try {
+    const content = await readFile(`graves/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Record not found' }, 404, cors);
+    }
+
+    const record = JSON.parse(content);
+    const provenance = buildProvenanceChain(record);
+
+    return jsonResponse({
+      success: true,
+      provenance: provenance
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to build provenance chain',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/graves/:id/provenance/add
+ * Manually add a provenance entry to a record.
+ * Body: { action, actor, actorRole, description, fields, source }
+ */
+async function handleAddProvenanceEntry(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { action, actor, actorRole, description, fields, source } = body || {};
+
+    if (!action || !description) {
+      return jsonResponse({
+        success: false,
+        error: 'Missing required fields: action, description'
+      }, 400, cors);
+    }
+
+    const content = await readFile(`graves/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Record not found' }, 404, cors);
+    }
+
+    const record = JSON.parse(content);
+
+    // Initialize provenance log if needed
+    record.provenanceLog = record.provenanceLog || [];
+
+    const entry = {
+      timestamp: new Date().toISOString(),
+      action: action,
+      actor: actor || 'unknown',
+      actorRole: actorRole || 'manual',
+      description: description,
+      fields: fields || [],
+      source: source || []
+    };
+
+    record.provenanceLog.push(entry);
+    record.updatedDate = new Date().toISOString();
+
+    await writeFile(`graves/${safeId}.json`, JSON.stringify(record, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      message: 'Provenance entry added',
+      entry: entry,
+      totalEntries: record.provenanceLog.length
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to add provenance entry',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/provenance/search
+ * Search provenance entries across all records.
+ * Query params: actor, action, actorRole, recordId, startDate, endDate
+ */
+async function handleSearchProvenance(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, message: 'GitHub not configured', results: [] }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const actorFilter = url.searchParams.get('actor');
+    const actionFilter = url.searchParams.get('action');
+    const roleFilter = url.searchParams.get('actorRole');
+    const recordIdFilter = url.searchParams.get('recordId');
+    const startDate = url.searchParams.get('startDate');
+    const endDate = url.searchParams.get('endDate');
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '100'), 500);
+
+    const files = await listFiles('graves', env);
+    const results = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+
+        // Filter by recordId if provided
+        if (recordIdFilter && record.id !== recordIdFilter) continue;
+
+        const provenance = buildProvenanceChain(record);
+
+        for (const entry of provenance.chain) {
+          // Apply filters
+          if (actorFilter && entry.actor !== actorFilter) continue;
+          if (actionFilter && entry.action !== actionFilter) continue;
+          if (roleFilter && entry.actorRole !== roleFilter) continue;
+
+          if (startDate) {
+            const entryDate = new Date(entry.timestamp).getTime() || 0;
+            if (entryDate < new Date(startDate).getTime()) continue;
+          }
+          if (endDate) {
+            const entryDate = new Date(entry.timestamp).getTime() || 0;
+            if (entryDate > new Date(endDate).getTime()) continue;
+          }
+
+          results.push({
+            ...entry,
+            recordId: provenance.recordId,
+            recordName: provenance.recordName
+          });
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    // Sort by timestamp (newest first)
+    results.sort((a, b) => {
+      const ta = new Date(a.timestamp).getTime() || 0;
+      const tb = new Date(b.timestamp).getTime() || 0;
+      return tb - ta;
+    });
+
+    return jsonResponse({
+      success: true,
+      results: results.slice(0, limit),
+      totalFound: results.length,
+      filters: { actor: actorFilter, action: actionFilter, actorRole: roleFilter,
+        recordId: recordIdFilter, startDate, endDate }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to search provenance',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/provenance/timeline
+ * Global timeline of all provenance events across the system.
+ * Query params: startDate, endDate, limit
+ */
+async function handleProvenanceTimeline(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, message: 'GitHub not configured', timeline: [] }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const startDate = url.searchParams.get('startDate');
+    const endDate = url.searchParams.get('endDate');
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '200'), 1000);
+
+    const files = await listFiles('graves', env);
+    const events = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        const provenance = buildProvenanceChain(record);
+
+        for (const entry of provenance.chain) {
+          if (startDate) {
+            const d = new Date(entry.timestamp).getTime() || 0;
+            if (d < new Date(startDate).getTime()) continue;
+          }
+          if (endDate) {
+            const d = new Date(entry.timestamp).getTime() || 0;
+            if (d > new Date(endDate).getTime()) continue;
+          }
+
+          events.push({
+            timestamp: entry.timestamp,
+            action: entry.action,
+            actor: entry.actor,
+            actorRole: entry.actorRole,
+            description: entry.description,
+            recordId: provenance.recordId,
+            recordName: provenance.recordName
+          });
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    // Sort chronologically
+    events.sort((a, b) => {
+      const ta = new Date(a.timestamp).getTime() || 0;
+      const tb = new Date(b.timestamp).getTime() || 0;
+      return ta - tb;
+    });
+
+    // Group by month for summary
+    const byMonth = {};
+    for (const e of events) {
+      const month = (e.timestamp || '').substring(0, 7); // YYYY-MM
+      if (!byMonth[month]) byMonth[month] = { month, count: 0, actions: {} };
+      byMonth[month].count++;
+      byMonth[month].actions[e.action] = (byMonth[month].actions[e.action] || 0) + 1;
+    }
+
+    return jsonResponse({
+      success: true,
+      timeline: events.slice(-limit),
+      totalEvents: events.length,
+      monthlySummary: Object.values(byMonth).sort((a, b) => a.month.localeCompare(b.month)),
+      dateRange: events.length > 0
+        ? { earliest: events[0].timestamp, latest: events[events.length - 1].timestamp }
+        : null
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to build timeline',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/provenance/export
+ * Export provenance data for a record or all records (CSV-ready JSON).
+ * Query params: recordId (optional, exports all if not provided)
+ */
+async function handleExportProvenance(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, message: 'GitHub not configured', export: [] }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const recordId = url.searchParams.get('recordId');
+
+    const records = [];
+
+    if (recordId) {
+      const safeId = sanitizePathSegment(recordId);
+      if (!safeId || safeId !== recordId) {
+        return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+      }
+      const content = await readFile(`graves/${safeId}.json`, env);
+      if (content) {
+        const record = JSON.parse(content);
+        records.push(record);
+      }
+    } else {
+      const files = await listFiles('graves', env);
+      for (const file of files) {
+        try {
+          const content = await readFile(`graves/${file}`, env);
+          if (!content) continue;
+          const record = JSON.parse(content);
+          if (record.status === 'published') records.push(record);
+        } catch (e) { /* skip */ }
+      }
+    }
+
+    const exportData = [];
+
+    for (const record of records) {
+      const provenance = buildProvenanceChain(record);
+      for (const entry of provenance.chain) {
+        exportData.push({
+          recordId: provenance.recordId,
+          recordName: provenance.recordName,
+          timestamp: entry.timestamp,
+          action: entry.action,
+          actor: entry.actor,
+          actorRole: entry.actorRole,
+          description: entry.description,
+          fields: Array.isArray(entry.fields) ? entry.fields.join(';') : ''
+        });
+      }
+    }
+
+    return jsonResponse({
+      success: true,
+      export: exportData,
+      totalEntries: exportData.length,
+      totalRecords: records.length,
+      exportedAt: new Date().toISOString(),
+      format: 'JSON (CSV-ready)'
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to export provenance',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
 // ── Phase 16.19: AI Confidence Scoring Handlers ──
 
 /**
@@ -5856,6 +6406,533 @@ function generateRecommendations(records, stats, anomalySummary) {
   }
 
   return recommendations;
+}
+
+// ── Phase 16.20: AI Data Provenance Chain Handlers ──
+
+/**
+ * Build a complete provenance chain for a record.
+ * Traces every modification from creation through all changes.
+ * Each entry: timestamp, action, actor, field changes, source.
+ */
+function buildProvenanceChain(record) {
+  const chain = [];
+
+  // 1. Creation event
+  chain.push({
+    timestamp: record.createdDate || record.submissionDate || record.updatedDate || 'unknown',
+    action: 'created',
+    actor: record.submitterName || record.createdBy || 'unknown',
+    actorRole: 'submitter',
+    description: `Record created for ${record.name || record.graveIdentifier || 'Unknown'}`,
+    fields: Object.keys(record).filter(k =>
+      !['id', 'createdDate', 'updatedDate', 'createdBy'].includes(k) &&
+      record[k] !== null && record[k] !== undefined
+    ),
+    source: record.sourceRefs || []
+  });
+
+  // 2. Submission/moderation events
+  if (record.moderationHistory) {
+    for (const entry of record.moderationHistory) {
+      chain.push({
+        timestamp: entry.timestamp || entry.date || 'unknown',
+        action: 'moderated',
+        actor: entry.moderator || entry.actor || 'moderator',
+        actorRole: 'moderator',
+        description: entry.action || entry.description || 'Record moderated',
+        fields: entry.fields || [],
+        source: []
+      });
+    }
+  }
+
+  // 3. Verification events
+  if (record.verificationStatus && record.verificationStatus !== 'unverified') {
+    chain.push({
+      timestamp: record.verifiedDate || record.updatedDate || 'unknown',
+      action: 'verified',
+      actor: record.verifiedBy || record.submitterName || 'verifier',
+      actorRole: 'verifier',
+      description: `Record marked as ${record.verificationStatus}`,
+      fields: ['verificationStatus'],
+      source: []
+    });
+  }
+
+  // 4. Correction events
+  if (record.corrections && record.corrections.length > 0) {
+    for (const correction of record.corrections) {
+      chain.push({
+        timestamp: correction.timestamp || correction.date || 'unknown',
+        action: 'corrected',
+        actor: correction.submitterName || correction.correctionBy || 'community',
+        actorRole: 'community',
+        description: correction.description || correction.reason || 'Field correction submitted',
+        fields: correction.fields || [correction.field].filter(Boolean),
+        oldValue: correction.oldValue || null,
+        newValue: correction.newValue || correction.suggestedValue || null,
+        source: correction.sourceRefs || []
+      });
+    }
+  }
+
+  // 5. Enrichment events
+  if (record.enrichmentHistory) {
+    for (const entry of record.enrichmentHistory) {
+      chain.push({
+        timestamp: entry.timestamp || entry.date || 'unknown',
+        action: 'enriched',
+        actor: entry.enrichedBy || entry.source || 'AI enrichment',
+        actorRole: 'AI',
+        description: entry.description || 'Record enriched with additional data',
+        fields: entry.fields || [],
+        source: entry.source ? [entry.source] : []
+      });
+    }
+  }
+
+  // 6. Merge events
+  if (record.mergeHistory && record.mergeHistory.length > 0) {
+    for (const merge of record.mergeHistory) {
+      chain.push({
+        timestamp: merge.mergedAt || 'unknown',
+        action: 'merged',
+        actor: merge.mergedBy || 'system',
+        actorRole: 'archivist',
+        description: `Merged from ${merge.mergedFromName || merge.mergedFromId || 'another record'}`,
+        fields: [],
+        mergeDetails: {
+          mergedFromId: merge.mergedFromId,
+          mergedFromName: merge.mergedFromName,
+          fieldsApplied: merge.fieldsApplied || 0,
+          fieldsSkipped: merge.fieldsSkipped || 0,
+          similarityScore: merge.similarityScore || 0
+        },
+        source: []
+      });
+    }
+  }
+
+  // 7. Fix events
+  if (record.fixHistory) {
+    for (const entry of record.fixHistory) {
+      chain.push({
+        timestamp: entry.timestamp || entry.date || 'unknown',
+        action: 'fixed',
+        actor: entry.fixedBy || entry.actor || 'system',
+        actorRole: entry.fixedBy ? 'archivist' : 'AI',
+        description: entry.description || entry.fixDescription || 'Automated fix applied',
+        fields: entry.fields || [],
+        source: []
+      });
+    }
+  }
+
+  // 8. Source verification events
+  if (record.sourceVerificationHistory) {
+    for (const entry of record.sourceVerificationHistory) {
+      chain.push({
+        timestamp: entry.timestamp || 'unknown',
+        action: 'source_verified',
+        actor: 'system',
+        actorRole: 'AI',
+        description: `Source verification: ${entry.live || 0} live, ${entry.dead || 0} dead, ${entry.archived || 0} archived`,
+        fields: ['sourceRefs'],
+        source: []
+      });
+    }
+  }
+
+  // 9. Last update
+  if (record.updatedDate && record.updatedDate !== (record.createdDate || record.submissionDate)) {
+    // Check if we haven't already captured this in another event
+    const lastEntry = chain[chain.length - 1];
+    if (!lastEntry || lastEntry.timestamp !== record.updatedDate) {
+      chain.push({
+        timestamp: record.updatedDate,
+        action: 'updated',
+        actor: record.updatedBy || 'system',
+        actorRole: 'system',
+        description: 'Record updated',
+        fields: [],
+        source: []
+      });
+    }
+  }
+
+  // Sort by timestamp (oldest first)
+  chain.sort((a, b) => {
+    const ta = new Date(a.timestamp).getTime() || 0;
+    const tb = new Date(b.timestamp).getTime() || 0;
+    return ta - tb;
+  });
+
+  // Compute chain metadata
+  const actors = [...new Set(chain.map(e => e.actor))];
+  const actions = [...new Set(chain.map(e => e.action))];
+  const actorRoles = [...new Set(chain.map(e => e.actorRole))];
+
+  return {
+    recordId: record.id,
+    recordName: record.name || record.graveIdentifier || 'Unknown',
+    chain: chain,
+    metadata: {
+      totalEntries: chain.length,
+      uniqueActors: actors.length,
+      actorList: actors,
+      actionTypes: actions,
+      actorRoles: actorRoles,
+      firstEntry: chain.length > 0 ? chain[0].timestamp : null,
+      lastEntry: chain.length > 0 ? chain[chain.length - 1].timestamp : null,
+      span: chain.length >= 2
+        ? `${chain[0].timestamp} → ${chain[chain.length - 1].timestamp}`
+        : (chain.length === 1 ? chain[0].timestamp : 'unknown')
+    }
+  };
+}
+
+/**
+ * GET /api/graves/:id/provenance
+ * Returns the complete provenance chain for a record.
+ */
+async function handleGetRecordProvenance(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      message: 'GitHub not configured — provenance unavailable',
+      provenance: { chain: [], metadata: { totalEntries: 0 } }
+    }, 200, cors);
+  }
+
+  try {
+    const content = await readFile(`graves/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Record not found' }, 404, cors);
+    }
+
+    const record = JSON.parse(content);
+    const provenance = buildProvenanceChain(record);
+
+    return jsonResponse({
+      success: true,
+      provenance: provenance
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to build provenance chain',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/graves/:id/provenance/add
+ * Manually add a provenance entry to a record.
+ * Body: { action, actor, actorRole, description, fields, source }
+ */
+async function handleAddProvenanceEntry(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { action, actor, actorRole, description, fields, source } = body || {};
+
+    if (!action || !description) {
+      return jsonResponse({
+        success: false,
+        error: 'Missing required fields: action, description'
+      }, 400, cors);
+    }
+
+    const content = await readFile(`graves/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Record not found' }, 404, cors);
+    }
+
+    const record = JSON.parse(content);
+
+    // Initialize provenance log if needed
+    record.provenanceLog = record.provenanceLog || [];
+
+    const entry = {
+      timestamp: new Date().toISOString(),
+      action: action,
+      actor: actor || 'unknown',
+      actorRole: actorRole || 'manual',
+      description: description,
+      fields: fields || [],
+      source: source || []
+    };
+
+    record.provenanceLog.push(entry);
+    record.updatedDate = new Date().toISOString();
+
+    await writeFile(`graves/${safeId}.json`, JSON.stringify(record, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      message: 'Provenance entry added',
+      entry: entry,
+      totalEntries: record.provenanceLog.length
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to add provenance entry',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/provenance/search
+ * Search provenance entries across all records.
+ * Query params: actor, action, actorRole, recordId, startDate, endDate
+ */
+async function handleSearchProvenance(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, message: 'GitHub not configured', results: [] }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const actorFilter = url.searchParams.get('actor');
+    const actionFilter = url.searchParams.get('action');
+    const roleFilter = url.searchParams.get('actorRole');
+    const recordIdFilter = url.searchParams.get('recordId');
+    const startDate = url.searchParams.get('startDate');
+    const endDate = url.searchParams.get('endDate');
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '100'), 500);
+
+    const files = await listFiles('graves', env);
+    const results = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+
+        // Filter by recordId if provided
+        if (recordIdFilter && record.id !== recordIdFilter) continue;
+
+        const provenance = buildProvenanceChain(record);
+
+        for (const entry of provenance.chain) {
+          // Apply filters
+          if (actorFilter && entry.actor !== actorFilter) continue;
+          if (actionFilter && entry.action !== actionFilter) continue;
+          if (roleFilter && entry.actorRole !== roleFilter) continue;
+
+          if (startDate) {
+            const entryDate = new Date(entry.timestamp).getTime() || 0;
+            if (entryDate < new Date(startDate).getTime()) continue;
+          }
+          if (endDate) {
+            const entryDate = new Date(entry.timestamp).getTime() || 0;
+            if (entryDate > new Date(endDate).getTime()) continue;
+          }
+
+          results.push({
+            ...entry,
+            recordId: provenance.recordId,
+            recordName: provenance.recordName
+          });
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    // Sort by timestamp (newest first)
+    results.sort((a, b) => {
+      const ta = new Date(a.timestamp).getTime() || 0;
+      const tb = new Date(b.timestamp).getTime() || 0;
+      return tb - ta;
+    });
+
+    return jsonResponse({
+      success: true,
+      results: results.slice(0, limit),
+      totalFound: results.length,
+      filters: { actor: actorFilter, action: actionFilter, actorRole: roleFilter,
+        recordId: recordIdFilter, startDate, endDate }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to search provenance',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/provenance/timeline
+ * Global timeline of all provenance events across the system.
+ * Query params: startDate, endDate, limit
+ */
+async function handleProvenanceTimeline(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, message: 'GitHub not configured', timeline: [] }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const startDate = url.searchParams.get('startDate');
+    const endDate = url.searchParams.get('endDate');
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '200'), 1000);
+
+    const files = await listFiles('graves', env);
+    const events = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        const provenance = buildProvenanceChain(record);
+
+        for (const entry of provenance.chain) {
+          if (startDate) {
+            const d = new Date(entry.timestamp).getTime() || 0;
+            if (d < new Date(startDate).getTime()) continue;
+          }
+          if (endDate) {
+            const d = new Date(entry.timestamp).getTime() || 0;
+            if (d > new Date(endDate).getTime()) continue;
+          }
+
+          events.push({
+            timestamp: entry.timestamp,
+            action: entry.action,
+            actor: entry.actor,
+            actorRole: entry.actorRole,
+            description: entry.description,
+            recordId: provenance.recordId,
+            recordName: provenance.recordName
+          });
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    // Sort chronologically
+    events.sort((a, b) => {
+      const ta = new Date(a.timestamp).getTime() || 0;
+      const tb = new Date(b.timestamp).getTime() || 0;
+      return ta - tb;
+    });
+
+    // Group by month for summary
+    const byMonth = {};
+    for (const e of events) {
+      const month = (e.timestamp || '').substring(0, 7); // YYYY-MM
+      if (!byMonth[month]) byMonth[month] = { month, count: 0, actions: {} };
+      byMonth[month].count++;
+      byMonth[month].actions[e.action] = (byMonth[month].actions[e.action] || 0) + 1;
+    }
+
+    return jsonResponse({
+      success: true,
+      timeline: events.slice(-limit),
+      totalEvents: events.length,
+      monthlySummary: Object.values(byMonth).sort((a, b) => a.month.localeCompare(b.month)),
+      dateRange: events.length > 0
+        ? { earliest: events[0].timestamp, latest: events[events.length - 1].timestamp }
+        : null
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to build timeline',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/provenance/export
+ * Export provenance data for a record or all records (CSV-ready JSON).
+ * Query params: recordId (optional, exports all if not provided)
+ */
+async function handleExportProvenance(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, message: 'GitHub not configured', export: [] }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const recordId = url.searchParams.get('recordId');
+
+    const records = [];
+
+    if (recordId) {
+      const safeId = sanitizePathSegment(recordId);
+      if (!safeId || safeId !== recordId) {
+        return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+      }
+      const content = await readFile(`graves/${safeId}.json`, env);
+      if (content) {
+        const record = JSON.parse(content);
+        records.push(record);
+      }
+    } else {
+      const files = await listFiles('graves', env);
+      for (const file of files) {
+        try {
+          const content = await readFile(`graves/${file}`, env);
+          if (!content) continue;
+          const record = JSON.parse(content);
+          if (record.status === 'published') records.push(record);
+        } catch (e) { /* skip */ }
+      }
+    }
+
+    const exportData = [];
+
+    for (const record of records) {
+      const provenance = buildProvenanceChain(record);
+      for (const entry of provenance.chain) {
+        exportData.push({
+          recordId: provenance.recordId,
+          recordName: provenance.recordName,
+          timestamp: entry.timestamp,
+          action: entry.action,
+          actor: entry.actor,
+          actorRole: entry.actorRole,
+          description: entry.description,
+          fields: Array.isArray(entry.fields) ? entry.fields.join(';') : ''
+        });
+      }
+    }
+
+    return jsonResponse({
+      success: true,
+      export: exportData,
+      totalEntries: exportData.length,
+      totalRecords: records.length,
+      exportedAt: new Date().toISOString(),
+      format: 'JSON (CSV-ready)'
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to export provenance',
+      message: error.message
+    }, 500, cors);
+  }
 }
 
 // ── Phase 16.19: AI Confidence Scoring Handlers ──

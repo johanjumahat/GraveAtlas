@@ -35,6 +35,9 @@ import com.putraworks.graveatlas.data.model.SourceVerificationStatus;
 import com.putraworks.graveatlas.data.model.ConfidenceScore;
 import com.putraworks.graveatlas.data.model.CemeteryConfidence;
 import com.putraworks.graveatlas.data.model.ConfidenceLeaderboard;
+import com.putraworks.graveatlas.data.model.ProvenanceChain;
+import com.putraworks.graveatlas.data.model.ProvenanceSearch;
+import com.putraworks.graveatlas.data.model.ProvenanceTimeline;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -906,6 +909,216 @@ public class ApiClient {
         } catch (java.io.UnsupportedEncodingException e) {
             return value; // UTF-8 is always available on Android
         }
+    }
+
+    // ── Phase 16.20: AI Data Provenance Chain ──
+
+    /**
+     * Get the complete provenance chain for a record.
+     * GET /api/graves/{id}/provenance
+     */
+    public void getRecordProvenance(String recordId,
+                                       final ApiCallback<ProvenanceChain> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/graves/" + recordId + "/provenance")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        JSONObject prov = obj.optJSONObject("provenance");
+                        if (prov != null) {
+                            callback.onSuccess(ProvenanceChain.fromJson(prov));
+                        } else {
+                            callback.onError("Provenance not found in response.");
+                        }
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse provenance chain.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Add a manual provenance entry to a record.
+     * POST /api/graves/{id}/provenance/add
+     */
+    public void addProvenanceEntry(String recordId, String action, String actor,
+                                      String actorRole, String description,
+                                      java.util.List<String> fields,
+                                      final ApiCallback<JSONObject> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("action", action);
+            body.put("actor", actor);
+            body.put("actorRole", actorRole);
+            body.put("description", description);
+            if (fields != null) {
+                JSONArray arr = new JSONArray();
+                for (String f : fields) arr.put(f);
+                body.put("fields", arr);
+            }
+        } catch (Exception e) { /* ignore */ }
+
+        RequestBody rb = RequestBody.create(body.toString(), MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/graves/" + recordId + "/provenance/add")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse response.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Search provenance entries across all records.
+     * GET /api/provenance/search?actor=&action=&actorRole=&recordId=&startDate=&endDate=&limit=
+     */
+    public void searchProvenance(String actor, String action, String actorRole,
+                                    String recordId, String startDate, String endDate, int limit,
+                                    final ApiCallback<ProvenanceSearch> callback) {
+        java.util.List<String> params = new java.util.ArrayList<>();
+        if (actor != null) params.add("actor=" + actor);
+        if (action != null) params.add("action=" + action);
+        if (actorRole != null) params.add("actorRole=" + actorRole);
+        if (recordId != null) params.add("recordId=" + recordId);
+        if (startDate != null) params.add("startDate=" + startDate);
+        if (endDate != null) params.add("endDate=" + endDate);
+        params.add("limit=" + limit);
+
+        String url = baseUrl + "/api/provenance/search?" + String.join("&", params);
+
+        Request request = new Request.Builder()
+                .url(url)
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        callback.onSuccess(ProvenanceSearch.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse provenance search results.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get global provenance timeline.
+     * GET /api/provenance/timeline?startDate=&endDate=&limit=
+     */
+    public void getProvenanceTimeline(String startDate, String endDate, int limit,
+                                         final ApiCallback<ProvenanceTimeline> callback) {
+        String url = baseUrl + "/api/provenance/timeline?limit=" + limit;
+        if (startDate != null) url += "&startDate=" + startDate;
+        if (endDate != null) url += "&endDate=" + endDate;
+
+        Request request = new Request.Builder()
+                .url(url)
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        callback.onSuccess(ProvenanceTimeline.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse provenance timeline.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Export provenance data (CSV-ready JSON).
+     * GET /api/provenance/export?recordId=
+     */
+    public void exportProvenance(String recordId,
+                                   final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/provenance/export";
+        if (recordId != null) url += "?recordId=" + recordId;
+
+        Request request = new Request.Builder()
+                .url(url)
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse export.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
     }
 
     // ── Phase 16.19: AI Confidence Scoring ──
