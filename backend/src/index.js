@@ -603,6 +603,51 @@ async function handleRequest(request, env, ctx) {
       return await handleExportBatch(request, env, corsHeaders);
     }
 
+    // Phase 16.22: AI Collaborative Curation
+    if (path === '/api/curation/tasks' && method === 'POST') {
+      return await handleCreateCurationTask(request, env, corsHeaders);
+    }
+
+    if (path === '/api/curation/tasks' && method === 'GET') {
+      return await handleListCurationTasks(request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/curation/tasks/') && method === 'GET') {
+      const id = path.split('/')[3];
+      return await handleGetCurationTask(id, request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/curation/tasks/') && path.includes('/assign') && method === 'POST') {
+      const id = path.split('/')[3];
+      return await handleAssignTask(id, request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/curation/tasks/') && path.includes('/complete') && method === 'POST') {
+      const id = path.split('/')[3];
+      return await handleCompleteTask(id, request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/curation/tasks/') && path.includes('/review') && method === 'POST') {
+      const id = path.split('/')[3];
+      return await handleReviewTask(id, request, env, corsHeaders);
+    }
+
+    if (path === '/api/curation/queue' && method === 'GET') {
+      return await handleCurationQueue(request, env, corsHeaders);
+    }
+
+    if (path === '/api/curation/lock' && method === 'POST') {
+      return await handleLockRecord(request, env, corsHeaders);
+    }
+
+    if (path === '/api/curation/lock' && method === 'DELETE') {
+      return await handleUnlockRecord(request, env, corsHeaders);
+    }
+
+    if (path === '/api/curation/stats' && method === 'GET') {
+      return await handleCurationStats(request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -3664,6 +3709,589 @@ function safeTokenCompare(a, b) {
 }
 
 // ── Utils ──
+
+// ── Phase 16.22: AI Collaborative Curation Handlers ──
+
+const TASK_TYPES = ['verify', 'enrich', 'fix', 'merge', 'review', 'transcribe', 'geocode', 'cleanup'];
+const TASK_PRIORITIES = ['low', 'medium', 'high', 'urgent'];
+const TASK_STATUSES = ['pending', 'assigned', 'in_progress', 'submitted', 'reviewing', 'completed', 'cancelled'];
+
+/**
+ * POST /api/curation/tasks
+ * Create a new curation task.
+ * Body: { type, recordId, cemeteryId, title, description, priority, assignedTo, deadline }
+ */
+async function handleCreateCurationTask(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { type, recordId, cemeteryId, title, description, priority, assignedTo, deadline, createdBy } = body || {};
+
+    if (!type || !TASK_TYPES.includes(type)) {
+      return jsonResponse({ success: false, error: `Invalid task type. Must be one of: ${TASK_TYPES.join(', ')}` }, 400, cors);
+    }
+    if (!title) {
+      return jsonResponse({ success: false, error: 'Missing required field: title' }, 400, cors);
+    }
+    if (priority && !TASK_PRIORITIES.includes(priority)) {
+      return jsonResponse({ success: false, error: `Invalid priority. Must be one of: ${TASK_PRIORITIES.join(', ')}` }, 400, cors);
+    }
+
+    const taskId = 'task_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+    const now = new Date().toISOString();
+
+    const task = {
+      id: taskId,
+      type,
+      recordId: recordId || null,
+      cemeteryId: cemeteryId || null,
+      title,
+      description: description || '',
+      priority: priority || 'medium',
+      status: assignedTo ? 'assigned' : 'pending',
+      assignedTo: assignedTo || null,
+      assignedAt: assignedTo ? now : null,
+      createdBy: createdBy || 'system',
+      createdAt: now,
+      updatedAt: now,
+      deadline: deadline || null,
+      submittedBy: null,
+      submittedAt: null,
+      reviewedBy: null,
+      reviewedAt: null,
+      reviewResult: null,
+      reviewNotes: null,
+      completionNotes: null,
+      history: [{
+        action: 'created',
+        actor: createdBy || 'system',
+        timestamp: now,
+        description: `Task created: ${title}`
+      }]
+    };
+
+    await writeFile(`curation/${taskId}.json`, JSON.stringify(task, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      message: 'Curation task created',
+      task: task
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to create task', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/curation/tasks
+ * List curation tasks with filters.
+ * Query params: status, type, priority, assignedTo, cemeteryId, recordId, limit
+ */
+async function handleListCurationTasks(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, tasks: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const statusFilter = url.searchParams.get('status');
+    const typeFilter = url.searchParams.get('type');
+    const priorityFilter = url.searchParams.get('priority');
+    const assignedToFilter = url.searchParams.get('assignedTo');
+    const cemeteryIdFilter = url.searchParams.get('cemeteryId');
+    const recordIdFilter = url.searchParams.get('recordId');
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '100'), 500);
+
+    const files = await listFiles('curation', env);
+    const tasks = [];
+
+    for (const file of files) {
+      if (tasks.length >= limit) break;
+      try {
+        const content = await readFile(`curation/${file}`, env);
+        if (!content) continue;
+        const task = JSON.parse(content);
+
+        if (statusFilter && task.status !== statusFilter) continue;
+        if (typeFilter && task.type !== typeFilter) continue;
+        if (priorityFilter && task.priority !== priorityFilter) continue;
+        if (assignedToFilter && task.assignedTo !== assignedToFilter) continue;
+        if (cemeteryIdFilter && task.cemeteryId !== cemeteryIdFilter) continue;
+        if (recordIdFilter && task.recordId !== recordIdFilter) continue;
+
+        tasks.push({
+          id: task.id,
+          type: task.type,
+          title: task.title,
+          priority: task.priority,
+          status: task.status,
+          assignedTo: task.assignedTo,
+          recordId: task.recordId,
+          cemeteryId: task.cemeteryId,
+          createdAt: task.createdAt,
+          deadline: task.deadline
+        });
+      } catch (e) { /* skip */ }
+    }
+
+    tasks.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    return jsonResponse({
+      success: true,
+      tasks: tasks,
+      totalFound: tasks.length,
+      filters: { status: statusFilter, type: typeFilter, priority: priorityFilter,
+        assignedTo: assignedToFilter, cemeteryId: cemeteryIdFilter, recordId: recordIdFilter }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to list tasks', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/curation/tasks/:id
+ * Get full details of a single curation task.
+ */
+async function handleGetCurationTask(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid task ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const content = await readFile(`curation/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Task not found' }, 404, cors);
+    }
+
+    const task = JSON.parse(content);
+    return jsonResponse({ success: true, task: task }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get task', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/curation/tasks/:id/assign
+ * Assign a task to an archivist.
+ * Body: { assignedTo, assignedBy }
+ */
+async function handleAssignTask(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid task ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { assignedTo, assignedBy } = body || {};
+
+    if (!assignedTo) {
+      return jsonResponse({ success: false, error: 'Missing required field: assignedTo' }, 400, cors);
+    }
+
+    const content = await readFile(`curation/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Task not found' }, 404, cors);
+    }
+
+    const task = JSON.parse(content);
+    const now = new Date().toISOString();
+
+    task.assignedTo = assignedTo;
+    task.assignedAt = now;
+    task.status = 'assigned';
+    task.updatedAt = now;
+    task.history.push({
+      action: 'assigned',
+      actor: assignedBy || 'system',
+      timestamp: now,
+      description: `Task assigned to ${assignedTo}`
+    });
+
+    await writeFile(`curation/${safeId}.json`, JSON.stringify(task, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      message: 'Task assigned',
+      task: { id: task.id, assignedTo: task.assignedTo, status: task.status }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to assign task', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/curation/tasks/:id/complete
+ * Mark a task as completed (submitted for review).
+ * Body: { submittedBy, completionNotes }
+ */
+async function handleCompleteTask(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid task ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { submittedBy, completionNotes } = body || {};
+
+    const content = await readFile(`curation/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Task not found' }, 404, cors);
+    }
+
+    const task = JSON.parse(content);
+    const now = new Date().toISOString();
+
+    if (task.status === 'completed') {
+      return jsonResponse({ success: false, error: 'Task already completed' }, 400, cors);
+    }
+
+    task.submittedBy = submittedBy || task.assignedTo;
+    task.submittedAt = now;
+    task.completionNotes = completionNotes || '';
+    task.status = 'submitted';
+    task.updatedAt = now;
+    task.history.push({
+      action: 'completed',
+      actor: submittedBy || task.assignedTo || 'unknown',
+      timestamp: now,
+      description: completionNotes ? `Task completed: ${completionNotes}` : 'Task completed'
+    });
+
+    await writeFile(`curation/${safeId}.json`, JSON.stringify(task, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      message: 'Task submitted for review',
+      task: { id: task.id, status: task.status, submittedBy: task.submittedBy }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to complete task', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/curation/tasks/:id/review
+ * Review a submitted task (approve or reject).
+ * Body: { reviewedBy, approved, reviewNotes }
+ */
+async function handleReviewTask(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid task ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { reviewedBy, approved, reviewNotes } = body || {};
+
+    if (approved === undefined) {
+      return jsonResponse({ success: false, error: 'Missing required field: approved (boolean)' }, 400, cors);
+    }
+
+    const content = await readFile(`curation/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Task not found' }, 404, cors);
+    }
+
+    const task = JSON.parse(content);
+    const now = new Date().toISOString();
+
+    if (task.status !== 'submitted') {
+      return jsonResponse({ success: false, error: `Task must be in 'submitted' status (current: ${task.status})` }, 400, cors);
+    }
+
+    task.reviewedBy = reviewedBy || 'reviewer';
+    task.reviewedAt = now;
+    task.reviewResult = approved ? 'approved' : 'rejected';
+    task.reviewNotes = reviewNotes || '';
+    task.status = approved ? 'completed' : 'pending';
+    task.updatedAt = now;
+    task.history.push({
+      action: approved ? 'approved' : 'rejected',
+      actor: reviewedBy || 'reviewer',
+      timestamp: now,
+      description: approved
+        ? `Task approved${reviewNotes ? ': ' + reviewNotes : ''}`
+        : `Task rejected${reviewNotes ? ': ' + reviewNotes : ''}`
+    });
+
+    await writeFile(`curation/${safeId}.json`, JSON.stringify(task, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      message: approved ? 'Task approved and completed' : 'Task rejected, returned to pending',
+      task: { id: task.id, status: task.status, reviewResult: task.reviewResult }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to review task', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/curation/queue
+ * Get the review queue (submitted tasks awaiting review).
+ * Query params: limit, reviewedBy (to exclude already reviewed)
+ */
+async function handleCurationQueue(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, queue: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 200);
+    const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
+
+    const files = await listFiles('curation', env);
+    const queue = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`curation/${file}`, env);
+        if (!content) continue;
+        const task = JSON.parse(content);
+
+        // Queue contains tasks that are submitted (awaiting review)
+        // or pending (available for assignment)
+        if (task.status !== 'submitted' && task.status !== 'pending') continue;
+
+        queue.push({
+          id: task.id,
+          type: task.type,
+          title: task.title,
+          priority: task.priority,
+          status: task.status,
+          assignedTo: task.assignedTo,
+          recordId: task.recordId,
+          cemeteryId: task.cemeteryId,
+          createdAt: task.createdAt,
+          submittedAt: task.submittedAt,
+          deadline: task.deadline
+        });
+      } catch (e) { /* skip */ }
+    }
+
+    // Sort: submitted first (needs review), then by priority
+    queue.sort((a, b) => {
+      // Submitted tasks first
+      if (a.status === 'submitted' && b.status !== 'submitted') return -1;
+      if (a.status !== 'submitted' && b.status === 'submitted') return 1;
+      // Then by priority
+      const pa = priorityOrder[a.priority] || 2;
+      const pb = priorityOrder[b.priority] || 2;
+      if (pa !== pb) return pa - pb;
+      // Then by created date
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    });
+
+    return jsonResponse({
+      success: true,
+      queue: queue.slice(0, limit),
+      totalInQueue: queue.length,
+      submittedCount: queue.filter(q => q.status === 'submitted').length,
+      pendingCount: queue.filter(q => q.status === 'pending').length
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get queue', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/curation/lock
+ * Lock a record for exclusive editing.
+ * Body: { recordId, lockedBy, durationMinutes }
+ */
+async function handleLockRecord(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { recordId, lockedBy, durationMinutes } = body || {};
+
+    if (!recordId || !lockedBy) {
+      return jsonResponse({ success: false, error: 'Missing required fields: recordId, lockedBy' }, 400, cors);
+    }
+
+    const safeId = sanitizePathSegment(recordId);
+    if (!safeId || safeId !== recordId) {
+      return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+    }
+
+    // Check if already locked
+    try {
+      const lockContent = await readFile(`locks/${safeId}.json`, env);
+      if (lockContent) {
+        const existingLock = JSON.parse(lockContent);
+        const expiresAt = new Date(existingLock.expiresAt).getTime();
+        if (expiresAt > Date.now() && existingLock.lockedBy !== lockedBy) {
+          return jsonResponse({
+            success: false,
+            error: 'Record is locked by another user',
+            lockedBy: existingLock.lockedBy,
+            lockedAt: existingLock.lockedAt,
+            expiresAt: existingLock.expiresAt
+          }, 409, cors);
+        }
+      }
+    } catch (e) { /* no existing lock */ }
+
+    const now = new Date();
+    const duration = (durationMinutes || 30) * 60 * 1000; // default 30 min
+    const expiresAt = new Date(now.getTime() + duration).toISOString();
+
+    const lock = {
+      recordId: safeId,
+      lockedBy,
+      lockedAt: now.toISOString(),
+      expiresAt
+    };
+
+    await writeFile(`locks/${safeId}.json`, JSON.stringify(lock, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      message: 'Record locked',
+      lock: lock
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to lock record', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * DELETE /api/curation/lock
+ * Unlock a record.
+ * Body: { recordId, lockedBy }
+ */
+async function handleUnlockRecord(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const recordId = url.searchParams.get('recordId');
+    const lockedBy = url.searchParams.get('lockedBy');
+
+    if (!recordId || !lockedBy) {
+      return jsonResponse({ success: false, error: 'Missing required params: recordId, lockedBy' }, 400, cors);
+    }
+
+    const safeId = sanitizePathSegment(recordId);
+    if (!safeId || safeId !== recordId) {
+      return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+    }
+
+    // Verify the lock belongs to the user
+    try {
+      const lockContent = await readFile(`locks/${safeId}.json`, env);
+      if (lockContent) {
+        const lock = JSON.parse(lockContent);
+        if (lock.lockedBy !== lockedBy) {
+          return jsonResponse({
+            success: false,
+            error: 'Cannot unlock: lock belongs to another user',
+            lockedBy: lock.lockedBy
+          }, 403, cors);
+        }
+      }
+    } catch (e) { /* no lock */ }
+
+    // Delete the lock file by writing empty content
+    await writeFile(`locks/${safeId}.json`, '', env);
+
+    return jsonResponse({
+      success: true,
+      message: 'Record unlocked'
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to unlock record', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/curation/stats
+ * Get curation statistics across all tasks.
+ */
+async function handleCurationStats(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, stats: {}, message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('curation', env);
+    const stats = {
+      total: 0,
+      byStatus: {},
+      byType: {},
+      byPriority: {},
+      activeLocks: 0
+    };
+
+    // Initialize counters
+    for (const s of TASK_STATUSES) stats.byStatus[s] = 0;
+    for (const t of TASK_TYPES) stats.byType[t] = 0;
+    for (const p of TASK_PRIORITIES) stats.byPriority[p] = 0;
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`curation/${file}`, env);
+        if (!content) continue;
+        const task = JSON.parse(content);
+        stats.total++;
+        stats.byStatus[task.status] = (stats.byStatus[task.status] || 0) + 1;
+        stats.byType[task.type] = (stats.byType[task.type] || 0) + 1;
+        stats.byPriority[task.priority] = (stats.byPriority[task.priority] || 0) + 1;
+      } catch (e) { /* skip */ }
+    }
+
+    // Count active locks
+    try {
+      const lockFiles = await listFiles('locks', env);
+      for (const file of lockFiles) {
+        try {
+          const content = await readFile(`locks/${file}`, env);
+          if (!content) continue;
+          const lock = JSON.parse(content);
+          if (new Date(lock.expiresAt).getTime() > Date.now()) {
+            stats.activeLocks++;
+          }
+        } catch (e) { /* skip */ }
+      }
+    } catch (e) { /* no locks dir */ }
+
+    return jsonResponse({
+      success: true,
+      stats: stats
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get stats', message: error.message }, 500, cors);
+  }
+}
 
 // ── Phase 16.21: AI Data Export & Archival Handlers ──
 
@@ -6877,6 +7505,589 @@ function generateRecommendations(records, stats, anomalySummary) {
   }
 
   return recommendations;
+}
+
+// ── Phase 16.22: AI Collaborative Curation Handlers ──
+
+const TASK_TYPES = ['verify', 'enrich', 'fix', 'merge', 'review', 'transcribe', 'geocode', 'cleanup'];
+const TASK_PRIORITIES = ['low', 'medium', 'high', 'urgent'];
+const TASK_STATUSES = ['pending', 'assigned', 'in_progress', 'submitted', 'reviewing', 'completed', 'cancelled'];
+
+/**
+ * POST /api/curation/tasks
+ * Create a new curation task.
+ * Body: { type, recordId, cemeteryId, title, description, priority, assignedTo, deadline }
+ */
+async function handleCreateCurationTask(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { type, recordId, cemeteryId, title, description, priority, assignedTo, deadline, createdBy } = body || {};
+
+    if (!type || !TASK_TYPES.includes(type)) {
+      return jsonResponse({ success: false, error: `Invalid task type. Must be one of: ${TASK_TYPES.join(', ')}` }, 400, cors);
+    }
+    if (!title) {
+      return jsonResponse({ success: false, error: 'Missing required field: title' }, 400, cors);
+    }
+    if (priority && !TASK_PRIORITIES.includes(priority)) {
+      return jsonResponse({ success: false, error: `Invalid priority. Must be one of: ${TASK_PRIORITIES.join(', ')}` }, 400, cors);
+    }
+
+    const taskId = 'task_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+    const now = new Date().toISOString();
+
+    const task = {
+      id: taskId,
+      type,
+      recordId: recordId || null,
+      cemeteryId: cemeteryId || null,
+      title,
+      description: description || '',
+      priority: priority || 'medium',
+      status: assignedTo ? 'assigned' : 'pending',
+      assignedTo: assignedTo || null,
+      assignedAt: assignedTo ? now : null,
+      createdBy: createdBy || 'system',
+      createdAt: now,
+      updatedAt: now,
+      deadline: deadline || null,
+      submittedBy: null,
+      submittedAt: null,
+      reviewedBy: null,
+      reviewedAt: null,
+      reviewResult: null,
+      reviewNotes: null,
+      completionNotes: null,
+      history: [{
+        action: 'created',
+        actor: createdBy || 'system',
+        timestamp: now,
+        description: `Task created: ${title}`
+      }]
+    };
+
+    await writeFile(`curation/${taskId}.json`, JSON.stringify(task, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      message: 'Curation task created',
+      task: task
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to create task', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/curation/tasks
+ * List curation tasks with filters.
+ * Query params: status, type, priority, assignedTo, cemeteryId, recordId, limit
+ */
+async function handleListCurationTasks(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, tasks: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const statusFilter = url.searchParams.get('status');
+    const typeFilter = url.searchParams.get('type');
+    const priorityFilter = url.searchParams.get('priority');
+    const assignedToFilter = url.searchParams.get('assignedTo');
+    const cemeteryIdFilter = url.searchParams.get('cemeteryId');
+    const recordIdFilter = url.searchParams.get('recordId');
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '100'), 500);
+
+    const files = await listFiles('curation', env);
+    const tasks = [];
+
+    for (const file of files) {
+      if (tasks.length >= limit) break;
+      try {
+        const content = await readFile(`curation/${file}`, env);
+        if (!content) continue;
+        const task = JSON.parse(content);
+
+        if (statusFilter && task.status !== statusFilter) continue;
+        if (typeFilter && task.type !== typeFilter) continue;
+        if (priorityFilter && task.priority !== priorityFilter) continue;
+        if (assignedToFilter && task.assignedTo !== assignedToFilter) continue;
+        if (cemeteryIdFilter && task.cemeteryId !== cemeteryIdFilter) continue;
+        if (recordIdFilter && task.recordId !== recordIdFilter) continue;
+
+        tasks.push({
+          id: task.id,
+          type: task.type,
+          title: task.title,
+          priority: task.priority,
+          status: task.status,
+          assignedTo: task.assignedTo,
+          recordId: task.recordId,
+          cemeteryId: task.cemeteryId,
+          createdAt: task.createdAt,
+          deadline: task.deadline
+        });
+      } catch (e) { /* skip */ }
+    }
+
+    tasks.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    return jsonResponse({
+      success: true,
+      tasks: tasks,
+      totalFound: tasks.length,
+      filters: { status: statusFilter, type: typeFilter, priority: priorityFilter,
+        assignedTo: assignedToFilter, cemeteryId: cemeteryIdFilter, recordId: recordIdFilter }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to list tasks', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/curation/tasks/:id
+ * Get full details of a single curation task.
+ */
+async function handleGetCurationTask(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid task ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const content = await readFile(`curation/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Task not found' }, 404, cors);
+    }
+
+    const task = JSON.parse(content);
+    return jsonResponse({ success: true, task: task }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get task', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/curation/tasks/:id/assign
+ * Assign a task to an archivist.
+ * Body: { assignedTo, assignedBy }
+ */
+async function handleAssignTask(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid task ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { assignedTo, assignedBy } = body || {};
+
+    if (!assignedTo) {
+      return jsonResponse({ success: false, error: 'Missing required field: assignedTo' }, 400, cors);
+    }
+
+    const content = await readFile(`curation/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Task not found' }, 404, cors);
+    }
+
+    const task = JSON.parse(content);
+    const now = new Date().toISOString();
+
+    task.assignedTo = assignedTo;
+    task.assignedAt = now;
+    task.status = 'assigned';
+    task.updatedAt = now;
+    task.history.push({
+      action: 'assigned',
+      actor: assignedBy || 'system',
+      timestamp: now,
+      description: `Task assigned to ${assignedTo}`
+    });
+
+    await writeFile(`curation/${safeId}.json`, JSON.stringify(task, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      message: 'Task assigned',
+      task: { id: task.id, assignedTo: task.assignedTo, status: task.status }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to assign task', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/curation/tasks/:id/complete
+ * Mark a task as completed (submitted for review).
+ * Body: { submittedBy, completionNotes }
+ */
+async function handleCompleteTask(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid task ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { submittedBy, completionNotes } = body || {};
+
+    const content = await readFile(`curation/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Task not found' }, 404, cors);
+    }
+
+    const task = JSON.parse(content);
+    const now = new Date().toISOString();
+
+    if (task.status === 'completed') {
+      return jsonResponse({ success: false, error: 'Task already completed' }, 400, cors);
+    }
+
+    task.submittedBy = submittedBy || task.assignedTo;
+    task.submittedAt = now;
+    task.completionNotes = completionNotes || '';
+    task.status = 'submitted';
+    task.updatedAt = now;
+    task.history.push({
+      action: 'completed',
+      actor: submittedBy || task.assignedTo || 'unknown',
+      timestamp: now,
+      description: completionNotes ? `Task completed: ${completionNotes}` : 'Task completed'
+    });
+
+    await writeFile(`curation/${safeId}.json`, JSON.stringify(task, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      message: 'Task submitted for review',
+      task: { id: task.id, status: task.status, submittedBy: task.submittedBy }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to complete task', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/curation/tasks/:id/review
+ * Review a submitted task (approve or reject).
+ * Body: { reviewedBy, approved, reviewNotes }
+ */
+async function handleReviewTask(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid task ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { reviewedBy, approved, reviewNotes } = body || {};
+
+    if (approved === undefined) {
+      return jsonResponse({ success: false, error: 'Missing required field: approved (boolean)' }, 400, cors);
+    }
+
+    const content = await readFile(`curation/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Task not found' }, 404, cors);
+    }
+
+    const task = JSON.parse(content);
+    const now = new Date().toISOString();
+
+    if (task.status !== 'submitted') {
+      return jsonResponse({ success: false, error: `Task must be in 'submitted' status (current: ${task.status})` }, 400, cors);
+    }
+
+    task.reviewedBy = reviewedBy || 'reviewer';
+    task.reviewedAt = now;
+    task.reviewResult = approved ? 'approved' : 'rejected';
+    task.reviewNotes = reviewNotes || '';
+    task.status = approved ? 'completed' : 'pending';
+    task.updatedAt = now;
+    task.history.push({
+      action: approved ? 'approved' : 'rejected',
+      actor: reviewedBy || 'reviewer',
+      timestamp: now,
+      description: approved
+        ? `Task approved${reviewNotes ? ': ' + reviewNotes : ''}`
+        : `Task rejected${reviewNotes ? ': ' + reviewNotes : ''}`
+    });
+
+    await writeFile(`curation/${safeId}.json`, JSON.stringify(task, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      message: approved ? 'Task approved and completed' : 'Task rejected, returned to pending',
+      task: { id: task.id, status: task.status, reviewResult: task.reviewResult }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to review task', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/curation/queue
+ * Get the review queue (submitted tasks awaiting review).
+ * Query params: limit, reviewedBy (to exclude already reviewed)
+ */
+async function handleCurationQueue(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, queue: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 200);
+    const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
+
+    const files = await listFiles('curation', env);
+    const queue = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`curation/${file}`, env);
+        if (!content) continue;
+        const task = JSON.parse(content);
+
+        // Queue contains tasks that are submitted (awaiting review)
+        // or pending (available for assignment)
+        if (task.status !== 'submitted' && task.status !== 'pending') continue;
+
+        queue.push({
+          id: task.id,
+          type: task.type,
+          title: task.title,
+          priority: task.priority,
+          status: task.status,
+          assignedTo: task.assignedTo,
+          recordId: task.recordId,
+          cemeteryId: task.cemeteryId,
+          createdAt: task.createdAt,
+          submittedAt: task.submittedAt,
+          deadline: task.deadline
+        });
+      } catch (e) { /* skip */ }
+    }
+
+    // Sort: submitted first (needs review), then by priority
+    queue.sort((a, b) => {
+      // Submitted tasks first
+      if (a.status === 'submitted' && b.status !== 'submitted') return -1;
+      if (a.status !== 'submitted' && b.status === 'submitted') return 1;
+      // Then by priority
+      const pa = priorityOrder[a.priority] || 2;
+      const pb = priorityOrder[b.priority] || 2;
+      if (pa !== pb) return pa - pb;
+      // Then by created date
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    });
+
+    return jsonResponse({
+      success: true,
+      queue: queue.slice(0, limit),
+      totalInQueue: queue.length,
+      submittedCount: queue.filter(q => q.status === 'submitted').length,
+      pendingCount: queue.filter(q => q.status === 'pending').length
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get queue', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/curation/lock
+ * Lock a record for exclusive editing.
+ * Body: { recordId, lockedBy, durationMinutes }
+ */
+async function handleLockRecord(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { recordId, lockedBy, durationMinutes } = body || {};
+
+    if (!recordId || !lockedBy) {
+      return jsonResponse({ success: false, error: 'Missing required fields: recordId, lockedBy' }, 400, cors);
+    }
+
+    const safeId = sanitizePathSegment(recordId);
+    if (!safeId || safeId !== recordId) {
+      return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+    }
+
+    // Check if already locked
+    try {
+      const lockContent = await readFile(`locks/${safeId}.json`, env);
+      if (lockContent) {
+        const existingLock = JSON.parse(lockContent);
+        const expiresAt = new Date(existingLock.expiresAt).getTime();
+        if (expiresAt > Date.now() && existingLock.lockedBy !== lockedBy) {
+          return jsonResponse({
+            success: false,
+            error: 'Record is locked by another user',
+            lockedBy: existingLock.lockedBy,
+            lockedAt: existingLock.lockedAt,
+            expiresAt: existingLock.expiresAt
+          }, 409, cors);
+        }
+      }
+    } catch (e) { /* no existing lock */ }
+
+    const now = new Date();
+    const duration = (durationMinutes || 30) * 60 * 1000; // default 30 min
+    const expiresAt = new Date(now.getTime() + duration).toISOString();
+
+    const lock = {
+      recordId: safeId,
+      lockedBy,
+      lockedAt: now.toISOString(),
+      expiresAt
+    };
+
+    await writeFile(`locks/${safeId}.json`, JSON.stringify(lock, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      message: 'Record locked',
+      lock: lock
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to lock record', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * DELETE /api/curation/lock
+ * Unlock a record.
+ * Body: { recordId, lockedBy }
+ */
+async function handleUnlockRecord(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const recordId = url.searchParams.get('recordId');
+    const lockedBy = url.searchParams.get('lockedBy');
+
+    if (!recordId || !lockedBy) {
+      return jsonResponse({ success: false, error: 'Missing required params: recordId, lockedBy' }, 400, cors);
+    }
+
+    const safeId = sanitizePathSegment(recordId);
+    if (!safeId || safeId !== recordId) {
+      return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+    }
+
+    // Verify the lock belongs to the user
+    try {
+      const lockContent = await readFile(`locks/${safeId}.json`, env);
+      if (lockContent) {
+        const lock = JSON.parse(lockContent);
+        if (lock.lockedBy !== lockedBy) {
+          return jsonResponse({
+            success: false,
+            error: 'Cannot unlock: lock belongs to another user',
+            lockedBy: lock.lockedBy
+          }, 403, cors);
+        }
+      }
+    } catch (e) { /* no lock */ }
+
+    // Delete the lock file by writing empty content
+    await writeFile(`locks/${safeId}.json`, '', env);
+
+    return jsonResponse({
+      success: true,
+      message: 'Record unlocked'
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to unlock record', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/curation/stats
+ * Get curation statistics across all tasks.
+ */
+async function handleCurationStats(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, stats: {}, message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('curation', env);
+    const stats = {
+      total: 0,
+      byStatus: {},
+      byType: {},
+      byPriority: {},
+      activeLocks: 0
+    };
+
+    // Initialize counters
+    for (const s of TASK_STATUSES) stats.byStatus[s] = 0;
+    for (const t of TASK_TYPES) stats.byType[t] = 0;
+    for (const p of TASK_PRIORITIES) stats.byPriority[p] = 0;
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`curation/${file}`, env);
+        if (!content) continue;
+        const task = JSON.parse(content);
+        stats.total++;
+        stats.byStatus[task.status] = (stats.byStatus[task.status] || 0) + 1;
+        stats.byType[task.type] = (stats.byType[task.type] || 0) + 1;
+        stats.byPriority[task.priority] = (stats.byPriority[task.priority] || 0) + 1;
+      } catch (e) { /* skip */ }
+    }
+
+    // Count active locks
+    try {
+      const lockFiles = await listFiles('locks', env);
+      for (const file of lockFiles) {
+        try {
+          const content = await readFile(`locks/${file}`, env);
+          if (!content) continue;
+          const lock = JSON.parse(content);
+          if (new Date(lock.expiresAt).getTime() > Date.now()) {
+            stats.activeLocks++;
+          }
+        } catch (e) { /* skip */ }
+      }
+    } catch (e) { /* no locks dir */ }
+
+    return jsonResponse({
+      success: true,
+      stats: stats
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get stats', message: error.message }, 500, cors);
+  }
 }
 
 // ── Phase 16.21: AI Data Export & Archival Handlers ──

@@ -519,6 +519,62 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.22] — 2026-08-16
+
+### Phase 16.22: AI Collaborative Curation
+
+**Added:**
+- `POST /api/curation/tasks` — create curation tasks (8 types: verify, enrich,
+  fix, merge, review, transcribe, geocode, cleanup; 4 priorities: low/medium/
+  high/urgent). Task workflow: create → assign → complete → review (approve/reject).
+
+- `GET /api/curation/tasks` — list tasks with filters (status, type, priority,
+  assignedTo, cemeteryId, recordId, limit). Sorted newest first.
+
+- `GET /api/curation/tasks/:id` — full task details with complete history log.
+
+- `POST /api/curation/tasks/:id/assign` — assign task to an archivist.
+
+- `POST /api/curation/tasks/:id/complete` — submit completed work for review.
+  Includes completion notes.
+
+- `POST /api/curation/tasks/:id/review` — approve or reject submitted work.
+  Approved → completed; Rejected → returned to pending.
+
+- `GET /api/curation/queue` — review queue (submitted tasks first, then pending
+  by priority). Returns submittedCount and pendingCount.
+
+- `POST /api/curation/lock` — lock a record for exclusive editing (default 30min,
+  configurable expiry). Returns 409 if already locked by another user.
+
+- `DELETE /api/curation/lock` — unlock a record (only by the lock owner).
+
+- `GET /api/curation/stats` — curation statistics (total tasks, by status/type/
+  priority, active locks with expiry check).
+
+**Task Lifecycle:**
+1. Pending → available for assignment
+2. Assigned → archivist working on it
+3. Submitted → work complete, awaiting review
+4. Completed → approved by reviewer
+5. (Rejected → back to pending)
+
+**Record Locking:**
+- Prevents concurrent edits on the same record
+- Configurable expiry (default 30 minutes)
+- Only the lock owner can unlock
+- 409 conflict if another user holds active lock
+- 403 forbidden if trying to unlock another user's lock
+
+New models: CurationTask (TaskHistoryEntry), CurationQueue (QueueEntry),
+RecordLock, CurationStats
+API client: createCurationTask(), listCurationTasks(), getCurationTask(),
+assignTask(), completeTask(), reviewTask(), getCurationQueue(),
+lockRecord(), unlockRecord(), getCurationStats()
+AI system prompt updated, 3 new suggested prompts
+130+ new tests (phase16-22.test.js)
+
+
 ## [7.2.21] — 2026-08-16
 
 ### Phase 16.21: AI Data Export & Archival

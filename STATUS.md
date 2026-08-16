@@ -39,6 +39,7 @@
 | 16.19. AI Confidence Scoring | ✅ COMPLETE | 100% |
 | 16.20. AI Data Provenance Chain | ✅ COMPLETE | 100% |
 | 16.21. AI Data Export & Archival | ✅ COMPLETE | 100% |
+| 16.22. AI Collaborative Curation | ✅ COMPLETE | 100% |
 
 **All 8 core phases complete. Phase 16 AI-native features complete. 1477 tests passing.**
 
@@ -86,9 +87,11 @@
 
 19. **Add — AI Data Export & Archival** ✅ Comprehensive export system with 5 endpoints and 3 formats: JSON CSV-ready dataset (with optional provenance/confidence/sources, up to 50K records, CC-BY-SA 4.0), GeoJSON FeatureCollection (RFC 7946, WGS84, for mapping apps), JSON-LD 1.1 (schema.org context with confidence + provenance, for semantic web). Export manifest with record stats, cemetery list, date range, format list. Batch export (up to 10 at once). New models: `DatasetExport`, `GeoJSONExport`, `JSONLDExport`, `ExportManifest`. 100+ new tests. v7.2.21.
 
+20. **Add — AI Collaborative Curation** ✅ Multi-archivist collaboration system with 10 endpoints: task creation/list/detail/assign/complete/review (8 task types, 4 priorities, 7 statuses), review queue (submitted first, then pending by priority), record locking (exclusive edit with 30min default expiry, 409 conflict, 403 forbidden), and curation stats (by status/type/priority, active locks). Full task lifecycle: pending → assigned → submitted → completed (or rejected back to pending). History tracking for every action. New models: `CurationTask`, `CurationQueue`, `RecordLock`, `CurationStats`. 130+ new tests. v7.2.22.
+
 ## Architecture
 
-- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 117 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
+- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 127 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
 - **Android:** 18+ screens with navigation host, external maps handoff (geo: intent), offline support
 - **Data:** GitHub repository (graveatlas-data) with JSON schemas
 - **Auth:** Google Sign-In with ID token verification, session tokens, ban system
@@ -96,7 +99,7 @@
 - **Timeline:** Chronological event visualization with decade grouping, backend endpoint
 - **External Sources:** OpenStreetMap (Overpass API), Wikidata (SPARQL), Singapore Government Open Data (data.gov.sg)
 
-## Test Suite (2936 tests)
+## Test Suite (3062 tests)
 
 | Test File | Tests | Area |
 |---|---|---|

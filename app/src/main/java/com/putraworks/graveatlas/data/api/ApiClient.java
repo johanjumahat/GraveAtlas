@@ -42,6 +42,10 @@ import com.putraworks.graveatlas.data.model.DatasetExport;
 import com.putraworks.graveatlas.data.model.GeoJSONExport;
 import com.putraworks.graveatlas.data.model.JSONLDExport;
 import com.putraworks.graveatlas.data.model.ExportManifest;
+import com.putraworks.graveatlas.data.model.CurationTask;
+import com.putraworks.graveatlas.data.model.CurationQueue;
+import com.putraworks.graveatlas.data.model.RecordLock;
+import com.putraworks.graveatlas.data.model.CurationStats;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -913,6 +917,414 @@ public class ApiClient {
         } catch (java.io.UnsupportedEncodingException e) {
             return value; // UTF-8 is always available on Android
         }
+    }
+
+    // ── Phase 16.22: AI Collaborative Curation ──
+
+    /**
+     * Create a curation task.
+     * POST /api/curation/tasks
+     */
+    public void createCurationTask(String type, String recordId, String cemeteryId,
+            String title, String description, String priority, String assignedTo,
+            String deadline, String createdBy, final ApiCallback<CurationTask> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("type", type);
+            if (recordId != null) body.put("recordId", recordId);
+            if (cemeteryId != null) body.put("cemeteryId", cemeteryId);
+            body.put("title", title);
+            if (description != null) body.put("description", description);
+            if (priority != null) body.put("priority", priority);
+            if (assignedTo != null) body.put("assignedTo", assignedTo);
+            if (deadline != null) body.put("deadline", deadline);
+            if (createdBy != null) body.put("createdBy", createdBy);
+        } catch (Exception e) { /* ignore */ }
+
+        RequestBody rb = RequestBody.create(body.toString(), MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/curation/tasks")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        JSONObject task = obj.optJSONObject("task");
+                        if (task != null) {
+                            callback.onSuccess(CurationTask.fromJson(task));
+                        } else {
+                            callback.onError("Task not found in response.");
+                        }
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse curation task.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * List curation tasks with filters.
+     * GET /api/curation/tasks?status=&type=&priority=&assignedTo=&cemeteryId=&limit=
+     */
+    public void listCurationTasks(String status, String type, String priority,
+            String assignedTo, String cemeteryId, int limit,
+            final ApiCallback<java.util.List<CurationTask>> callback) {
+        java.util.List<String> params = new java.util.ArrayList<>();
+        if (status != null) params.add("status=" + status);
+        if (type != null) params.add("type=" + type);
+        if (priority != null) params.add("priority=" + priority);
+        if (assignedTo != null) params.add("assignedTo=" + assignedTo);
+        if (cemeteryId != null) params.add("cemeteryId=" + cemeteryId);
+        params.add("limit=" + limit);
+
+        String url = baseUrl + "/api/curation/tasks?" + String.join("&", params);
+        Request request = new Request.Builder().url(url).get().build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        java.util.List<CurationTask> tasks = new java.util.ArrayList<>();
+                        JSONArray arr = obj.optJSONArray("tasks");
+                        if (arr != null) {
+                            for (int i = 0; i < arr.length(); i++) {
+                                JSONObject t = arr.optJSONObject(i);
+                                if (t != null) tasks.add(CurationTask.fromJson(t));
+                            }
+                        }
+                        callback.onSuccess(tasks);
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse curation tasks.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get a single curation task.
+     * GET /api/curation/tasks/{id}
+     */
+    public void getCurationTask(String taskId, final ApiCallback<CurationTask> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/curation/tasks/" + taskId)
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        JSONObject task = obj.optJSONObject("task");
+                        if (task != null) callback.onSuccess(CurationTask.fromJson(task));
+                        else callback.onError("Task not found.");
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse task.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Assign a task to an archivist.
+     * POST /api/curation/tasks/{id}/assign
+     */
+    public void assignTask(String taskId, String assignedTo, String assignedBy,
+                              final ApiCallback<JSONObject> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("assignedTo", assignedTo);
+            if (assignedBy != null) body.put("assignedBy", assignedBy);
+        } catch (Exception e) { /* ignore */ }
+
+        RequestBody rb = RequestBody.create(body.toString(), MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/curation/tasks/" + taskId + "/assign")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse response.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Complete (submit) a task for review.
+     * POST /api/curation/tasks/{id}/complete
+     */
+    public void completeTask(String taskId, String submittedBy, String completionNotes,
+                                final ApiCallback<JSONObject> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            if (submittedBy != null) body.put("submittedBy", submittedBy);
+            if (completionNotes != null) body.put("completionNotes", completionNotes);
+        } catch (Exception e) { /* ignore */ }
+
+        RequestBody rb = RequestBody.create(body.toString(), MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/curation/tasks/" + taskId + "/complete")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse response.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Review (approve/reject) a submitted task.
+     * POST /api/curation/tasks/{id}/review
+     */
+    public void reviewTask(String taskId, String reviewedBy, boolean approved, String reviewNotes,
+                              final ApiCallback<JSONObject> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            if (reviewedBy != null) body.put("reviewedBy", reviewedBy);
+            body.put("approved", approved);
+            if (reviewNotes != null) body.put("reviewNotes", reviewNotes);
+        } catch (Exception e) { /* ignore */ }
+
+        RequestBody rb = RequestBody.create(body.toString(), MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/curation/tasks/" + taskId + "/review")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse response.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get the curation review queue.
+     * GET /api/curation/queue?limit=
+     */
+    public void getCurationQueue(int limit, final ApiCallback<CurationQueue> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/curation/queue?limit=" + limit)
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(CurationQueue.fromJson(new JSONObject(body)));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse queue.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Lock a record for exclusive editing.
+     * POST /api/curation/lock
+     */
+    public void lockRecord(String recordId, String lockedBy, int durationMinutes,
+                              final ApiCallback<RecordLock> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("recordId", recordId);
+            body.put("lockedBy", lockedBy);
+            if (durationMinutes > 0) body.put("durationMinutes", durationMinutes);
+        } catch (Exception e) { /* ignore */ }
+
+        RequestBody rb = RequestBody.create(body.toString(), MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/curation/lock")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        JSONObject lock = obj.optJSONObject("lock");
+                        if (lock != null) callback.onSuccess(RecordLock.fromJson(lock));
+                        else callback.onError("Lock not found in response.");
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse lock.");
+                    }
+                } else if (response.code() == 409) {
+                    callback.onError("Record is already locked by another user.");
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Unlock a record.
+     * DELETE /api/curation/lock?recordId=&lockedBy=
+     */
+    public void unlockRecord(String recordId, String lockedBy,
+                                final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/curation/lock?recordId=" + recordId + "&lockedBy=" + lockedBy;
+        Request request = new Request.Builder()
+                .url(url)
+                .delete()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse response.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get curation statistics.
+     * GET /api/curation/stats
+     */
+    public void getCurationStats(final ApiCallback<CurationStats> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/curation/stats")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        JSONObject stats = obj.optJSONObject("stats");
+                        if (stats != null) callback.onSuccess(CurationStats.fromJson(stats));
+                        else callback.onSuccess(new CurationStats());
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse curation stats.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
     }
 
     // ── Phase 16.21: AI Data Export & Archival ──
