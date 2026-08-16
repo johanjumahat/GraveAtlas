@@ -24,17 +24,18 @@ public class RecordLock {
     public boolean isExpired() {
         if (expiresAt == null) return true;
         try {
-            long expires = org.json.JSONObject.numberToString(new java.math.BigDecimal(expiresAt)).isEmpty() ? 0 :
-                java.text.DateFormat.getDateTimeInstance().parse(expiresAt).getTime();
+            long expires;
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                expires = java.time.Instant.parse(expiresAt).toEpochMilli();
+            } else {
+                java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat(
+                    "yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US);
+                sdf.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+                expires = sdf.parse(expiresAt).getTime();
+            }
             return expires < System.currentTimeMillis();
         } catch (Exception e) {
-            // Try ISO format
-            try {
-                long expires = java.time.Instant.parse(expiresAt).toEpochMilli();
-                return expires < System.currentTimeMillis();
-            } catch (Exception e2) {
-                return true;
-            }
+            return true;
         }
     }
 
