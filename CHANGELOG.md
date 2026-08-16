@@ -519,6 +519,38 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.11] — 2026-08-16
+
+### Phase 16.11: AI Cemetery Health Dashboard
+
+**Added:**
+- `GET /api/cemeteries/:id/health` — composite health score combining all intelligence:
+  - Data quality (30%): completeness of essential fields + coverage of optional fields
+  - Anomaly-free (25%): inverse of anomaly rate (critical/warning/info)
+  - Enrichment coverage (15%): % of records NOT needing enrichment
+  - Duplicate-free (15%): inverse of duplicate rate
+  - Content coverage (15%): average of photo/inscription/source/coordinate coverage
+  - Letter grade A (≥90), B (≥80), C (≥70), D (≥60), F (<60) with color + recommendation
+  - Detailed breakdown: anomaly counts by type, enrichment stats, duplicate count,
+    family group count, content coverage percentages, field coverage, median death year
+
+- `GET /api/health/overview` — global health across all cemeteries:
+  - Total cemeteries, total records, critical issues count
+  - Content coverage averages (photo/inscription/source/coordinate)
+  - Global letter grade
+
+- `CemeteryHealth` model with 7 inner classes (HealthData, ScoreBreakdown,
+  AnomalySummary, EnrichmentSummary, DuplicateSummary, ConnectionSummary, ContentCoverage)
+- `GlobalHealthOverview` model with ContentCoverage and getSummary
+- `ApiClient` methods: `getCemeteryHealth()`, `getGlobalHealthOverview()`
+- AI system prompt updated with health dashboard endpoint awareness
+- 3 new suggested prompts
+- 80 new tests (phase16-11.test.js)
+
+**Scoring Weights:**
+- 30% data quality, 25% anomaly-free, 15% enrichment, 15% duplicates, 15% content
+
+
 ## [7.2.10] — 2026-08-16
 
 ### Phase 16.10: AI Anomaly Detection
