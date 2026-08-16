@@ -60,7 +60,7 @@ public final class AISystemPrompts {
         + "- Do not append a 'Next steps' section, a feature-suggestion list, or related-tool pitches after every answer. Offer ONE suggestion, in one line, only when it is genuinely the most useful next action — and only sometimes, not every reply.\n"
         + "- No decorative dividers (no '—' or '###' used as spacers). No headers for a single short answer.\n"
         + "- Default to the shortest response that fully answers the question.\n\n"
-        + "You can reference cemetery intelligence endpoints: /api/cemeteries/{id}/stats for record statistics, /api/cemeteries/{id}/summary for auto-generated narratives, /api/cemeteries/{id}/duplicates for potential duplicate person detection, /api/graves/{id}/enrich for AI-suggested missing fields (name parsing, birth year estimation, family connections), /api/cemeteries/{id}/connections for family connection networks, /api/import/score for batch quality scoring (POST with records array), and /api/import/batch-report for full import reports with metadata summary.
+        + "You can reference cemetery intelligence endpoints: /api/cemeteries/{id}/stats for record statistics, /api/cemeteries/{id}/summary for auto-generated narratives, /api/cemeteries/{id}/duplicates for potential duplicate person detection, /api/graves/{id}/enrich for AI-suggested missing fields (name parsing, birth year estimation, family connections), /api/cemeteries/{id}/connections for family connection networks, /api/import/score for batch quality scoring (POST with records array), /api/import/batch-report for full import reports with metadata summary, /api/cemeteries/{id}/anomalies for cemetery-wide anomaly detection (date, name, coordinate, plot, completeness anomalies), and /api/graves/{id}/anomaly-check for single-record anomaly checking.
 
 TONE: Professional, direct, research-oriented — like a knowledgeable archivist who respects your time. Evidence first, brevity always."
     + "\n\nINTERFACE MODE: " + InterfaceModeManager.getCurrentAIContextHint();
@@ -131,6 +131,8 @@ TONE: Professional, direct, research-oriented — like a knowledgeable archivist
         "Show me family connections in this cemetery",
         "Suggest missing information for this grave record",
         "Score this import batch for quality",
-        "Generate a batch report for my import"
+        "Generate a batch report for my import",
+        "Check this cemetery for data anomalies",
+        "Scan this record for issues"
     };
 }

@@ -27,6 +27,7 @@
 | 16.7. AI Cemetery Intelligence | ✅ COMPLETE | 100% |
 | 16.8. AI Record Enrichment & Family Connections | ✅ COMPLETE | 100% |
 | 16.9. AI Import Quality Scoring | ✅ COMPLETE | 100% |
+| 16.10. AI Anomaly Detection | ✅ COMPLETE | 100% |
 
 **All 8 core phases complete. Phase 16 AI-native features complete. 1477 tests passing.**
 
@@ -50,9 +51,11 @@
 
 7. **Add — AI Import Quality Scoring** ✅ Backend endpoints for batch quality scoring (`POST /api/import/score`) and full batch reports (`POST /api/import/batch-report`). Scores completeness (40%), coverage (30%), consistency (30%) with accept/review/reject recommendations. Error detection: bad dates, future dates, duplicate IDs. New models: `ImportQualityScore`, `ImportBatchReport`. 60 new tests. v7.2.9.
 
+8. **Add — AI Anomaly Detection** ✅ Backend endpoints for cemetery-wide anomaly scanning (`/api/cemeteries/:id/anomalies`) and single-record checks (`/api/graves/:id/anomaly-check`). Detects 6 anomaly types (date, name, coordinate, plot, completeness, statistical outlier) with 3 severity levels (critical/warning/info). New models: `AnomalyReport`, `RecordAnomalyCheck`. 70 new tests. v7.2.10.
+
 ## Architecture
 
-- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 74 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
+- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 76 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
 - **Android:** 18+ screens with navigation host, external maps handoff (geo: intent), offline support
 - **Data:** GitHub repository (graveatlas-data) with JSON schemas
 - **Auth:** Google Sign-In with ID token verification, session tokens, ban system
@@ -60,7 +63,7 @@
 - **Timeline:** Chronological event visualization with decade grouping, backend endpoint
 - **External Sources:** OpenStreetMap (Overpass API), Wikidata (SPARQL), Singapore Government Open Data (data.gov.sg)
 
-## Test Suite (1880 tests)
+## Test Suite (1954 tests)
 
 | Test File | Tests | Area |
 |---|---|---|

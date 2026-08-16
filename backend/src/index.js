@@ -393,6 +393,17 @@ async function handleRequest(request, env, ctx) {
       return await handleImportBatchReport(request, env, corsHeaders);
     }
 
+    // Phase 16.10: AI Anomaly Detection
+    if (path.startsWith('/api/cemeteries/') && path.endsWith('/anomalies') && method === 'GET') {
+      const id = path.split('/')[3];
+      return await handleCemeteryAnomalies(id, request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/graves/') && path.endsWith('/anomaly-check') && method === 'GET') {
+      const id = path.split('/')[3];
+      return await handleRecordAnomalyCheck(id, request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -3454,6 +3465,453 @@ function safeTokenCompare(a, b) {
 }
 
 // ── Utils ──
+
+// ── Phase 16.10: AI Anomaly Detection Handlers ──
+
+/**
+ * GET /api/cemeteries/:id/anomalies
+ * Scans all records in a cemetery and flags anomalies:
+ * - Date anomalies: birth after death, lifespan > 120, future dates, pre-1700 dates
+ * - Name anomalies: too short, all-caps, non-printable chars, numeric-only
+ * - Coordinate anomalies: coordinates outside cemetery bounding box
+ * - Plot anomalies: duplicate plot assignments, same plot different names
+ * - Completeness anomalies: records missing name or both dates
+ * - Statistical outliers: death dates far from cemetery median
+ */
+async function handleCemeteryAnomalies(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid cemetery ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      cemeteryId: safeId,
+      anomalies: [],
+      summary: { total: 0 },
+      message: 'GitHub not configured — no anomaly detection available'
+    }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('graves', env);
+    const records = [];
+    const cemeteryData = null;
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        if (record.cemeteryId !== safeId && record.cemeteryId !== id) continue;
+        records.push(record);
+      } catch (e) { /* skip */ }
+    }
+
+    // Also try to read cemetery metadata for coordinate bounds
+    let cemeteryLat = null, cemeteryLng = null;
+    try {
+      const cemContent = await readFile(`cemeteries/${safeId}.json`, env);
+      if (cemContent) {
+        const cem = JSON.parse(cemContent);
+        cemeteryLat = cem.latitude || null;
+        cemeteryLng = cem.longitude || null;
+      }
+    } catch (e) { /* skip */ }
+
+    const anomalies = [];
+    const anomalyCounts = {
+      date_anomaly: 0,
+      name_anomaly: 0,
+      coordinate_anomaly: 0,
+      plot_anomaly: 0,
+      completeness_anomaly: 0,
+      statistical_outlier: 0
+    };
+
+    // Collect death years for statistical analysis
+    const deathYears = [];
+    for (const r of records) {
+      if (r.deathDate) {
+        const y = parseInt(String(r.deathDate).substring(0, 4));
+        if (!isNaN(y)) deathYears.push(y);
+      }
+    }
+
+    // Compute median death year
+    let medianDeathYear = null;
+    if (deathYears.length > 0) {
+      const sorted = [...deathYears].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      medianDeathYear = sorted.length % 2 === 0
+        ? Math.round((sorted[mid - 1] + sorted[mid]) / 2)
+        : sorted[mid];
+    }
+
+    // Track plot assignments for duplicate detection
+    const plotAssignments = {};
+
+    for (const record of records) {
+      const recAnomalies = [];
+
+      // ── Date anomalies ──
+      if (record.birthDate && record.deathDate) {
+        const birthYear = parseInt(String(record.birthDate).substring(0, 4));
+        const deathYear = parseInt(String(record.deathDate).substring(0, 4));
+
+        if (!isNaN(birthYear) && !isNaN(deathYear)) {
+          if (birthYear > deathYear) {
+            recAnomalies.push({
+              type: 'date_anomaly',
+              severity: 'critical',
+              message: `Birth year (${birthYear}) is after death year (${deathYear})`,
+              field: 'birthDate'
+            });
+          }
+
+          const lifespan = deathYear - birthYear;
+          if (lifespan > 120) {
+            recAnomalies.push({
+              type: 'date_anomaly',
+              severity: 'warning',
+              message: `Lifespan of ${lifespan} years exceeds 120 (verify dates)`,
+              field: 'deathDate'
+            });
+          }
+        }
+      }
+
+      // Future dates
+      const currentYear = new Date().getFullYear();
+      if (record.birthDate) {
+        const birthYear = parseInt(String(record.birthDate).substring(0, 4));
+        if (!isNaN(birthYear) && birthYear > currentYear) {
+          recAnomalies.push({
+            type: 'date_anomaly',
+            severity: 'critical',
+            message: `Birth date is in the future (${birthYear})`,
+            field: 'birthDate'
+          });
+        }
+      }
+      if (record.deathDate) {
+        const deathYear = parseInt(String(record.deathDate).substring(0, 4));
+        if (!isNaN(deathYear) && deathYear > currentYear) {
+          recAnomalies.push({
+            type: 'date_anomaly',
+            severity: 'critical',
+            message: `Death date is in the future (${deathYear})`,
+            field: 'deathDate'
+          });
+        }
+      }
+
+      // Pre-1700 dates (suspicious for most cemeteries)
+      if (record.birthDate) {
+        const birthYear = parseInt(String(record.birthDate).substring(0, 4));
+        if (!isNaN(birthYear) && birthYear < 1700) {
+          recAnomalies.push({
+            type: 'date_anomaly',
+            severity: 'warning',
+            message: `Birth year before 1700 (${birthYear}) — verify historical accuracy`,
+            field: 'birthDate'
+          });
+        }
+      }
+
+      // ── Name anomalies ──
+      if (record.name) {
+        const name = record.name.trim();
+        if (name.length < 2) {
+          recAnomalies.push({
+            type: 'name_anomaly',
+            severity: 'warning',
+            message: 'Name is very short (less than 2 characters)',
+            field: 'name'
+          });
+        }
+        if (name.length > 3 && name === name.toUpperCase() && /[a-zA-Z]/.test(name)) {
+          recAnomalies.push({
+            type: 'name_anomaly',
+            severity: 'info',
+            message: 'Name is all uppercase (consider title case)',
+            field: 'name'
+          });
+        }
+        if (/^[0-9\s]+$/.test(name)) {
+          recAnomalies.push({
+            type: 'name_anomaly',
+            severity: 'warning',
+            message: 'Name contains only numbers',
+            field: 'name'
+          });
+        }
+        if (/[\x00-\x1f\x7f]/.test(name)) {
+          recAnomalies.push({
+            type: 'name_anomaly',
+            severity: 'critical',
+            message: 'Name contains non-printable characters',
+            field: 'name'
+          });
+        }
+      }
+
+      // ── Coordinate anomalies ──
+      if (record.latitude && record.longitude && cemeteryLat && cemeteryLng) {
+        const latDiff = Math.abs(record.latitude - cemeteryLat);
+        const lngDiff = Math.abs(record.longitude - cemeteryLng);
+        // Flag if coordinates are more than 0.1 degrees (~11km) from cemetery center
+        if (latDiff > 0.1 || lngDiff > 0.1) {
+          recAnomalies.push({
+            type: 'coordinate_anomaly',
+            severity: 'warning',
+            message: `Record coordinates are ${Math.round(Math.max(latDiff, lngDiff) * 111)}km from cemetery center`,
+            field: 'latitude'
+          });
+        }
+      }
+
+      // Check for invalid coordinate ranges
+      if (record.latitude !== undefined && record.latitude !== null) {
+        if (record.latitude < -90 || record.latitude > 90) {
+          recAnomalies.push({
+            type: 'coordinate_anomaly',
+            severity: 'critical',
+            message: `Invalid latitude (${record.latitude}) — must be -90 to 90`,
+            field: 'latitude'
+          });
+        }
+      }
+      if (record.longitude !== undefined && record.longitude !== null) {
+        if (record.longitude < -180 || record.longitude > 180) {
+          recAnomalies.push({
+            type: 'coordinate_anomaly',
+            severity: 'critical',
+            message: `Invalid longitude (${record.longitude}) — must be -180 to 180`,
+            field: 'longitude'
+          });
+        }
+      }
+
+      // ── Plot anomalies ──
+      if (record.section && record.plot) {
+        const plotKey = `${record.section}:${record.plot}`;
+        if (!plotAssignments[plotKey]) {
+          plotAssignments[plotKey] = [];
+        }
+        plotAssignments[plotKey].push({
+          id: record.id,
+          name: record.name
+        });
+      }
+
+      // ── Completeness anomalies ──
+      if (!record.name && !record.graveIdentifier) {
+        recAnomalies.push({
+          type: 'completeness_anomaly',
+          severity: 'critical',
+          message: 'Record has no name or grave identifier',
+          field: 'name'
+        });
+      }
+      if (!record.birthDate && !record.deathDate) {
+        recAnomalies.push({
+          type: 'completeness_anomaly',
+          severity: 'warning',
+          message: 'Record has no birth or death date',
+          field: 'deathDate'
+        });
+      }
+
+      // ── Statistical outliers ──
+      if (record.deathDate && medianDeathYear) {
+        const deathYear = parseInt(String(record.deathDate).substring(0, 4));
+        if (!isNaN(deathYear)) {
+          const deviation = Math.abs(deathYear - medianDeathYear);
+          // Flag if more than 100 years from median
+          if (deviation > 100) {
+            recAnomalies.push({
+              type: 'statistical_outlier',
+              severity: 'info',
+              message: `Death year (${deathYear}) is ${deviation} years from cemetery median (${medianDeathYear})`,
+              field: 'deathDate'
+            });
+          }
+        }
+      }
+
+      // Add anomalies to results
+      for (const a of recAnomalies) {
+        anomalyCounts[a.type]++;
+        anomalies.push({
+          recordId: record.id,
+          recordName: record.name || 'Unknown',
+          ...a
+        });
+      }
+    }
+
+    // Check for duplicate plot assignments
+    for (const [plotKey, assignments] of Object.entries(plotAssignments)) {
+      if (assignments.length > 1) {
+        anomalyCounts.plot_anomaly++;
+        anomalies.push({
+          recordId: assignments[0].id,
+          recordName: assignments[0].name || 'Unknown',
+          type: 'plot_anomaly',
+          severity: 'warning',
+          message: `Plot ${plotKey} is assigned to ${assignments.length} records`,
+          field: 'plot',
+          duplicateRecords: assignments
+        });
+      }
+    }
+
+    // Sort anomalies by severity (critical first)
+    const severityOrder = { critical: 0, warning: 1, info: 2 };
+    anomalies.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+
+    // Build summary
+    const summary = {
+      total: anomalies.length,
+      critical: anomalies.filter(a => a.severity === 'critical').length,
+      warning: anomalies.filter(a => a.severity === 'warning').length,
+      info: anomalies.filter(a => a.severity === 'info').length,
+      byType: anomalyCounts,
+      recordsScanned: records.length,
+      medianDeathYear: medianDeathYear
+    };
+
+    return jsonResponse({
+      success: true,
+      cemeteryId: safeId,
+      anomalies: anomalies.slice(0, 100),
+      anomalyCount: anomalies.length,
+      summary: summary
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to detect anomalies',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/graves/:id/anomaly-check
+ * Checks a single record for anomalies and returns detailed findings.
+ */
+async function handleRecordAnomalyCheck(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      recordId: safeId,
+      anomalies: [],
+      message: 'GitHub not configured — no anomaly check available'
+    }, 200, cors);
+  }
+
+  try {
+    const content = await readFile(`graves/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Record not found' }, 404, cors);
+    }
+
+    const record = JSON.parse(content);
+    const anomalies = [];
+    const currentYear = new Date().getFullYear();
+
+    // Date checks
+    if (record.birthDate && record.deathDate) {
+      const birthYear = parseInt(String(record.birthDate).substring(0, 4));
+      const deathYear = parseInt(String(record.deathDate).substring(0, 4));
+      if (!isNaN(birthYear) && !isNaN(deathYear)) {
+        if (birthYear > deathYear) {
+          anomalies.push({ type: 'date_anomaly', severity: 'critical', message: 'Birth year is after death year', field: 'birthDate' });
+        }
+        const lifespan = deathYear - birthYear;
+        if (lifespan > 120) {
+          anomalies.push({ type: 'date_anomaly', severity: 'warning', message: `Lifespan of ${lifespan} years exceeds 120`, field: 'deathDate' });
+        }
+      }
+    }
+
+    if (record.birthDate) {
+      const y = parseInt(String(record.birthDate).substring(0, 4));
+      if (!isNaN(y) && y > currentYear) {
+        anomalies.push({ type: 'date_anomaly', severity: 'critical', message: 'Birth date is in the future', field: 'birthDate' });
+      }
+      if (!isNaN(y) && y < 1700) {
+        anomalies.push({ type: 'date_anomaly', severity: 'warning', message: `Birth year (${y}) is before 1700`, field: 'birthDate' });
+      }
+    }
+    if (record.deathDate) {
+      const y = parseInt(String(record.deathDate).substring(0, 4));
+      if (!isNaN(y) && y > currentYear) {
+        anomalies.push({ type: 'date_anomaly', severity: 'critical', message: 'Death date is in the future', field: 'deathDate' });
+      }
+    }
+
+    // Name checks
+    if (record.name) {
+      const name = record.name.trim();
+      if (name.length < 2) {
+        anomalies.push({ type: 'name_anomaly', severity: 'warning', message: 'Name is very short', field: 'name' });
+      }
+      if (name.length > 3 && name === name.toUpperCase() && /[a-zA-Z]/.test(name)) {
+        anomalies.push({ type: 'name_anomaly', severity: 'info', message: 'Name is all uppercase', field: 'name' });
+      }
+      if (/^[0-9\s]+$/.test(name)) {
+        anomalies.push({ type: 'name_anomaly', severity: 'warning', message: 'Name contains only numbers', field: 'name' });
+      }
+    } else if (!record.graveIdentifier) {
+      anomalies.push({ type: 'completeness_anomaly', severity: 'critical', message: 'No name or grave identifier', field: 'name' });
+    }
+
+    // Coordinate checks
+    if (record.latitude !== undefined && record.latitude !== null) {
+      if (record.latitude < -90 || record.latitude > 90) {
+        anomalies.push({ type: 'coordinate_anomaly', severity: 'critical', message: `Invalid latitude: ${record.latitude}`, field: 'latitude' });
+      }
+    }
+    if (record.longitude !== undefined && record.longitude !== null) {
+      if (record.longitude < -180 || record.longitude > 180) {
+        anomalies.push({ type: 'coordinate_anomaly', severity: 'critical', message: `Invalid longitude: ${record.longitude}`, field: 'longitude' });
+      }
+    }
+
+    // Completeness
+    if (!record.birthDate && !record.deathDate) {
+      anomalies.push({ type: 'completeness_anomaly', severity: 'warning', message: 'No birth or death date', field: 'deathDate' });
+    }
+
+    const severityOrder = { critical: 0, warning: 1, info: 2 };
+    anomalies.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+
+    return jsonResponse({
+      success: true,
+      recordId: safeId,
+      recordName: record.name || null,
+      anomalyCount: anomalies.length,
+      anomalies: anomalies,
+      hasCritical: anomalies.some(a => a.severity === 'critical')
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to check record for anomalies',
+      message: error.message
+    }, 500, cors);
+  }
+}
 
 // ── Phase 16.9: AI Import Quality Scoring Handlers ──
 

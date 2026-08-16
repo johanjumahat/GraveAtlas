@@ -7,6 +7,8 @@ import com.putraworks.graveatlas.data.model.EnrichmentResult;
 import com.putraworks.graveatlas.data.model.ConnectionNetwork;
 import com.putraworks.graveatlas.data.model.ImportQualityScore;
 import com.putraworks.graveatlas.data.model.ImportBatchReport;
+import com.putraworks.graveatlas.data.model.AnomalyReport;
+import com.putraworks.graveatlas.data.model.RecordAnomalyCheck;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -878,6 +880,74 @@ public class ApiClient {
         } catch (java.io.UnsupportedEncodingException e) {
             return value; // UTF-8 is always available on Android
         }
+    }
+
+    // ── Phase 16.10: AI Anomaly Detection ──
+
+    /**
+     * Get anomaly report for an entire cemetery.
+     * GET /api/cemeteries/{id}/anomalies
+     */
+    public void getCemeteryAnomalies(String cemeteryId, final ApiCallback<AnomalyReport> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/cemeteries/" + cemeteryId + "/anomalies")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        callback.onSuccess(AnomalyReport.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse anomaly report.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Check a single record for anomalies.
+     * GET /api/graves/{id}/anomaly-check
+     */
+    public void checkRecordAnomalies(String recordId, final ApiCallback<RecordAnomalyCheck> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/graves/" + recordId + "/anomaly-check")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        callback.onSuccess(RecordAnomalyCheck.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse anomaly check result.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
     }
 
     // ── Phase 16.9: AI Import Quality Scoring ──

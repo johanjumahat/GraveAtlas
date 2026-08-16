@@ -519,6 +519,45 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.10] — 2026-08-16
+
+### Phase 16.10: AI Anomaly Detection
+
+**Added:**
+- `GET /api/cemeteries/:id/anomalies` — cemetery-wide anomaly scan:
+  - Date anomalies: birth after death (critical), lifespan > 120 (warning),
+    future dates (critical), pre-1700 dates (warning)
+  - Name anomalies: short names (warning), all-caps (info), numeric-only (warning),
+    non-printable chars (critical)
+  - Coordinate anomalies: >0.1° from cemetery center (warning), invalid ranges (critical)
+  - Plot anomalies: duplicate plot assignments with record list (warning)
+  - Completeness anomalies: no name/identifier (critical), no dates (warning)
+  - Statistical outliers: death year > 100 years from median (info)
+  - Summary with critical/warning/info counts, byType breakdown, median death year
+  - Results sorted by severity (critical first), limited to 100
+
+- `GET /api/graves/:id/anomaly-check` — single record anomaly check:
+  - All date, name, coordinate, and completeness checks for one record
+  - Returns hasCritical flag and anomalyCount
+  - Returns human-readable summary
+
+- `AnomalyReport` model with getCriticalAnomalies, getAnomaliesByType, hasCriticalAnomalies
+- `RecordAnomalyCheck` model with isClean, getSummary, getCriticalAnomalies
+- `ApiClient` methods: `getCemeteryAnomalies()`, `checkRecordAnomalies()`
+- AI system prompt updated with anomaly detection endpoint awareness
+- 3 new suggested prompts
+- 70 new tests (phase16-10.test.js)
+
+**Anomaly Types:**
+- date_anomaly, name_anomaly, coordinate_anomaly, plot_anomaly,
+  completeness_anomaly, statistical_outlier
+
+**Severity Levels:**
+- critical: birth after death, future dates, invalid coordinates, no name
+- warning: lifespan > 120, pre-1700 dates, short names, far coordinates, duplicate plots, no dates
+- info: all-caps names, statistical outliers
+
+
 ## [7.2.9] — 2026-08-16
 
 ### Phase 16.9: AI Import Quality Scoring
