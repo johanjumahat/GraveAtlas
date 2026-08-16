@@ -49,6 +49,9 @@ import com.putraworks.graveatlas.data.model.CurationStats;
 import com.putraworks.graveatlas.data.model.Notification;
 import com.putraworks.graveatlas.data.model.AlertRule;
 import com.putraworks.graveatlas.data.model.AlertDigest;
+import com.putraworks.graveatlas.data.model.IntelligentSearchResult;
+import com.putraworks.graveatlas.data.model.SearchSuggestion;
+import com.putraworks.graveatlas.data.model.RelatedRecord;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -920,6 +923,174 @@ public class ApiClient {
         } catch (java.io.UnsupportedEncodingException e) {
             return value; // UTF-8 is always available on Android
         }
+    }
+
+    // ── Phase 16.24: AI Search Intelligence ──
+
+    /**
+     * Intelligent natural language search.
+     * POST /api/search/intelligent
+     */
+    public void intelligentSearch(String query, String cemeteryId,
+            final ApiCallback<IntelligentSearchResult> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("query", query);
+            if (cemeteryId != null) body.put("cemeteryId", cemeteryId);
+        } catch (Exception e) { /* ignore */ }
+
+        RequestBody rb = RequestBody.create(body.toString(), MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/search/intelligent")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(IntelligentSearchResult.fromJson(new JSONObject(body)));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse search results.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get search autocomplete suggestions.
+     * GET /api/search/suggest?q=&limit=
+     */
+    public void getSearchSuggestions(String partialQuery, int limit,
+            final ApiCallback<java.util.List<SearchSuggestion>> callback) {
+        String url = baseUrl + "/api/search/suggest?q=" + partialQuery + "&limit=" + limit;
+        Request request = new Request.Builder().url(url).get().build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(SearchSuggestion.fromJson(new JSONObject(body)));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse suggestions.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get search history.
+     * GET /api/search/history?limit=
+     */
+    public void getSearchHistory(int limit, final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/search/history?limit=" + limit)
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse search history.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Clear search history.
+     * DELETE /api/search/history
+     */
+    public void clearSearchHistory(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/search/history")
+                .delete()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse response.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Find records related to a given record.
+     * GET /api/search/related?recordId=&limit=
+     */
+    public void findRelatedRecords(String recordId, int limit,
+            final ApiCallback<java.util.List<RelatedRecord>> callback) {
+        String url = baseUrl + "/api/search/related?recordId=" + recordId + "&limit=" + limit;
+        Request request = new Request.Builder().url(url).get().build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(RelatedRecord.fromJsonArray(new JSONObject(body)));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse related records.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
     }
 
     // ── Phase 16.23: AI Notification & Alert System ──

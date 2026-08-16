@@ -519,6 +519,56 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.24] — 2026-08-16
+
+### Phase 16.24: AI Search Intelligence
+
+**Added:**
+- `POST /api/search/intelligent` — natural language search that parses intent and
+  ranks results by relevance. Extracts: names, date ranges (before/after/between),
+  places, cemetery keywords, verification status, confidence thresholds (above/below),
+  anomaly flags, source flags, coordinate flags, limit, sort order, and intent
+  (search/count/fix/export). Each result has relevanceScore and matchReasons.
+
+- `GET /api/search/suggest` — autocomplete suggestions (filter keywords, date
+  ranges, place names, record names). Returns typed suggestions.
+
+- `GET /api/search/history` — recent search history with query, resultCount,
+  timestamp. Sorted newest first.
+
+- `DELETE /api/search/history` — clear all search history.
+
+- `GET /api/search/related` — find records related to a given record by:
+  same cemetery (+30), same section (+15), same family name (+25), similar
+  death dates within 5 years (+15), shared source references (+20 each).
+  Returns relationScore, relationTypes, and sourceRecord context.
+
+**Query Parsing:**
+- Names: capitalized words (excluding common stopwords)
+- Dates: "before 1900", "after 1950", "between 1880 and 1920", "in 1945"
+- Places: Singapore, Malaysia, Bukit Brown, Chua Chu Kang, Kranji, etc.
+- Filters: verified/unverified, low/high confidence, with/without sources,
+  with/without coordinates, anomalies
+- Intent: search, count ("how many"), fix ("records that need fixing"),
+  export ("download records")
+
+**Relevance Scoring:**
+- Name match: +30 per matching name
+- Date in range: +20-25
+- Place match: +25
+- Verification status match: +15, mismatch: -10
+- Confidence match: +20, mismatch: -15
+- Anomalies present: +15, absent: -20
+- Source/coordinate filter match: +10-15, mismatch: -10-15
+- Results sorted by relevance score (descending)
+
+New models: IntelligentSearchResult (3 inner), SearchSuggestion, RelatedRecord
+API client: intelligentSearch(), getSearchSuggestions(), getSearchHistory(),
+clearSearchHistory(), findRelatedRecords()
+AI system prompt updated, 3 new suggested prompts
+90+ new tests (phase16-24.test.js)
+
+
 ## [7.2.23] — 2026-08-16
 
 ### Phase 16.23: AI Notification & Alert System

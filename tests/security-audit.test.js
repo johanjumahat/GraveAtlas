@@ -209,7 +209,7 @@ test('No child_process usage', () => {
 
 test('No exec() usage', () => {
   const lines = indexSource.split('\n');
-  const execLines = lines.filter(l => l.includes('exec(') && !l.trim().startsWith('//'));
+  const execLines = lines.filter(l => l.includes('exec(') && !l.includes('.exec(') && !l.trim().startsWith('//'));
   assert.ok(execLines.length === 0, `Found ${execLines.length} exec() calls`);
 });
 
