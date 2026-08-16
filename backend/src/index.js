@@ -475,6 +475,28 @@ async function handleRequest(request, env, ctx) {
       return await handleGlobalReport(request, env, corsHeaders);
     }
 
+    // Phase 16.16: AI Watchlist & Monitoring
+    if (path === '/api/watchlist' && method === 'GET') {
+      return await handleGetWatchlist(request, env, corsHeaders);
+    }
+
+    if (path === '/api/watchlist' && method === 'POST') {
+      return await handleAddToWatchlist(request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/watchlist/') && method === 'DELETE') {
+      const itemId = path.split('/').pop();
+      return await handleRemoveFromWatchlist(itemId, request, env, corsHeaders);
+    }
+
+    if (path === '/api/watchlist/check' && method === 'POST') {
+      return await handleWatchlistCheck(request, env, corsHeaders);
+    }
+
+    if (path === '/api/watchlist/status' && method === 'GET') {
+      return await handleWatchlistStatus(request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -3537,6 +3559,426 @@ function safeTokenCompare(a, b) {
 
 // ── Utils ──
 
+// ── Phase 16.16: AI Watchlist & Monitoring Handlers ──
+
+/**
+ * GET /api/watchlist
+ * Returns all watchlist items.
+ */
+async function handleGetWatchlist(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      items: [],
+      message: 'GitHub not configured — watchlist unavailable'
+    }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('watchlist', env);
+    const items = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`watchlist/${file}`, env);
+        if (!content) continue;
+        items.push(JSON.parse(content));
+      } catch (e) { /* skip */ }
+    }
+
+    items.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+    return jsonResponse({
+      success: true,
+      items: items,
+      totalItems: items.length
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to fetch watchlist',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/watchlist
+ * Add a cemetery or record to the watchlist.
+ * Body: { targetType: 'cemetery'|'record', targetId: string,
+ *         watchFor: string[], label: string }
+ */
+async function handleAddToWatchlist(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: false,
+      error: 'GitHub not configured — watchlist unavailable'
+    }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+
+    if (!body || !body.targetType || !body.targetId) {
+      return jsonResponse({
+        success: false,
+        error: 'Missing required fields: targetType, targetId'
+      }, 400, cors);
+    }
+
+    const targetType = body.targetType;
+    const targetId = sanitizePathSegment(body.targetId);
+    if (!targetId || targetId !== body.targetId) {
+      return jsonResponse({ success: false, error: 'Invalid target ID' }, 400, cors);
+    }
+
+    if (targetType !== 'cemetery' && targetType !== 'record') {
+      return jsonResponse({
+        success: false,
+        error: 'targetType must be "cemetery" or "record"'
+      }, 400, cors);
+    }
+
+    const watchFor = Array.isArray(body.watchFor)
+      ? body.watchFor
+      : ['health_degradation', 'new_anomalies', 'unapplied_fixes'];
+
+    const validWatchTypes = ['health_degradation', 'new_anomalies', 'unapplied_fixes', 'duplicate_detected', 'missing_data'];
+    const filteredWatch = watchFor.filter(w => validWatchTypes.includes(w));
+
+    const itemId = `watch_${targetType}_${targetId}_${Date.now()}`;
+    const item = {
+      id: itemId,
+      targetType: targetType,
+      targetId: targetId,
+      label: body.label || targetId,
+      watchFor: filteredWatch,
+      createdAt: new Date().toISOString(),
+      lastChecked: null,
+      lastStatus: null,
+      active: true
+    };
+
+    await writeFile(`watchlist/${itemId}.json`, JSON.stringify(item, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      item: item
+    }, 201, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to add to watchlist',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * DELETE /api/watchlist/:itemId
+ * Remove an item from the watchlist.
+ */
+async function handleRemoveFromWatchlist(itemId, request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: false,
+      error: 'GitHub not configured — watchlist unavailable'
+    }, 503, cors);
+  }
+
+  const safeId = sanitizePathSegment(itemId);
+  if (!safeId || safeId !== itemId) {
+    return jsonResponse({ success: false, error: 'Invalid item ID' }, 400, cors);
+  }
+
+  try {
+    await deleteFile(`watchlist/${safeId}.json`, env);
+    return jsonResponse({ success: true, message: 'Watchlist item removed' }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to remove watchlist item',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/watchlist/check
+ * Check all watchlist items for changes and return alerts.
+ * For each item: computes current health/anomalies, compares with last check,
+ * generates alerts if conditions are met.
+ */
+async function handleWatchlistCheck(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      alerts: [],
+      message: 'GitHub not configured — watchlist unavailable'
+    }, 200, cors);
+  }
+
+  try {
+    // Load watchlist items
+    const wlFiles = await listFiles('watchlist', env);
+    const watchlistItems = [];
+
+    for (const file of wlFiles) {
+      try {
+        const content = await readFile(`watchlist/${file}`, env);
+        if (!content) continue;
+        const item = JSON.parse(content);
+        if (item.active !== false) watchlistItems.push(item);
+      } catch (e) { /* skip */ }
+    }
+
+    if (watchlistItems.length === 0) {
+      return jsonResponse({
+        success: true,
+        alerts: [],
+        checkedItems: 0,
+        message: 'No active watchlist items'
+      }, 200, cors);
+    }
+
+    // Load all grave records (cache by cemetery for efficiency)
+    const graveFiles = await listFiles('graves', env);
+    const allRecords = [];
+    const recordsByCemetery = {};
+
+    for (const file of graveFiles) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        allRecords.push(record);
+        const cemId = record.cemeteryId || 'unknown';
+        if (!recordsByCemetery[cemId]) recordsByCemetery[cemId] = [];
+        recordsByCemetery[cemId].push(record);
+      } catch (e) { /* skip */ }
+    }
+
+    const alerts = [];
+    let checkedCount = 0;
+
+    for (const item of watchlistItems) {
+      checkedCount++;
+      let records = [];
+
+      if (item.targetType === 'cemetery') {
+        records = recordsByCemetery[item.targetId] || [];
+      } else if (item.targetType === 'record') {
+        const rec = allRecords.find(r => r.id === item.targetId);
+        if (rec) records = [rec];
+      }
+
+      if (records.length === 0) continue;
+
+      // Compute current health
+      const currentHealth = computeQuickHealth(records);
+      const currentAnomalies = computeCemeteryAnomalies(records);
+
+      // Compare with previous state
+      const previousStatus = item.lastStatus;
+      const watchFor = item.watchFor || [];
+
+      // Health degradation alert
+      if (watchFor.includes('health_degradation') && previousStatus) {
+        const scoreDrop = (previousStatus.healthScore || 0) - currentHealth.overallScore;
+        if (scoreDrop >= 5) {
+          alerts.push({
+            watchlistItemId: item.id,
+            targetType: item.targetType,
+            targetId: item.targetId,
+            label: item.label,
+            alertType: 'health_degradation',
+            severity: scoreDrop >= 15 ? 'critical' : scoreDrop >= 10 ? 'high' : 'medium',
+            message: `Health score dropped by ${scoreDrop} points (from ${previousStatus.healthScore || 0} to ${currentHealth.overallScore})`,
+            currentValue: currentHealth.overallScore,
+            previousValue: previousStatus.healthScore || 0,
+            detectedAt: new Date().toISOString()
+          });
+        }
+      }
+
+      // New anomalies alert
+      if (watchFor.includes('new_anomalies') && previousStatus) {
+        const prevAnomalies = previousStatus.anomalyCount || 0;
+        const currentAnomalyTotal = currentAnomalies.total;
+        if (currentAnomalyTotal > prevAnomalies) {
+          const newCount = currentAnomalyTotal - prevAnomalies;
+          alerts.push({
+            watchlistItemId: item.id,
+            targetType: item.targetType,
+            targetId: item.targetId,
+            label: item.label,
+            alertType: 'new_anomalies',
+            severity: currentAnomalies.critical > (previousStatus.criticalAnomalies || 0) ? 'critical' : 'medium',
+            message: `${newCount} new anomaly(ies) detected (total: ${currentAnomalyTotal})`,
+            currentValue: currentAnomalyTotal,
+            previousValue: prevAnomalies,
+            detectedAt: new Date().toISOString()
+          });
+        }
+      }
+
+      // Unapplied fixes alert
+      if (watchFor.includes('unapplied_fixes')) {
+        let totalFixes = 0;
+        for (const rec of records) {
+          const fixes = generateAutoFixes(rec);
+          totalFixes += fixes.filter(f => f.confidence === 'high').length;
+        }
+        if (totalFixes > 0) {
+          alerts.push({
+            watchlistItemId: item.id,
+            targetType: item.targetType,
+            targetId: item.targetId,
+            label: item.label,
+            alertType: 'unapplied_fixes',
+            severity: 'low',
+            message: `${totalFixes} high-confidence fix(es) available but not applied`,
+            currentValue: totalFixes,
+            previousValue: null,
+            detectedAt: new Date().toISOString()
+          });
+        }
+      }
+
+      // Duplicate detected alert
+      if (watchFor.includes('duplicate_detected')) {
+        const nameDateMap = {};
+        let dupCount = 0;
+        for (const rec of records) {
+          if (rec.name && rec.deathDate) {
+            const key = (rec.name || '').toLowerCase().trim() + '|' + rec.deathDate;
+            if (nameDateMap[key]) dupCount++;
+            else nameDateMap[key] = true;
+          }
+        }
+        if (dupCount > 0) {
+          alerts.push({
+            watchlistItemId: item.id,
+            targetType: item.targetType,
+            targetId: item.targetId,
+            label: item.label,
+            alertType: 'duplicate_detected',
+            severity: 'medium',
+            message: `${dupCount} potential duplicate(s) detected`,
+            currentValue: dupCount,
+            previousValue: null,
+            detectedAt: new Date().toISOString()
+          });
+        }
+      }
+
+      // Missing data alert
+      if (watchFor.includes('missing_data')) {
+        const missingSources = records.filter(r => !r.sourceRefs || r.sourceRefs.length === 0).length;
+        const missingPhotos = records.filter(r => !r.photoRefs || r.photoRefs.length === 0).length;
+        const missingRate = records.length > 0 ? (missingSources + missingPhotos) / (records.length * 2) : 0;
+        if (missingRate > 0.5) {
+          alerts.push({
+            watchlistItemId: item.id,
+            targetType: item.targetType,
+            targetId: item.targetId,
+            label: item.label,
+            alertType: 'missing_data',
+            severity: missingRate > 0.8 ? 'high' : 'medium',
+            message: `${Math.round(missingRate * 100)}% of expected data fields are missing`,
+            currentValue: Math.round(missingRate * 100),
+            previousValue: null,
+            detectedAt: new Date().toISOString()
+          });
+        }
+      }
+
+      // Update watchlist item with current status
+      item.lastChecked = new Date().toISOString();
+      item.lastStatus = {
+        healthScore: currentHealth.overallScore,
+        healthGrade: currentHealth.grade,
+        anomalyCount: currentAnomalies.total,
+        criticalAnomalies: currentAnomalies.critical,
+        recordCount: records.length
+      };
+
+      try {
+        await writeFile(`watchlist/${item.id}.json`, JSON.stringify(item, null, 2), env);
+      } catch (e) { /* continue even if write fails */ }
+    }
+
+    return jsonResponse({
+      success: true,
+      alerts: alerts,
+      checkedItems: checkedCount,
+      totalAlerts: alerts.length,
+      criticalAlerts: alerts.filter(a => a.severity === 'critical').length,
+      highAlerts: alerts.filter(a => a.severity === 'high').length,
+      checkedAt: new Date().toISOString()
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to check watchlist',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/watchlist/status
+ * Returns a summary of watchlist status without detailed alerts.
+ */
+async function handleWatchlistStatus(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      message: 'GitHub not configured — watchlist unavailable'
+    }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('watchlist', env);
+    let activeItems = 0;
+    let itemsWithAlerts = 0;
+    let lastCheckedAt = null;
+    let totalAlerts = 0;
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`watchlist/${file}`, env);
+        if (!content) continue;
+        const item = JSON.parse(content);
+        if (item.active !== false) activeItems++;
+        if (item.lastChecked) {
+          const checkedDate = new Date(item.lastChecked);
+          if (!lastCheckedAt || checkedDate > new Date(lastCheckedAt)) {
+            lastCheckedAt = item.lastChecked;
+          }
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    return jsonResponse({
+      success: true,
+      activeItems: activeItems,
+      totalItems: activeItems,
+      lastCheckedAt: lastCheckedAt,
+      needsCheck: lastCheckedAt
+        ? (Date.now() - new Date(lastCheckedAt).getTime()) > 24 * 60 * 60 * 1000
+        : true
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to get watchlist status',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
 // ── Phase 16.15: AI Export & Reporting Handlers ──
 
 /**
@@ -3765,6 +4207,426 @@ function generateRecommendations(records, stats, anomalySummary) {
   }
 
   return recommendations;
+}
+
+// ── Phase 16.16: AI Watchlist & Monitoring Handlers ──
+
+/**
+ * GET /api/watchlist
+ * Returns all watchlist items.
+ */
+async function handleGetWatchlist(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      items: [],
+      message: 'GitHub not configured — watchlist unavailable'
+    }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('watchlist', env);
+    const items = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`watchlist/${file}`, env);
+        if (!content) continue;
+        items.push(JSON.parse(content));
+      } catch (e) { /* skip */ }
+    }
+
+    items.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+    return jsonResponse({
+      success: true,
+      items: items,
+      totalItems: items.length
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to fetch watchlist',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/watchlist
+ * Add a cemetery or record to the watchlist.
+ * Body: { targetType: 'cemetery'|'record', targetId: string,
+ *         watchFor: string[], label: string }
+ */
+async function handleAddToWatchlist(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: false,
+      error: 'GitHub not configured — watchlist unavailable'
+    }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+
+    if (!body || !body.targetType || !body.targetId) {
+      return jsonResponse({
+        success: false,
+        error: 'Missing required fields: targetType, targetId'
+      }, 400, cors);
+    }
+
+    const targetType = body.targetType;
+    const targetId = sanitizePathSegment(body.targetId);
+    if (!targetId || targetId !== body.targetId) {
+      return jsonResponse({ success: false, error: 'Invalid target ID' }, 400, cors);
+    }
+
+    if (targetType !== 'cemetery' && targetType !== 'record') {
+      return jsonResponse({
+        success: false,
+        error: 'targetType must be "cemetery" or "record"'
+      }, 400, cors);
+    }
+
+    const watchFor = Array.isArray(body.watchFor)
+      ? body.watchFor
+      : ['health_degradation', 'new_anomalies', 'unapplied_fixes'];
+
+    const validWatchTypes = ['health_degradation', 'new_anomalies', 'unapplied_fixes', 'duplicate_detected', 'missing_data'];
+    const filteredWatch = watchFor.filter(w => validWatchTypes.includes(w));
+
+    const itemId = `watch_${targetType}_${targetId}_${Date.now()}`;
+    const item = {
+      id: itemId,
+      targetType: targetType,
+      targetId: targetId,
+      label: body.label || targetId,
+      watchFor: filteredWatch,
+      createdAt: new Date().toISOString(),
+      lastChecked: null,
+      lastStatus: null,
+      active: true
+    };
+
+    await writeFile(`watchlist/${itemId}.json`, JSON.stringify(item, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      item: item
+    }, 201, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to add to watchlist',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * DELETE /api/watchlist/:itemId
+ * Remove an item from the watchlist.
+ */
+async function handleRemoveFromWatchlist(itemId, request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: false,
+      error: 'GitHub not configured — watchlist unavailable'
+    }, 503, cors);
+  }
+
+  const safeId = sanitizePathSegment(itemId);
+  if (!safeId || safeId !== itemId) {
+    return jsonResponse({ success: false, error: 'Invalid item ID' }, 400, cors);
+  }
+
+  try {
+    await deleteFile(`watchlist/${safeId}.json`, env);
+    return jsonResponse({ success: true, message: 'Watchlist item removed' }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to remove watchlist item',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/watchlist/check
+ * Check all watchlist items for changes and return alerts.
+ * For each item: computes current health/anomalies, compares with last check,
+ * generates alerts if conditions are met.
+ */
+async function handleWatchlistCheck(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      alerts: [],
+      message: 'GitHub not configured — watchlist unavailable'
+    }, 200, cors);
+  }
+
+  try {
+    // Load watchlist items
+    const wlFiles = await listFiles('watchlist', env);
+    const watchlistItems = [];
+
+    for (const file of wlFiles) {
+      try {
+        const content = await readFile(`watchlist/${file}`, env);
+        if (!content) continue;
+        const item = JSON.parse(content);
+        if (item.active !== false) watchlistItems.push(item);
+      } catch (e) { /* skip */ }
+    }
+
+    if (watchlistItems.length === 0) {
+      return jsonResponse({
+        success: true,
+        alerts: [],
+        checkedItems: 0,
+        message: 'No active watchlist items'
+      }, 200, cors);
+    }
+
+    // Load all grave records (cache by cemetery for efficiency)
+    const graveFiles = await listFiles('graves', env);
+    const allRecords = [];
+    const recordsByCemetery = {};
+
+    for (const file of graveFiles) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        allRecords.push(record);
+        const cemId = record.cemeteryId || 'unknown';
+        if (!recordsByCemetery[cemId]) recordsByCemetery[cemId] = [];
+        recordsByCemetery[cemId].push(record);
+      } catch (e) { /* skip */ }
+    }
+
+    const alerts = [];
+    let checkedCount = 0;
+
+    for (const item of watchlistItems) {
+      checkedCount++;
+      let records = [];
+
+      if (item.targetType === 'cemetery') {
+        records = recordsByCemetery[item.targetId] || [];
+      } else if (item.targetType === 'record') {
+        const rec = allRecords.find(r => r.id === item.targetId);
+        if (rec) records = [rec];
+      }
+
+      if (records.length === 0) continue;
+
+      // Compute current health
+      const currentHealth = computeQuickHealth(records);
+      const currentAnomalies = computeCemeteryAnomalies(records);
+
+      // Compare with previous state
+      const previousStatus = item.lastStatus;
+      const watchFor = item.watchFor || [];
+
+      // Health degradation alert
+      if (watchFor.includes('health_degradation') && previousStatus) {
+        const scoreDrop = (previousStatus.healthScore || 0) - currentHealth.overallScore;
+        if (scoreDrop >= 5) {
+          alerts.push({
+            watchlistItemId: item.id,
+            targetType: item.targetType,
+            targetId: item.targetId,
+            label: item.label,
+            alertType: 'health_degradation',
+            severity: scoreDrop >= 15 ? 'critical' : scoreDrop >= 10 ? 'high' : 'medium',
+            message: `Health score dropped by ${scoreDrop} points (from ${previousStatus.healthScore || 0} to ${currentHealth.overallScore})`,
+            currentValue: currentHealth.overallScore,
+            previousValue: previousStatus.healthScore || 0,
+            detectedAt: new Date().toISOString()
+          });
+        }
+      }
+
+      // New anomalies alert
+      if (watchFor.includes('new_anomalies') && previousStatus) {
+        const prevAnomalies = previousStatus.anomalyCount || 0;
+        const currentAnomalyTotal = currentAnomalies.total;
+        if (currentAnomalyTotal > prevAnomalies) {
+          const newCount = currentAnomalyTotal - prevAnomalies;
+          alerts.push({
+            watchlistItemId: item.id,
+            targetType: item.targetType,
+            targetId: item.targetId,
+            label: item.label,
+            alertType: 'new_anomalies',
+            severity: currentAnomalies.critical > (previousStatus.criticalAnomalies || 0) ? 'critical' : 'medium',
+            message: `${newCount} new anomaly(ies) detected (total: ${currentAnomalyTotal})`,
+            currentValue: currentAnomalyTotal,
+            previousValue: prevAnomalies,
+            detectedAt: new Date().toISOString()
+          });
+        }
+      }
+
+      // Unapplied fixes alert
+      if (watchFor.includes('unapplied_fixes')) {
+        let totalFixes = 0;
+        for (const rec of records) {
+          const fixes = generateAutoFixes(rec);
+          totalFixes += fixes.filter(f => f.confidence === 'high').length;
+        }
+        if (totalFixes > 0) {
+          alerts.push({
+            watchlistItemId: item.id,
+            targetType: item.targetType,
+            targetId: item.targetId,
+            label: item.label,
+            alertType: 'unapplied_fixes',
+            severity: 'low',
+            message: `${totalFixes} high-confidence fix(es) available but not applied`,
+            currentValue: totalFixes,
+            previousValue: null,
+            detectedAt: new Date().toISOString()
+          });
+        }
+      }
+
+      // Duplicate detected alert
+      if (watchFor.includes('duplicate_detected')) {
+        const nameDateMap = {};
+        let dupCount = 0;
+        for (const rec of records) {
+          if (rec.name && rec.deathDate) {
+            const key = (rec.name || '').toLowerCase().trim() + '|' + rec.deathDate;
+            if (nameDateMap[key]) dupCount++;
+            else nameDateMap[key] = true;
+          }
+        }
+        if (dupCount > 0) {
+          alerts.push({
+            watchlistItemId: item.id,
+            targetType: item.targetType,
+            targetId: item.targetId,
+            label: item.label,
+            alertType: 'duplicate_detected',
+            severity: 'medium',
+            message: `${dupCount} potential duplicate(s) detected`,
+            currentValue: dupCount,
+            previousValue: null,
+            detectedAt: new Date().toISOString()
+          });
+        }
+      }
+
+      // Missing data alert
+      if (watchFor.includes('missing_data')) {
+        const missingSources = records.filter(r => !r.sourceRefs || r.sourceRefs.length === 0).length;
+        const missingPhotos = records.filter(r => !r.photoRefs || r.photoRefs.length === 0).length;
+        const missingRate = records.length > 0 ? (missingSources + missingPhotos) / (records.length * 2) : 0;
+        if (missingRate > 0.5) {
+          alerts.push({
+            watchlistItemId: item.id,
+            targetType: item.targetType,
+            targetId: item.targetId,
+            label: item.label,
+            alertType: 'missing_data',
+            severity: missingRate > 0.8 ? 'high' : 'medium',
+            message: `${Math.round(missingRate * 100)}% of expected data fields are missing`,
+            currentValue: Math.round(missingRate * 100),
+            previousValue: null,
+            detectedAt: new Date().toISOString()
+          });
+        }
+      }
+
+      // Update watchlist item with current status
+      item.lastChecked = new Date().toISOString();
+      item.lastStatus = {
+        healthScore: currentHealth.overallScore,
+        healthGrade: currentHealth.grade,
+        anomalyCount: currentAnomalies.total,
+        criticalAnomalies: currentAnomalies.critical,
+        recordCount: records.length
+      };
+
+      try {
+        await writeFile(`watchlist/${item.id}.json`, JSON.stringify(item, null, 2), env);
+      } catch (e) { /* continue even if write fails */ }
+    }
+
+    return jsonResponse({
+      success: true,
+      alerts: alerts,
+      checkedItems: checkedCount,
+      totalAlerts: alerts.length,
+      criticalAlerts: alerts.filter(a => a.severity === 'critical').length,
+      highAlerts: alerts.filter(a => a.severity === 'high').length,
+      checkedAt: new Date().toISOString()
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to check watchlist',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/watchlist/status
+ * Returns a summary of watchlist status without detailed alerts.
+ */
+async function handleWatchlistStatus(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      message: 'GitHub not configured — watchlist unavailable'
+    }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('watchlist', env);
+    let activeItems = 0;
+    let itemsWithAlerts = 0;
+    let lastCheckedAt = null;
+    let totalAlerts = 0;
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`watchlist/${file}`, env);
+        if (!content) continue;
+        const item = JSON.parse(content);
+        if (item.active !== false) activeItems++;
+        if (item.lastChecked) {
+          const checkedDate = new Date(item.lastChecked);
+          if (!lastCheckedAt || checkedDate > new Date(lastCheckedAt)) {
+            lastCheckedAt = item.lastChecked;
+          }
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    return jsonResponse({
+      success: true,
+      activeItems: activeItems,
+      totalItems: activeItems,
+      lastCheckedAt: lastCheckedAt,
+      needsCheck: lastCheckedAt
+        ? (Date.now() - new Date(lastCheckedAt).getTime()) > 24 * 60 * 60 * 1000
+        : true
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to get watchlist status',
+      message: error.message
+    }, 500, cors);
+  }
 }
 
 // ── Phase 16.15: AI Export & Reporting Handlers ──

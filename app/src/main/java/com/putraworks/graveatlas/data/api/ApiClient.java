@@ -21,6 +21,9 @@ import com.putraworks.graveatlas.data.model.GlobalCleanupResult;
 import com.putraworks.graveatlas.data.model.CemeteryReport;
 import com.putraworks.graveatlas.data.model.CemeteryReportSummary;
 import com.putraworks.graveatlas.data.model.GlobalReport;
+import com.putraworks.graveatlas.data.model.WatchlistItem;
+import com.putraworks.graveatlas.data.model.WatchlistCheckResult;
+import com.putraworks.graveatlas.data.model.WatchlistStatus;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -892,6 +895,193 @@ public class ApiClient {
         } catch (java.io.UnsupportedEncodingException e) {
             return value; // UTF-8 is always available on Android
         }
+    }
+
+    // ── Phase 16.16: AI Watchlist & Monitoring ──
+
+    /**
+     * Get all watchlist items.
+     * GET /api/watchlist
+     */
+    public void getWatchlist(final ApiCallback<java.util.List<WatchlistItem>> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/watchlist")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        java.util.List<WatchlistItem> items = new java.util.ArrayList<>();
+                        JSONArray arr = obj.optJSONArray("items");
+                        if (arr != null) {
+                            for (int i = 0; i < arr.length(); i++) {
+                                JSONObject item = arr.optJSONObject(i);
+                                if (item != null) items.add(WatchlistItem.fromJson(item));
+                            }
+                        }
+                        callback.onSuccess(items);
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse watchlist.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Add a cemetery or record to the watchlist.
+     * POST /api/watchlist
+     */
+    public void addToWatchlist(String targetType, String targetId,
+                                 String[] watchFor, String label,
+                                 final ApiCallback<WatchlistItem> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("targetType", targetType);
+            body.put("targetId", targetId);
+            if (label != null) body.put("label", label);
+            if (watchFor != null) {
+                JSONArray arr = new JSONArray();
+                for (String w : watchFor) arr.put(w);
+                body.put("watchFor", arr);
+            }
+        } catch (Exception e) { /* ignore */ }
+
+        RequestBody rb = RequestBody.create(body.toString(), MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/watchlist")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        JSONObject item = obj.optJSONObject("item");
+                        if (item != null) {
+                            callback.onSuccess(WatchlistItem.fromJson(item));
+                        } else {
+                            callback.onError("Item not found in response.");
+                        }
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse watchlist item.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Remove an item from the watchlist.
+     * DELETE /api/watchlist/{itemId}
+     */
+    public void removeFromWatchlist(String itemId,
+                                      final ApiCallback<Boolean> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/watchlist/" + itemId)
+                .delete()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                callback.onSuccess(response.isSuccessful());
+            }
+        });
+    }
+
+    /**
+     * Check all watchlist items for changes and get alerts.
+     * POST /api/watchlist/check
+     */
+    public void checkWatchlist(final ApiCallback<WatchlistCheckResult> callback) {
+        RequestBody rb = RequestBody.create("{}", MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/watchlist/check")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        callback.onSuccess(WatchlistCheckResult.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse watchlist check result.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get watchlist status summary.
+     * GET /api/watchlist/status
+     */
+    public void getWatchlistStatus(final ApiCallback<WatchlistStatus> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/watchlist/status")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        callback.onSuccess(WatchlistStatus.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse watchlist status.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
     }
 
     // ── Phase 16.15: AI Export & Reporting ──

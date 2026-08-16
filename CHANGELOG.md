@@ -519,6 +519,44 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.16] — 2026-08-16
+
+### Phase 16.16: AI Watchlist & Monitoring
+
+**Added:**
+- `GET /api/watchlist` — list all watchlist items, sorted by creation date.
+
+- `POST /api/watchlist` — add a cemetery or record to the watchlist.
+  Body: `{ targetType, targetId, watchFor[], label }`.
+  Watch types: `health_degradation`, `new_anomalies`, `unapplied_fixes`,
+  `duplicate_detected`, `missing_data`.
+
+- `DELETE /api/watchlist/:itemId` — remove an item from the watchlist.
+
+- `POST /api/watchlist/check` — check all active watchlist items and generate alerts.
+  For each item: computes current health + anomalies, compares with previous state,
+  generates alerts based on configured watch types.
+  Returns: alerts array with severity, message, current/previous values.
+  Updates each item's `lastChecked` and `lastStatus`.
+
+- `GET /api/watchlist/status` — lightweight status summary:
+  active items, last check time, and `needsCheck` flag (24-hour threshold).
+
+**Alert Types & Severity:**
+- `health_degradation`: Score drop >= 15 = critical, >= 10 = high, >= 5 = medium
+- `new_anomalies`: Critical if critical anomalies increased, else medium
+- `unapplied_fixes`: Low severity, reports available high-confidence fixes
+- `duplicate_detected`: Medium severity
+- `missing_data`: High if > 80% missing, medium if > 50%
+
+New models: WatchlistItem (with WatchStatus), WatchAlert,
+WatchlistCheckResult, WatchlistStatus
+API client: getWatchlist(), addToWatchlist(), removeFromWatchlist(),
+checkWatchlist(), getWatchlistStatus()
+AI system prompt updated, 3 new suggested prompts
+90+ new tests (phase16-16.test.js)
+
+
 ## [7.2.15] — 2026-08-16
 
 ### Phase 16.15: AI Export & Reporting
