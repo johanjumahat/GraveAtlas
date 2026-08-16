@@ -52,6 +52,9 @@ import com.putraworks.graveatlas.data.model.AlertDigest;
 import com.putraworks.graveatlas.data.model.IntelligentSearchResult;
 import com.putraworks.graveatlas.data.model.SearchSuggestion;
 import com.putraworks.graveatlas.data.model.RelatedRecord;
+import com.putraworks.graveatlas.data.model.GovernancePolicy;
+import com.putraworks.graveatlas.data.model.DataClassification;
+import com.putraworks.graveatlas.data.model.ComplianceReport;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -923,6 +926,259 @@ public class ApiClient {
         } catch (java.io.UnsupportedEncodingException e) {
             return value; // UTF-8 is always available on Android
         }
+    }
+
+    // ── Phase 16.25: AI Data Governance & Compliance ──
+
+    /**
+     * Create a governance policy.
+     * POST /api/governance/policies
+     */
+    public void createGovernancePolicy(String type, String name, String description,
+            Integer retentionDays, String classification,
+            final ApiCallback<GovernancePolicy> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("type", type);
+            body.put("name", name);
+            if (description != null) body.put("description", description);
+            if (retentionDays != null) body.put("retentionDays", retentionDays);
+            if (classification != null) body.put("classification", classification);
+        } catch (Exception e) { /* ignore */ }
+
+        RequestBody rb = RequestBody.create(body.toString(), MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/governance/policies")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        JSONObject policy = obj.optJSONObject("policy");
+                        if (policy != null) callback.onSuccess(GovernancePolicy.fromJson(policy));
+                        else callback.onError("Policy not found in response.");
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse policy.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * List governance policies.
+     * GET /api/governance/policies?type=&enabled=&classification=
+     */
+    public void listGovernancePolicies(final ApiCallback<java.util.List<GovernancePolicy>> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/governance/policies")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        java.util.List<GovernancePolicy> policies = new java.util.ArrayList<>();
+                        JSONArray arr = obj.optJSONArray("policies");
+                        if (arr != null) {
+                            for (int i = 0; i < arr.length(); i++) {
+                                JSONObject p = arr.optJSONObject(i);
+                                if (p != null) policies.add(GovernancePolicy.fromJson(p));
+                            }
+                        }
+                        callback.onSuccess(policies);
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse policies.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Classify a record.
+     * POST /api/governance/classify
+     */
+    public void classifyRecord(String recordId, String classification, String classifiedBy,
+            String reason, final ApiCallback<DataClassification> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("recordId", recordId);
+            body.put("classification", classification);
+            if (classifiedBy != null) body.put("classifiedBy", classifiedBy);
+            if (reason != null) body.put("reason", reason);
+        } catch (Exception e) { /* ignore */ }
+
+        RequestBody rb = RequestBody.create(body.toString(), MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/governance/classify")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        JSONObject cls = obj.optJSONObject("classification");
+                        if (cls != null) callback.onSuccess(DataClassification.fromJson(cls));
+                        else callback.onError("Classification not found in response.");
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse classification.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Run compliance check.
+     * POST /api/governance/check
+     */
+    public void runComplianceCheck(final ApiCallback<ComplianceReport> callback) {
+        JSONObject body = new JSONObject();
+        RequestBody rb = RequestBody.create(body.toString(), MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/governance/check")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(ComplianceReport.fromJson(new JSONObject(body)));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse compliance report.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Process a Right To Be Forgotten request.
+     * POST /api/governance/rtbf
+     */
+    public void rightToBeForgotten(String recordId, String personName, String action,
+            String requestedBy, String reason, final ApiCallback<JSONObject> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            if (recordId != null) body.put("recordId", recordId);
+            if (personName != null) body.put("personName", personName);
+            body.put("action", action);
+            if (requestedBy != null) body.put("requestedBy", requestedBy);
+            if (reason != null) body.put("reason", reason);
+        } catch (Exception e) { /* ignore */ }
+
+        RequestBody rb = RequestBody.create(body.toString(), MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/governance/rtbf")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse RTBF response.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Export personal data (GDPR data portability).
+     * POST /api/governance/export-personal
+     */
+    public void exportPersonalData(String personName, String recordId,
+            String requestedBy, final ApiCallback<JSONObject> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            if (personName != null) body.put("personName", personName);
+            if (recordId != null) body.put("recordId", recordId);
+            if (requestedBy != null) body.put("requestedBy", requestedBy);
+        } catch (Exception e) { /* ignore */ }
+
+        RequestBody rb = RequestBody.create(body.toString(), MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/governance/export-personal")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse personal data export.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
     }
 
     // ── Phase 16.24: AI Search Intelligence ──

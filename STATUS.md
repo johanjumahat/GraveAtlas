@@ -42,6 +42,7 @@
 | 16.22. AI Collaborative Curation | ✅ COMPLETE | 100% |
 | 16.23. AI Notification & Alert System | ✅ COMPLETE | 100% |
 | 16.24. AI Search Intelligence | ✅ COMPLETE | 100% |
+| 16.25. AI Data Governance & Compliance | ✅ COMPLETE | 100% |
 
 **All 8 core phases complete. Phase 16 AI-native features complete. 1477 tests passing.**
 
@@ -95,9 +96,11 @@
 
 22. **Add — AI Search Intelligence** ✅ Semantic search with 5 endpoints: natural language search (parses names, dates, places, status, confidence, anomalies, sources, coordinates, intent), autocomplete suggestions (typed: filter/date/place/name/count/intent), search history (with clear), and related record search (same cemetery/section/family/dates/sources with relation scoring). Relevance scoring: name +30, date +25, place +25, status +15/-10, confidence +20/-15, anomalies +15/-20, sources/coordinates +10-15. Intent detection: search/count/fix/export. New models: `IntelligentSearchResult`, `SearchSuggestion`, `RelatedRecord`. 90+ new tests. v7.2.24.
 
+23. **Add — AI Data Governance & Compliance** ✅ Full governance layer with 14 endpoints: policy management (6 types: retention/privacy/access/classification/consent/deletion), data classification (4 levels: public/internal/restricted/confidential), audit logging (12 action types, filterable), retention enforcement, consent tracking (4 statuses: granted/withdrawn/pending/not_required), Right To Be Forgotten (GDPR Art. 17 — anonymize/delete), personal data export (GDPR Art. 20), and compliance check (evaluates all policies, returns score 0-100 with severity-tagged issues). New models: `GovernancePolicy`, `DataClassification`, `ComplianceReport`. 120+ new tests. v7.2.25.
+
 ## Architecture
 
-- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 144 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
+- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 159 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
 - **Android:** 18+ screens with navigation host, external maps handoff (geo: intent), offline support
 - **Data:** GitHub repository (graveatlas-data) with JSON schemas
 - **Auth:** Google Sign-In with ID token verification, session tokens, ban system
@@ -105,7 +108,7 @@
 - **Timeline:** Chronological event visualization with decade grouping, backend endpoint
 - **External Sources:** OpenStreetMap (Overpass API), Wikidata (SPARQL), Singapore Government Open Data (data.gov.sg)
 
-## Test Suite (3254 tests)
+## Test Suite (3376 tests)
 
 | Test File | Tests | Area |
 |---|---|---|

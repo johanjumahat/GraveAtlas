@@ -721,6 +721,66 @@ async function handleRequest(request, env, ctx) {
       return await handleRelatedSearch(request, env, corsHeaders);
     }
 
+    // Phase 16.25: AI Data Governance & Compliance
+    if (path === '/api/governance/policies' && method === 'POST') {
+      return await handleCreatePolicy(request, env, corsHeaders);
+    }
+
+    if (path === '/api/governance/policies' && method === 'GET') {
+      return await handleListPolicies(request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/governance/policies/') && method === 'GET') {
+      const id = path.split('/')[3];
+      return await handleGetPolicy(id, request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/governance/policies/') && method === 'DELETE') {
+      const id = path.split('/')[3];
+      return await handleDeletePolicy(id, request, env, corsHeaders);
+    }
+
+    if (path === '/api/governance/classify' && method === 'POST') {
+      return await handleClassifyRecord(request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/governance/classify/') && method === 'GET') {
+      const id = path.split('/')[3];
+      return await handleGetClassification(id, request, env, corsHeaders);
+    }
+
+    if (path === '/api/governance/audit' && method === 'GET') {
+      return await handleAuditLog(request, env, corsHeaders);
+    }
+
+    if (path === '/api/governance/audit' && method === 'POST') {
+      return await handleLogAuditEvent(request, env, corsHeaders);
+    }
+
+    if (path === '/api/governance/retention' && method === 'POST') {
+      return await handleApplyRetention(request, env, corsHeaders);
+    }
+
+    if (path === '/api/governance/consent' && method === 'POST') {
+      return await handleRecordConsent(request, env, corsHeaders);
+    }
+
+    if (path === '/api/governance/consent' && method === 'GET') {
+      return await handleGetConsent(request, env, corsHeaders);
+    }
+
+    if (path === '/api/governance/rtbf' && method === 'POST') {
+      return await handleRightToBeForgotten(request, env, corsHeaders);
+    }
+
+    if (path === '/api/governance/export-personal' && method === 'POST') {
+      return await handleExportPersonalData(request, env, corsHeaders);
+    }
+
+    if (path === '/api/governance/check' && method === 'POST') {
+      return await handleComplianceCheck(request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -3782,6 +3842,960 @@ function safeTokenCompare(a, b) {
 }
 
 // ── Utils ──
+
+// ── Phase 16.25: AI Data Governance & Compliance Handlers ──
+
+const POLICY_TYPES = ['retention', 'privacy', 'access', 'classification', 'consent', 'deletion'];
+const DATA_CLASSIFICATIONS = ['public', 'internal', 'restricted', 'confidential'];
+const CONSENT_STATUSES = ['granted', 'withdrawn', 'pending', 'not_required'];
+const AUDIT_ACTIONS = [
+  'create', 'read', 'update', 'delete', 'publish', 'unpublish', 'export',
+  'classify', 'consent_change', 'rtbf_request', 'retention_apply', 'policy_change'
+];
+
+/**
+ * POST /api/governance/policies
+ * Create a governance policy.
+ * Body: { type, name, description, rules, retentionDays, classification, createdBy }
+ */
+async function handleCreatePolicy(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { type, name, description, rules, retentionDays, classification, createdBy } = body || {};
+
+    if (!type || !POLICY_TYPES.includes(type)) {
+      return jsonResponse({
+        success: false,
+        error: `Invalid type. Must be one of: ${POLICY_TYPES.join(', ')}`
+      }, 400, cors);
+    }
+    if (!name) {
+      return jsonResponse({ success: false, error: 'Missing required field: name' }, 400, cors);
+    }
+    if (classification && !DATA_CLASSIFICATIONS.includes(classification)) {
+      return jsonResponse({
+        success: false,
+        error: `Invalid classification. Must be one of: ${DATA_CLASSIFICATIONS.join(', ')}`
+      }, 400, cors);
+    }
+
+    const policyId = 'policy_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+    const now = new Date().toISOString();
+
+    const policy = {
+      id: policyId,
+      type,
+      name,
+      description: description || '',
+      rules: rules || {},
+      retentionDays: retentionDays || null,
+      classification: classification || 'internal',
+      createdBy: createdBy || 'system',
+      createdAt: now,
+      updatedAt: now,
+      enabled: true,
+      appliedCount: 0,
+      lastApplied: null
+    };
+
+    await writeFile(`governance/policies/${policyId}.json`, JSON.stringify(policy, null, 2), env);
+
+    // Log policy creation
+    await logAuditEvent(env, 'policy_change', 'system', `Created policy: ${name}`, { policyId });
+
+    return jsonResponse({
+      success: true,
+      message: 'Governance policy created',
+      policy
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to create policy', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/governance/policies
+ * List governance policies with filters.
+ * Query params: type, enabled, classification
+ */
+async function handleListPolicies(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, policies: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const typeFilter = url.searchParams.get('type');
+    const enabledFilter = url.searchParams.get('enabled');
+    const classificationFilter = url.searchParams.get('classification');
+
+    const files = await listFiles('governance/policies', env);
+    const policies = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`governance/policies/${file}`, env);
+        if (!content) continue;
+        const policy = JSON.parse(content);
+
+        if (typeFilter && policy.type !== typeFilter) continue;
+        if (enabledFilter === 'true' && !policy.enabled) continue;
+        if (enabledFilter === 'false' && policy.enabled) continue;
+        if (classificationFilter && policy.classification !== classificationFilter) continue;
+
+        policies.push(policy);
+      } catch (e) { /* skip */ }
+    }
+
+    return jsonResponse({
+      success: true,
+      policies,
+      totalFound: policies.length,
+      activePolicies: policies.filter(p => p.enabled).length
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to list policies', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/governance/policies/:id
+ */
+async function handleGetPolicy(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid policy ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const content = await readFile(`governance/policies/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Policy not found' }, 404, cors);
+    }
+    return jsonResponse({ success: true, policy: JSON.parse(content) }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get policy', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * DELETE /api/governance/policies/:id
+ */
+async function handleDeletePolicy(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid policy ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const content = await readFile(`governance/policies/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Policy not found' }, 404, cors);
+    }
+
+    await writeFile(`governance/policies/${safeId}.json`, '', env);
+    await logAuditEvent(env, 'policy_change', 'system', `Deleted policy: ${safeId}`, { policyId: safeId });
+
+    return jsonResponse({ success: true, message: 'Policy deleted', id: safeId }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to delete policy', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/governance/classify
+ * Classify a record's data sensitivity level.
+ * Body: { recordId, classification, classifiedBy, reason }
+ */
+async function handleClassifyRecord(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { recordId, classification, classifiedBy, reason } = body || {};
+
+    if (!recordId || !classification) {
+      return jsonResponse({ success: false, error: 'Missing required fields: recordId, classification' }, 400, cors);
+    }
+    if (!DATA_CLASSIFICATIONS.includes(classification)) {
+      return jsonResponse({
+        success: false,
+        error: `Invalid classification. Must be one of: ${DATA_CLASSIFICATIONS.join(', ')}`
+      }, 400, cors);
+    }
+
+    const safeId = sanitizePathSegment(recordId);
+    if (!safeId || safeId !== recordId) {
+      return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+    }
+
+    // Save classification
+    const now = new Date().toISOString();
+    const classificationRecord = {
+      recordId: safeId,
+      classification,
+      classifiedBy: classifiedBy || 'system',
+      reason: reason || '',
+      classifiedAt: now,
+      previousClassification: null
+    };
+
+    // Check for previous classification
+    try {
+      const prev = await readFile(`governance/classifications/${safeId}.json`, env);
+      if (prev) {
+        const prevData = JSON.parse(prev);
+        classificationRecord.previousClassification = prevData.classification || null;
+      }
+    } catch (e) { /* no previous */ }
+
+    await writeFile(`governance/classifications/${safeId}.json`, JSON.stringify(classificationRecord, null, 2), env);
+
+    // Log
+    await logAuditEvent(env, 'classify', classifiedBy || 'system',
+      `Classified ${safeId} as ${classification}`, { recordId: safeId, classification, reason });
+
+    return jsonResponse({
+      success: true,
+      message: 'Record classified',
+      classification: classificationRecord
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to classify record', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/governance/classify/:recordId
+ * Get a record's classification.
+ */
+async function handleGetClassification(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const content = await readFile(`governance/classifications/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: true, classification: null, message: 'No classification found' }, 200, cors);
+    }
+    return jsonResponse({ success: true, classification: JSON.parse(content) }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get classification', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * Helper: Log audit event
+ */
+async function logAuditEvent(env, action, actor, description, metadata) {
+  const auditId = 'audit_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+  const entry = {
+    id: auditId,
+    action,
+    actor: actor || 'system',
+    description,
+    metadata: metadata || {},
+    timestamp: new Date().toISOString()
+  };
+  try {
+    await writeFile(`governance/audit/${auditId}.json`, JSON.stringify(entry, null, 2), env);
+  } catch (e) { /* skip if can't log */ }
+  return entry;
+}
+
+/**
+ * GET /api/governance/audit
+ * Get audit log with filters.
+ * Query params: action, actor, recordId, since, limit
+ */
+async function handleAuditLog(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, auditLog: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const actionFilter = url.searchParams.get('action');
+    const actorFilter = url.searchParams.get('actor');
+    const since = url.searchParams.get('since');
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '100'), 500);
+
+    const files = await listFiles('governance/audit', env);
+    const entries = [];
+
+    for (const file of files) {
+      if (entries.length >= limit) break;
+      try {
+        const content = await readFile(`governance/audit/${file}`, env);
+        if (!content) continue;
+        const entry = JSON.parse(content);
+
+        if (actionFilter && entry.action !== actionFilter) continue;
+        if (actorFilter && entry.actor !== actorFilter) continue;
+        if (since && new Date(entry.timestamp).getTime() < new Date(since).getTime()) continue;
+
+        entries.push(entry);
+      } catch (e) { /* skip */ }
+    }
+
+    // Sort newest first
+    entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    return jsonResponse({
+      success: true,
+      auditLog: entries,
+      totalFound: entries.length
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get audit log', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/governance/audit
+ * Manually log an audit event.
+ * Body: { action, actor, description, metadata }
+ */
+async function handleLogAuditEvent(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { action, actor, description, metadata } = body || {};
+
+    if (!action || !AUDIT_ACTIONS.includes(action)) {
+      return jsonResponse({
+        success: false,
+        error: `Invalid action. Must be one of: ${AUDIT_ACTIONS.join(', ')}`
+      }, 400, cors);
+    }
+    if (!description) {
+      return jsonResponse({ success: false, error: 'Missing required field: description' }, 400, cors);
+    }
+
+    const entry = await logAuditEvent(env, action, actor, description, metadata);
+
+    return jsonResponse({
+      success: true,
+      message: 'Audit event logged',
+      entry
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to log audit event', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/governance/retention
+ * Apply retention policy to records.
+ * Body: { cemeteryId, retentionDays, appliedBy }
+ */
+async function handleApplyRetention(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { cemeteryId, retentionDays, appliedBy } = body || {};
+
+    if (!retentionDays || retentionDays < 1) {
+      return jsonResponse({ success: false, error: 'Missing or invalid retentionDays (must be >= 1)' }, 400, cors);
+    }
+
+    const cutoffDate = new Date(Date.now() - retentionDays * 86400000).toISOString();
+    const files = await listFiles('graves', env);
+    let markedCount = 0;
+    let checkedCount = 0;
+    const markedRecords = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (cemeteryId && record.cemeteryId !== cemeteryId) continue;
+        checkedCount++;
+
+        const recordDate = record.updatedAt || record.createdAt || record.created_date;
+        if (recordDate && new Date(recordDate).getTime() < new Date(cutoffDate).getTime()) {
+          markedCount++;
+          if (markedRecords.length < 50) {
+            markedRecords.push({
+              id: record.id,
+              name: record.name,
+              lastUpdated: recordDate,
+              daysOld: Math.floor((Date.now() - new Date(recordDate).getTime()) / 86400000)
+            });
+          }
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    await logAuditEvent(env, 'retention_apply', appliedBy || 'system',
+      `Applied ${retentionDays}-day retention: ${markedCount} records flagged`, { cemeteryId, retentionDays, markedCount });
+
+    return jsonResponse({
+      success: true,
+      message: `Retention check complete: ${markedCount} of ${checkedCount} records exceed ${retentionDays} days`,
+      retentionDays,
+      checkedCount,
+      markedCount,
+      cutoffDate,
+      markedRecords
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to apply retention', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/governance/consent
+ * Record consent status for a person's data.
+ * Body: { personName, recordId, consentStatus, consentType, grantedBy, notes }
+ */
+async function handleRecordConsent(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { personName, recordId, consentStatus, consentType, grantedBy, notes } = body || {};
+
+    if (!consentStatus || !CONSENT_STATUSES.includes(consentStatus)) {
+      return jsonResponse({
+        success: false,
+        error: `Invalid consentStatus. Must be one of: ${CONSENT_STATUSES.join(', ')}`
+      }, 400, cors);
+    }
+
+    const consentId = 'consent_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+    const now = new Date().toISOString();
+
+    const consent = {
+      id: consentId,
+      personName: personName || null,
+      recordId: recordId || null,
+      consentStatus,
+      consentType: consentType || 'data_processing',
+      grantedBy: grantedBy || 'system',
+      notes: notes || '',
+      grantedAt: consentStatus === 'granted' ? now : null,
+      withdrawnAt: consentStatus === 'withdrawn' ? now : null,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    await writeFile(`governance/consent/${consentId}.json`, JSON.stringify(consent, null, 2), env);
+
+    await logAuditEvent(env, 'consent_change', grantedBy || 'system',
+      `Consent ${consentStatus} for ${personName || recordId}`, { consentId, consentStatus });
+
+    return jsonResponse({
+      success: true,
+      message: 'Consent recorded',
+      consent
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to record consent', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/governance/consent
+ * Get consent records with filters.
+ * Query params: recordId, personName, consentStatus, limit
+ */
+async function handleGetConsent(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, consentRecords: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const recordIdFilter = url.searchParams.get('recordId');
+    const personNameFilter = url.searchParams.get('personName');
+    const statusFilter = url.searchParams.get('consentStatus');
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 200);
+
+    const files = await listFiles('governance/consent', env);
+    const records = [];
+
+    for (const file of files) {
+      if (records.length >= limit) break;
+      try {
+        const content = await readFile(`governance/consent/${file}`, env);
+        if (!content) continue;
+        const consent = JSON.parse(content);
+
+        if (recordIdFilter && consent.recordId !== recordIdFilter) continue;
+        if (personNameFilter && consent.personName !== personNameFilter) continue;
+        if (statusFilter && consent.consentStatus !== statusFilter) continue;
+
+        records.push(consent);
+      } catch (e) { /* skip */ }
+    }
+
+    records.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    return jsonResponse({
+      success: true,
+      consentRecords: records,
+      totalFound: records.length
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get consent records', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/governance/rtbf
+ * Right To Be Forgotten — anonymize or delete a person's data.
+ * Body: { recordId, personName, requestedBy, action (anonymize/delete), reason }
+ */
+async function handleRightToBeForgotten(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { recordId, personName, requestedBy, action, reason } = body || {};
+
+    if (!recordId && !personName) {
+      return jsonResponse({ success: false, error: 'Missing required fields: recordId or personName' }, 400, cors);
+    }
+    if (!action || !['anonymize', 'delete'].includes(action)) {
+      return jsonResponse({ success: false, error: 'Missing or invalid action (anonymize or delete)' }, 400, cors);
+    }
+
+    const rtbfId = 'rtbf_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+    const now = new Date().toISOString();
+    let processedCount = 0;
+    const processedRecords = [];
+
+    // Process the specific record
+    if (recordId) {
+      const safeId = sanitizePathSegment(recordId);
+      if (!safeId || safeId !== recordId) {
+        return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+      }
+
+      try {
+        const content = await readFile(`graves/${safeId}.json`, env);
+        if (content) {
+          const record = JSON.parse(content);
+
+          if (action === 'anonymize') {
+            // Anonymize: keep the record but remove identifying information
+            record.name = '[ANONYMIZED]';
+            record.givenNames = '[ANONYMIZED]';
+            record.familyName = '[ANONYMIZED]';
+            record.birthDate = null;
+            record.deathDate = null;
+            record.notes = '[Data anonymized per RTBF request]';
+            record.rtbfApplied = true;
+            record.rtbfAppliedAt = now;
+            record.updatedAt = now;
+
+            await writeFile(`graves/${safeId}.json`, JSON.stringify(record, null, 2), env);
+            processedCount++;
+            processedRecords.push({ id: safeId, action: 'anonymized' });
+          } else if (action === 'delete') {
+            // Mark as deleted (soft delete)
+            record.status = 'deleted';
+            record.rtbfApplied = true;
+            record.rtbfAppliedAt = now;
+            record.updatedAt = now;
+
+            await writeFile(`graves/${safeId}.json`, JSON.stringify(record, null, 2), env);
+            processedCount++;
+            processedRecords.push({ id: safeId, action: 'deleted' });
+          }
+        }
+      } catch (e) { /* record not found */ }
+    }
+
+    // If personName provided, find all matching records
+    if (personName && !recordId) {
+      const files = await listFiles('graves', env);
+      for (const file of files) {
+        try {
+          const content = await readFile(`graves/${file}`, env);
+          if (!content) continue;
+          const record = JSON.parse(content);
+          if (record.status === 'deleted') continue;
+
+          const nameMatch = record.name === personName ||
+            (record.givenNames + ' ' + record.familyName).trim() === personName;
+          if (!nameMatch) continue;
+
+          if (action === 'anonymize') {
+            record.name = '[ANONYMIZED]';
+            record.givenNames = '[ANONYMIZED]';
+            record.familyName = '[ANONYMIZED]';
+            record.birthDate = null;
+            record.deathDate = null;
+            record.notes = '[Data anonymized per RTBF request]';
+            record.rtbfApplied = true;
+            record.rtbfAppliedAt = now;
+            record.updatedAt = now;
+          } else {
+            record.status = 'deleted';
+            record.rtbfApplied = true;
+            record.rtbfAppliedAt = now;
+            record.updatedAt = now;
+          }
+
+          await writeFile(`graves/${file}`, JSON.stringify(record, null, 2), env);
+          processedCount++;
+          if (processedRecords.length < 50) {
+            processedRecords.push({ id: record.id, action: action === 'anonymize' ? 'anonymized' : 'deleted' });
+          }
+        } catch (e) { /* skip */ }
+      }
+    }
+
+    // Record the RTBF request
+    const rtbfRecord = {
+      id: rtbfId,
+      recordId: recordId || null,
+      personName: personName || null,
+      action,
+      reason: reason || '',
+      requestedBy: requestedBy || 'system',
+      processedCount,
+      processedRecords,
+      requestedAt: now
+    };
+
+    await writeFile(`governance/rtbf/${rtbfId}.json`, JSON.stringify(rtbfRecord, null, 2), env);
+
+    await logAuditEvent(env, 'rtbf_request', requestedBy || 'system',
+      `RTBF ${action} for ${personName || recordId}: ${processedCount} records processed`,
+      { rtbfId, action, processedCount });
+
+    return jsonResponse({
+      success: true,
+      message: `RTBF processed: ${processedCount} record(s) ${action === 'anonymize' ? 'anonymized' : 'deleted'}`,
+      rtbf: rtbfRecord
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to process RTBF', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/governance/export-personal
+ * Export all personal data for a person (GDPR data portability).
+ * Body: { personName, recordId, requestedBy }
+ */
+async function handleExportPersonalData(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { personName, recordId, requestedBy } = body || {};
+
+    if (!personName && !recordId) {
+      return jsonResponse({ success: false, error: 'Missing required fields: personName or recordId' }, 400, cors);
+    }
+
+    const exportId = 'export_personal_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+    const now = new Date().toISOString();
+    const exportedRecords = [];
+    let exportCount = 0;
+
+    // Find matching records
+    const files = await listFiles('graves', env);
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status === 'deleted') continue;
+
+        let match = false;
+        if (recordId && record.id === recordId) match = true;
+        if (personName) {
+          if (record.name === personName ||
+              (record.givenNames + ' ' + record.familyName).trim() === personName) {
+            match = true;
+          }
+        }
+        if (!match) continue;
+
+        exportedRecords.push({
+          id: record.id,
+          name: record.name,
+          givenNames: record.givenNames || null,
+          familyName: record.familyName || null,
+          birthDate: record.birthDate || null,
+          deathDate: record.deathDate || null,
+          birthPlace: record.birthPlace || null,
+          deathPlace: record.deathPlace || null,
+          cemeteryId: record.cemeteryId || null,
+          section: record.section || null,
+          plot: record.plot || null,
+          latitude: record.latitude || null,
+          longitude: record.longitude || null,
+          notes: record.notes || null,
+          verificationStatus: record.verificationStatus || 'unverified',
+          createdAt: record.createdAt || record.created_date || null,
+          updatedAt: record.updatedAt || null
+        });
+        exportCount++;
+      } catch (e) { /* skip */ }
+    }
+
+    // Find consent records
+    let consentRecords = [];
+    try {
+      const consentFiles = await listFiles('governance/consent', env);
+      for (const file of consentFiles) {
+        try {
+          const content = await readFile(`governance/consent/${file}`, env);
+          if (!content) continue;
+          const consent = JSON.parse(content);
+          if (recordId && consent.recordId === recordId) consentRecords.push(consent);
+          if (personName && consent.personName === personName) consentRecords.push(consent);
+        } catch (e) { /* skip */ }
+      }
+    } catch (e) { /* skip */ }
+
+    // Find classification records
+    let classifications = [];
+    try {
+      if (recordId) {
+        const classContent = await readFile(`governance/classifications/${recordId}.json`, env);
+        if (classContent) classifications.push(JSON.parse(classContent));
+      }
+    } catch (e) { /* skip */ }
+
+    const exportData = {
+      exportId,
+      requestedBy: requestedBy || 'system',
+      personName: personName || null,
+      recordId: recordId || null,
+      exportedAt: now,
+      recordCount: exportCount,
+      records: exportedRecords,
+      consentRecords,
+      classifications,
+      format: 'JSON',
+      rights: 'GDPR Article 20 — Right to data portability'
+    };
+
+    await logAuditEvent(env, 'export', requestedBy || 'system',
+      `Personal data export for ${personName || recordId}: ${exportCount} records`,
+      { exportId, exportCount });
+
+    return jsonResponse({
+      success: true,
+      message: `Personal data export complete: ${exportCount} records`,
+      export: exportData
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to export personal data', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/governance/check
+ * Run a compliance check against all policies.
+ * Body: { checkedBy }
+ */
+async function handleComplianceCheck(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, message: 'GitHub not configured', compliance: {} }, 200, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const checkedBy = (body && body.checkedBy) || 'system';
+
+    // Load all enabled policies
+    const policyFiles = await listFiles('governance/policies', env);
+    const policies = [];
+    for (const file of policyFiles) {
+      try {
+        const content = await readFile(`governance/policies/${file}`, env);
+        if (!content) continue;
+        const policy = JSON.parse(content);
+        if (policy.enabled) policies.push(policy);
+      } catch (e) { /* skip */ }
+    }
+
+    // Load all records
+    const graveFiles = await listFiles('graves', env);
+    const records = [];
+    for (const file of graveFiles) {
+      if (records.length >= 10000) break;
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        records.push(record);
+      } catch (e) { /* skip */ }
+    }
+
+    // Load classifications
+    let classificationCount = 0;
+    try {
+      const classFiles = await listFiles('governance/classifications', env);
+      classificationCount = classFiles.length;
+    } catch (e) { /* skip */ }
+
+    // Load consent records
+    let consentCount = 0;
+    let withdrawnConsents = 0;
+    try {
+      const consentFiles = await listFiles('governance/consent', env);
+      for (const file of consentFiles) {
+        try {
+          const content = await readFile(`governance/consent/${file}`, env);
+          if (!content) continue;
+          const consent = JSON.parse(content);
+          consentCount++;
+          if (consent.consentStatus === 'withdrawn') withdrawnConsents++;
+        } catch (e) { /* skip */ }
+      }
+    } catch (e) { /* skip */ }
+
+    // Check RTBF records
+    let rtbfCount = 0;
+    try {
+      const rtbfFiles = await listFiles('governance/rtbf', env);
+      rtbfCount = rtbfFiles.length;
+    } catch (e) { /* skip */ }
+
+    // Count audit entries
+    let auditCount = 0;
+    try {
+      const auditFiles = await listFiles('governance/audit', env);
+      auditCount = auditFiles.length;
+    } catch (e) { /* skip */ }
+
+    // Check compliance issues
+    const issues = [];
+
+    // Check: records without classification
+    const unclassifiedRecords = records.length - classificationCount;
+    if (unclassifiedRecords > 0) {
+      issues.push({
+        severity: 'warning',
+        type: 'unclassified_records',
+        count: unclassifiedRecords,
+        message: `${unclassifiedRecords} records have no data classification`
+      });
+    }
+
+    // Check: withdrawn consents with active records
+    if (withdrawnConsents > 0) {
+      issues.push({
+        severity: 'critical',
+        type: 'withdrawn_consent',
+        count: withdrawnConsents,
+        message: `${withdrawnConsents} consent(s) have been withdrawn — review affected records`
+      });
+    }
+
+    // Check: retention policy violations
+    for (const policy of policies) {
+      if (policy.type === 'retention' && policy.retentionDays) {
+        const cutoff = Date.now() - policy.retentionDays * 86400000;
+        const expiredCount = records.filter(r => {
+          const d = new Date(r.updatedAt || r.createdAt || r.created_date || 0).getTime();
+          return d > 0 && d < cutoff;
+        }).length;
+        if (expiredCount > 0) {
+          issues.push({
+            severity: 'warning',
+            type: 'retention_violation',
+            policyId: policy.id,
+            policyName: policy.name,
+            count: expiredCount,
+            message: `${expiredCount} records exceed retention period of ${policy.retentionDays} days (policy: ${policy.name})`
+          });
+        }
+      }
+    }
+
+    // Check: records marked for RTBF but still published
+    const rtbfStillPublished = records.filter(r => r.rtbfApplied && r.status === 'published');
+    if (rtbfStillPublished.length > 0) {
+      issues.push({
+        severity: 'critical',
+        type: 'rtbf_violation',
+        count: rtbfStillPublished.length,
+        message: `${rtbfStillPublished.length} records with RTBF applied are still published`
+      });
+    }
+
+    const compliance = {
+      checkedAt: now,
+      checkedBy,
+      summary: {
+        totalRecords: records.length,
+        classifiedRecords: classificationCount,
+        unclassifiedRecords,
+        totalPolicies: policies.length,
+        activePolicies: policies.filter(p => p.enabled).length,
+        consentRecords: consentCount,
+        withdrawnConsents,
+        rtbfRequests: rtbfCount,
+        auditEntries: auditCount,
+        issuesFound: issues.length,
+        criticalIssues: issues.filter(i => i.severity === 'critical').length
+      },
+      issues: issues,
+      policies: policies.map(p => ({
+        id: p.id, name: p.name, type: p.type, enabled: p.enabled,
+        classification: p.classification, retentionDays: p.retentionDays
+      })),
+      score: issues.length === 0 ? 100 : Math.max(0, 100 - issues.length * 10 -
+        issues.filter(i => i.severity === 'critical').length * 20)
+    };
+
+    await logAuditEvent(env, 'read', checkedBy, 'Compliance check executed', {
+      issuesFound: issues.length, score: compliance.score
+    });
+
+    return jsonResponse({
+      success: true,
+      message: issues.length === 0 ? 'All compliance checks passed' : `${issues.length} compliance issue(s) found`,
+      compliance
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to run compliance check', message: error.message }, 500, cors);
+  }
+}
 
 // ── Phase 16.24: AI Search Intelligence Handlers ──
 
@@ -9043,6 +10057,960 @@ function generateRecommendations(records, stats, anomalySummary) {
   }
 
   return recommendations;
+}
+
+// ── Phase 16.25: AI Data Governance & Compliance Handlers ──
+
+const POLICY_TYPES = ['retention', 'privacy', 'access', 'classification', 'consent', 'deletion'];
+const DATA_CLASSIFICATIONS = ['public', 'internal', 'restricted', 'confidential'];
+const CONSENT_STATUSES = ['granted', 'withdrawn', 'pending', 'not_required'];
+const AUDIT_ACTIONS = [
+  'create', 'read', 'update', 'delete', 'publish', 'unpublish', 'export',
+  'classify', 'consent_change', 'rtbf_request', 'retention_apply', 'policy_change'
+];
+
+/**
+ * POST /api/governance/policies
+ * Create a governance policy.
+ * Body: { type, name, description, rules, retentionDays, classification, createdBy }
+ */
+async function handleCreatePolicy(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { type, name, description, rules, retentionDays, classification, createdBy } = body || {};
+
+    if (!type || !POLICY_TYPES.includes(type)) {
+      return jsonResponse({
+        success: false,
+        error: `Invalid type. Must be one of: ${POLICY_TYPES.join(', ')}`
+      }, 400, cors);
+    }
+    if (!name) {
+      return jsonResponse({ success: false, error: 'Missing required field: name' }, 400, cors);
+    }
+    if (classification && !DATA_CLASSIFICATIONS.includes(classification)) {
+      return jsonResponse({
+        success: false,
+        error: `Invalid classification. Must be one of: ${DATA_CLASSIFICATIONS.join(', ')}`
+      }, 400, cors);
+    }
+
+    const policyId = 'policy_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+    const now = new Date().toISOString();
+
+    const policy = {
+      id: policyId,
+      type,
+      name,
+      description: description || '',
+      rules: rules || {},
+      retentionDays: retentionDays || null,
+      classification: classification || 'internal',
+      createdBy: createdBy || 'system',
+      createdAt: now,
+      updatedAt: now,
+      enabled: true,
+      appliedCount: 0,
+      lastApplied: null
+    };
+
+    await writeFile(`governance/policies/${policyId}.json`, JSON.stringify(policy, null, 2), env);
+
+    // Log policy creation
+    await logAuditEvent(env, 'policy_change', 'system', `Created policy: ${name}`, { policyId });
+
+    return jsonResponse({
+      success: true,
+      message: 'Governance policy created',
+      policy
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to create policy', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/governance/policies
+ * List governance policies with filters.
+ * Query params: type, enabled, classification
+ */
+async function handleListPolicies(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, policies: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const typeFilter = url.searchParams.get('type');
+    const enabledFilter = url.searchParams.get('enabled');
+    const classificationFilter = url.searchParams.get('classification');
+
+    const files = await listFiles('governance/policies', env);
+    const policies = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`governance/policies/${file}`, env);
+        if (!content) continue;
+        const policy = JSON.parse(content);
+
+        if (typeFilter && policy.type !== typeFilter) continue;
+        if (enabledFilter === 'true' && !policy.enabled) continue;
+        if (enabledFilter === 'false' && policy.enabled) continue;
+        if (classificationFilter && policy.classification !== classificationFilter) continue;
+
+        policies.push(policy);
+      } catch (e) { /* skip */ }
+    }
+
+    return jsonResponse({
+      success: true,
+      policies,
+      totalFound: policies.length,
+      activePolicies: policies.filter(p => p.enabled).length
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to list policies', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/governance/policies/:id
+ */
+async function handleGetPolicy(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid policy ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const content = await readFile(`governance/policies/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Policy not found' }, 404, cors);
+    }
+    return jsonResponse({ success: true, policy: JSON.parse(content) }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get policy', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * DELETE /api/governance/policies/:id
+ */
+async function handleDeletePolicy(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid policy ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const content = await readFile(`governance/policies/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Policy not found' }, 404, cors);
+    }
+
+    await writeFile(`governance/policies/${safeId}.json`, '', env);
+    await logAuditEvent(env, 'policy_change', 'system', `Deleted policy: ${safeId}`, { policyId: safeId });
+
+    return jsonResponse({ success: true, message: 'Policy deleted', id: safeId }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to delete policy', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/governance/classify
+ * Classify a record's data sensitivity level.
+ * Body: { recordId, classification, classifiedBy, reason }
+ */
+async function handleClassifyRecord(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { recordId, classification, classifiedBy, reason } = body || {};
+
+    if (!recordId || !classification) {
+      return jsonResponse({ success: false, error: 'Missing required fields: recordId, classification' }, 400, cors);
+    }
+    if (!DATA_CLASSIFICATIONS.includes(classification)) {
+      return jsonResponse({
+        success: false,
+        error: `Invalid classification. Must be one of: ${DATA_CLASSIFICATIONS.join(', ')}`
+      }, 400, cors);
+    }
+
+    const safeId = sanitizePathSegment(recordId);
+    if (!safeId || safeId !== recordId) {
+      return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+    }
+
+    // Save classification
+    const now = new Date().toISOString();
+    const classificationRecord = {
+      recordId: safeId,
+      classification,
+      classifiedBy: classifiedBy || 'system',
+      reason: reason || '',
+      classifiedAt: now,
+      previousClassification: null
+    };
+
+    // Check for previous classification
+    try {
+      const prev = await readFile(`governance/classifications/${safeId}.json`, env);
+      if (prev) {
+        const prevData = JSON.parse(prev);
+        classificationRecord.previousClassification = prevData.classification || null;
+      }
+    } catch (e) { /* no previous */ }
+
+    await writeFile(`governance/classifications/${safeId}.json`, JSON.stringify(classificationRecord, null, 2), env);
+
+    // Log
+    await logAuditEvent(env, 'classify', classifiedBy || 'system',
+      `Classified ${safeId} as ${classification}`, { recordId: safeId, classification, reason });
+
+    return jsonResponse({
+      success: true,
+      message: 'Record classified',
+      classification: classificationRecord
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to classify record', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/governance/classify/:recordId
+ * Get a record's classification.
+ */
+async function handleGetClassification(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const content = await readFile(`governance/classifications/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: true, classification: null, message: 'No classification found' }, 200, cors);
+    }
+    return jsonResponse({ success: true, classification: JSON.parse(content) }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get classification', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * Helper: Log audit event
+ */
+async function logAuditEvent(env, action, actor, description, metadata) {
+  const auditId = 'audit_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+  const entry = {
+    id: auditId,
+    action,
+    actor: actor || 'system',
+    description,
+    metadata: metadata || {},
+    timestamp: new Date().toISOString()
+  };
+  try {
+    await writeFile(`governance/audit/${auditId}.json`, JSON.stringify(entry, null, 2), env);
+  } catch (e) { /* skip if can't log */ }
+  return entry;
+}
+
+/**
+ * GET /api/governance/audit
+ * Get audit log with filters.
+ * Query params: action, actor, recordId, since, limit
+ */
+async function handleAuditLog(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, auditLog: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const actionFilter = url.searchParams.get('action');
+    const actorFilter = url.searchParams.get('actor');
+    const since = url.searchParams.get('since');
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '100'), 500);
+
+    const files = await listFiles('governance/audit', env);
+    const entries = [];
+
+    for (const file of files) {
+      if (entries.length >= limit) break;
+      try {
+        const content = await readFile(`governance/audit/${file}`, env);
+        if (!content) continue;
+        const entry = JSON.parse(content);
+
+        if (actionFilter && entry.action !== actionFilter) continue;
+        if (actorFilter && entry.actor !== actorFilter) continue;
+        if (since && new Date(entry.timestamp).getTime() < new Date(since).getTime()) continue;
+
+        entries.push(entry);
+      } catch (e) { /* skip */ }
+    }
+
+    // Sort newest first
+    entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    return jsonResponse({
+      success: true,
+      auditLog: entries,
+      totalFound: entries.length
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get audit log', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/governance/audit
+ * Manually log an audit event.
+ * Body: { action, actor, description, metadata }
+ */
+async function handleLogAuditEvent(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { action, actor, description, metadata } = body || {};
+
+    if (!action || !AUDIT_ACTIONS.includes(action)) {
+      return jsonResponse({
+        success: false,
+        error: `Invalid action. Must be one of: ${AUDIT_ACTIONS.join(', ')}`
+      }, 400, cors);
+    }
+    if (!description) {
+      return jsonResponse({ success: false, error: 'Missing required field: description' }, 400, cors);
+    }
+
+    const entry = await logAuditEvent(env, action, actor, description, metadata);
+
+    return jsonResponse({
+      success: true,
+      message: 'Audit event logged',
+      entry
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to log audit event', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/governance/retention
+ * Apply retention policy to records.
+ * Body: { cemeteryId, retentionDays, appliedBy }
+ */
+async function handleApplyRetention(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { cemeteryId, retentionDays, appliedBy } = body || {};
+
+    if (!retentionDays || retentionDays < 1) {
+      return jsonResponse({ success: false, error: 'Missing or invalid retentionDays (must be >= 1)' }, 400, cors);
+    }
+
+    const cutoffDate = new Date(Date.now() - retentionDays * 86400000).toISOString();
+    const files = await listFiles('graves', env);
+    let markedCount = 0;
+    let checkedCount = 0;
+    const markedRecords = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (cemeteryId && record.cemeteryId !== cemeteryId) continue;
+        checkedCount++;
+
+        const recordDate = record.updatedAt || record.createdAt || record.created_date;
+        if (recordDate && new Date(recordDate).getTime() < new Date(cutoffDate).getTime()) {
+          markedCount++;
+          if (markedRecords.length < 50) {
+            markedRecords.push({
+              id: record.id,
+              name: record.name,
+              lastUpdated: recordDate,
+              daysOld: Math.floor((Date.now() - new Date(recordDate).getTime()) / 86400000)
+            });
+          }
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    await logAuditEvent(env, 'retention_apply', appliedBy || 'system',
+      `Applied ${retentionDays}-day retention: ${markedCount} records flagged`, { cemeteryId, retentionDays, markedCount });
+
+    return jsonResponse({
+      success: true,
+      message: `Retention check complete: ${markedCount} of ${checkedCount} records exceed ${retentionDays} days`,
+      retentionDays,
+      checkedCount,
+      markedCount,
+      cutoffDate,
+      markedRecords
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to apply retention', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/governance/consent
+ * Record consent status for a person's data.
+ * Body: { personName, recordId, consentStatus, consentType, grantedBy, notes }
+ */
+async function handleRecordConsent(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { personName, recordId, consentStatus, consentType, grantedBy, notes } = body || {};
+
+    if (!consentStatus || !CONSENT_STATUSES.includes(consentStatus)) {
+      return jsonResponse({
+        success: false,
+        error: `Invalid consentStatus. Must be one of: ${CONSENT_STATUSES.join(', ')}`
+      }, 400, cors);
+    }
+
+    const consentId = 'consent_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+    const now = new Date().toISOString();
+
+    const consent = {
+      id: consentId,
+      personName: personName || null,
+      recordId: recordId || null,
+      consentStatus,
+      consentType: consentType || 'data_processing',
+      grantedBy: grantedBy || 'system',
+      notes: notes || '',
+      grantedAt: consentStatus === 'granted' ? now : null,
+      withdrawnAt: consentStatus === 'withdrawn' ? now : null,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    await writeFile(`governance/consent/${consentId}.json`, JSON.stringify(consent, null, 2), env);
+
+    await logAuditEvent(env, 'consent_change', grantedBy || 'system',
+      `Consent ${consentStatus} for ${personName || recordId}`, { consentId, consentStatus });
+
+    return jsonResponse({
+      success: true,
+      message: 'Consent recorded',
+      consent
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to record consent', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/governance/consent
+ * Get consent records with filters.
+ * Query params: recordId, personName, consentStatus, limit
+ */
+async function handleGetConsent(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, consentRecords: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const recordIdFilter = url.searchParams.get('recordId');
+    const personNameFilter = url.searchParams.get('personName');
+    const statusFilter = url.searchParams.get('consentStatus');
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 200);
+
+    const files = await listFiles('governance/consent', env);
+    const records = [];
+
+    for (const file of files) {
+      if (records.length >= limit) break;
+      try {
+        const content = await readFile(`governance/consent/${file}`, env);
+        if (!content) continue;
+        const consent = JSON.parse(content);
+
+        if (recordIdFilter && consent.recordId !== recordIdFilter) continue;
+        if (personNameFilter && consent.personName !== personNameFilter) continue;
+        if (statusFilter && consent.consentStatus !== statusFilter) continue;
+
+        records.push(consent);
+      } catch (e) { /* skip */ }
+    }
+
+    records.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    return jsonResponse({
+      success: true,
+      consentRecords: records,
+      totalFound: records.length
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get consent records', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/governance/rtbf
+ * Right To Be Forgotten — anonymize or delete a person's data.
+ * Body: { recordId, personName, requestedBy, action (anonymize/delete), reason }
+ */
+async function handleRightToBeForgotten(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { recordId, personName, requestedBy, action, reason } = body || {};
+
+    if (!recordId && !personName) {
+      return jsonResponse({ success: false, error: 'Missing required fields: recordId or personName' }, 400, cors);
+    }
+    if (!action || !['anonymize', 'delete'].includes(action)) {
+      return jsonResponse({ success: false, error: 'Missing or invalid action (anonymize or delete)' }, 400, cors);
+    }
+
+    const rtbfId = 'rtbf_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+    const now = new Date().toISOString();
+    let processedCount = 0;
+    const processedRecords = [];
+
+    // Process the specific record
+    if (recordId) {
+      const safeId = sanitizePathSegment(recordId);
+      if (!safeId || safeId !== recordId) {
+        return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+      }
+
+      try {
+        const content = await readFile(`graves/${safeId}.json`, env);
+        if (content) {
+          const record = JSON.parse(content);
+
+          if (action === 'anonymize') {
+            // Anonymize: keep the record but remove identifying information
+            record.name = '[ANONYMIZED]';
+            record.givenNames = '[ANONYMIZED]';
+            record.familyName = '[ANONYMIZED]';
+            record.birthDate = null;
+            record.deathDate = null;
+            record.notes = '[Data anonymized per RTBF request]';
+            record.rtbfApplied = true;
+            record.rtbfAppliedAt = now;
+            record.updatedAt = now;
+
+            await writeFile(`graves/${safeId}.json`, JSON.stringify(record, null, 2), env);
+            processedCount++;
+            processedRecords.push({ id: safeId, action: 'anonymized' });
+          } else if (action === 'delete') {
+            // Mark as deleted (soft delete)
+            record.status = 'deleted';
+            record.rtbfApplied = true;
+            record.rtbfAppliedAt = now;
+            record.updatedAt = now;
+
+            await writeFile(`graves/${safeId}.json`, JSON.stringify(record, null, 2), env);
+            processedCount++;
+            processedRecords.push({ id: safeId, action: 'deleted' });
+          }
+        }
+      } catch (e) { /* record not found */ }
+    }
+
+    // If personName provided, find all matching records
+    if (personName && !recordId) {
+      const files = await listFiles('graves', env);
+      for (const file of files) {
+        try {
+          const content = await readFile(`graves/${file}`, env);
+          if (!content) continue;
+          const record = JSON.parse(content);
+          if (record.status === 'deleted') continue;
+
+          const nameMatch = record.name === personName ||
+            (record.givenNames + ' ' + record.familyName).trim() === personName;
+          if (!nameMatch) continue;
+
+          if (action === 'anonymize') {
+            record.name = '[ANONYMIZED]';
+            record.givenNames = '[ANONYMIZED]';
+            record.familyName = '[ANONYMIZED]';
+            record.birthDate = null;
+            record.deathDate = null;
+            record.notes = '[Data anonymized per RTBF request]';
+            record.rtbfApplied = true;
+            record.rtbfAppliedAt = now;
+            record.updatedAt = now;
+          } else {
+            record.status = 'deleted';
+            record.rtbfApplied = true;
+            record.rtbfAppliedAt = now;
+            record.updatedAt = now;
+          }
+
+          await writeFile(`graves/${file}`, JSON.stringify(record, null, 2), env);
+          processedCount++;
+          if (processedRecords.length < 50) {
+            processedRecords.push({ id: record.id, action: action === 'anonymize' ? 'anonymized' : 'deleted' });
+          }
+        } catch (e) { /* skip */ }
+      }
+    }
+
+    // Record the RTBF request
+    const rtbfRecord = {
+      id: rtbfId,
+      recordId: recordId || null,
+      personName: personName || null,
+      action,
+      reason: reason || '',
+      requestedBy: requestedBy || 'system',
+      processedCount,
+      processedRecords,
+      requestedAt: now
+    };
+
+    await writeFile(`governance/rtbf/${rtbfId}.json`, JSON.stringify(rtbfRecord, null, 2), env);
+
+    await logAuditEvent(env, 'rtbf_request', requestedBy || 'system',
+      `RTBF ${action} for ${personName || recordId}: ${processedCount} records processed`,
+      { rtbfId, action, processedCount });
+
+    return jsonResponse({
+      success: true,
+      message: `RTBF processed: ${processedCount} record(s) ${action === 'anonymize' ? 'anonymized' : 'deleted'}`,
+      rtbf: rtbfRecord
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to process RTBF', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/governance/export-personal
+ * Export all personal data for a person (GDPR data portability).
+ * Body: { personName, recordId, requestedBy }
+ */
+async function handleExportPersonalData(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { personName, recordId, requestedBy } = body || {};
+
+    if (!personName && !recordId) {
+      return jsonResponse({ success: false, error: 'Missing required fields: personName or recordId' }, 400, cors);
+    }
+
+    const exportId = 'export_personal_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+    const now = new Date().toISOString();
+    const exportedRecords = [];
+    let exportCount = 0;
+
+    // Find matching records
+    const files = await listFiles('graves', env);
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status === 'deleted') continue;
+
+        let match = false;
+        if (recordId && record.id === recordId) match = true;
+        if (personName) {
+          if (record.name === personName ||
+              (record.givenNames + ' ' + record.familyName).trim() === personName) {
+            match = true;
+          }
+        }
+        if (!match) continue;
+
+        exportedRecords.push({
+          id: record.id,
+          name: record.name,
+          givenNames: record.givenNames || null,
+          familyName: record.familyName || null,
+          birthDate: record.birthDate || null,
+          deathDate: record.deathDate || null,
+          birthPlace: record.birthPlace || null,
+          deathPlace: record.deathPlace || null,
+          cemeteryId: record.cemeteryId || null,
+          section: record.section || null,
+          plot: record.plot || null,
+          latitude: record.latitude || null,
+          longitude: record.longitude || null,
+          notes: record.notes || null,
+          verificationStatus: record.verificationStatus || 'unverified',
+          createdAt: record.createdAt || record.created_date || null,
+          updatedAt: record.updatedAt || null
+        });
+        exportCount++;
+      } catch (e) { /* skip */ }
+    }
+
+    // Find consent records
+    let consentRecords = [];
+    try {
+      const consentFiles = await listFiles('governance/consent', env);
+      for (const file of consentFiles) {
+        try {
+          const content = await readFile(`governance/consent/${file}`, env);
+          if (!content) continue;
+          const consent = JSON.parse(content);
+          if (recordId && consent.recordId === recordId) consentRecords.push(consent);
+          if (personName && consent.personName === personName) consentRecords.push(consent);
+        } catch (e) { /* skip */ }
+      }
+    } catch (e) { /* skip */ }
+
+    // Find classification records
+    let classifications = [];
+    try {
+      if (recordId) {
+        const classContent = await readFile(`governance/classifications/${recordId}.json`, env);
+        if (classContent) classifications.push(JSON.parse(classContent));
+      }
+    } catch (e) { /* skip */ }
+
+    const exportData = {
+      exportId,
+      requestedBy: requestedBy || 'system',
+      personName: personName || null,
+      recordId: recordId || null,
+      exportedAt: now,
+      recordCount: exportCount,
+      records: exportedRecords,
+      consentRecords,
+      classifications,
+      format: 'JSON',
+      rights: 'GDPR Article 20 — Right to data portability'
+    };
+
+    await logAuditEvent(env, 'export', requestedBy || 'system',
+      `Personal data export for ${personName || recordId}: ${exportCount} records`,
+      { exportId, exportCount });
+
+    return jsonResponse({
+      success: true,
+      message: `Personal data export complete: ${exportCount} records`,
+      export: exportData
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to export personal data', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/governance/check
+ * Run a compliance check against all policies.
+ * Body: { checkedBy }
+ */
+async function handleComplianceCheck(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, message: 'GitHub not configured', compliance: {} }, 200, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const checkedBy = (body && body.checkedBy) || 'system';
+
+    // Load all enabled policies
+    const policyFiles = await listFiles('governance/policies', env);
+    const policies = [];
+    for (const file of policyFiles) {
+      try {
+        const content = await readFile(`governance/policies/${file}`, env);
+        if (!content) continue;
+        const policy = JSON.parse(content);
+        if (policy.enabled) policies.push(policy);
+      } catch (e) { /* skip */ }
+    }
+
+    // Load all records
+    const graveFiles = await listFiles('graves', env);
+    const records = [];
+    for (const file of graveFiles) {
+      if (records.length >= 10000) break;
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        records.push(record);
+      } catch (e) { /* skip */ }
+    }
+
+    // Load classifications
+    let classificationCount = 0;
+    try {
+      const classFiles = await listFiles('governance/classifications', env);
+      classificationCount = classFiles.length;
+    } catch (e) { /* skip */ }
+
+    // Load consent records
+    let consentCount = 0;
+    let withdrawnConsents = 0;
+    try {
+      const consentFiles = await listFiles('governance/consent', env);
+      for (const file of consentFiles) {
+        try {
+          const content = await readFile(`governance/consent/${file}`, env);
+          if (!content) continue;
+          const consent = JSON.parse(content);
+          consentCount++;
+          if (consent.consentStatus === 'withdrawn') withdrawnConsents++;
+        } catch (e) { /* skip */ }
+      }
+    } catch (e) { /* skip */ }
+
+    // Check RTBF records
+    let rtbfCount = 0;
+    try {
+      const rtbfFiles = await listFiles('governance/rtbf', env);
+      rtbfCount = rtbfFiles.length;
+    } catch (e) { /* skip */ }
+
+    // Count audit entries
+    let auditCount = 0;
+    try {
+      const auditFiles = await listFiles('governance/audit', env);
+      auditCount = auditFiles.length;
+    } catch (e) { /* skip */ }
+
+    // Check compliance issues
+    const issues = [];
+
+    // Check: records without classification
+    const unclassifiedRecords = records.length - classificationCount;
+    if (unclassifiedRecords > 0) {
+      issues.push({
+        severity: 'warning',
+        type: 'unclassified_records',
+        count: unclassifiedRecords,
+        message: `${unclassifiedRecords} records have no data classification`
+      });
+    }
+
+    // Check: withdrawn consents with active records
+    if (withdrawnConsents > 0) {
+      issues.push({
+        severity: 'critical',
+        type: 'withdrawn_consent',
+        count: withdrawnConsents,
+        message: `${withdrawnConsents} consent(s) have been withdrawn — review affected records`
+      });
+    }
+
+    // Check: retention policy violations
+    for (const policy of policies) {
+      if (policy.type === 'retention' && policy.retentionDays) {
+        const cutoff = Date.now() - policy.retentionDays * 86400000;
+        const expiredCount = records.filter(r => {
+          const d = new Date(r.updatedAt || r.createdAt || r.created_date || 0).getTime();
+          return d > 0 && d < cutoff;
+        }).length;
+        if (expiredCount > 0) {
+          issues.push({
+            severity: 'warning',
+            type: 'retention_violation',
+            policyId: policy.id,
+            policyName: policy.name,
+            count: expiredCount,
+            message: `${expiredCount} records exceed retention period of ${policy.retentionDays} days (policy: ${policy.name})`
+          });
+        }
+      }
+    }
+
+    // Check: records marked for RTBF but still published
+    const rtbfStillPublished = records.filter(r => r.rtbfApplied && r.status === 'published');
+    if (rtbfStillPublished.length > 0) {
+      issues.push({
+        severity: 'critical',
+        type: 'rtbf_violation',
+        count: rtbfStillPublished.length,
+        message: `${rtbfStillPublished.length} records with RTBF applied are still published`
+      });
+    }
+
+    const compliance = {
+      checkedAt: now,
+      checkedBy,
+      summary: {
+        totalRecords: records.length,
+        classifiedRecords: classificationCount,
+        unclassifiedRecords,
+        totalPolicies: policies.length,
+        activePolicies: policies.filter(p => p.enabled).length,
+        consentRecords: consentCount,
+        withdrawnConsents,
+        rtbfRequests: rtbfCount,
+        auditEntries: auditCount,
+        issuesFound: issues.length,
+        criticalIssues: issues.filter(i => i.severity === 'critical').length
+      },
+      issues: issues,
+      policies: policies.map(p => ({
+        id: p.id, name: p.name, type: p.type, enabled: p.enabled,
+        classification: p.classification, retentionDays: p.retentionDays
+      })),
+      score: issues.length === 0 ? 100 : Math.max(0, 100 - issues.length * 10 -
+        issues.filter(i => i.severity === 'critical').length * 20)
+    };
+
+    await logAuditEvent(env, 'read', checkedBy, 'Compliance check executed', {
+      issuesFound: issues.length, score: compliance.score
+    });
+
+    return jsonResponse({
+      success: true,
+      message: issues.length === 0 ? 'All compliance checks passed' : `${issues.length} compliance issue(s) found`,
+      compliance
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to run compliance check', message: error.message }, 500, cors);
+  }
 }
 
 // ── Phase 16.24: AI Search Intelligence Handlers ──

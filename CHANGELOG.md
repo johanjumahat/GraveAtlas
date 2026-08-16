@@ -519,6 +519,51 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.25] — 2026-08-16
+
+### Phase 16.25: AI Data Governance & Compliance
+
+**Added:**
+- `POST /api/governance/policies` — create governance policies (6 types: retention,
+  privacy, access, classification, consent, deletion; with retentionDays and
+  data classification).
+- `GET /api/governance/policies` — list with filters (type, enabled, classification).
+- `GET /api/governance/policies/:id` — get policy details.
+- `DELETE /api/governance/policies/:id` — delete policy (with audit log).
+
+- `POST /api/governance/classify` — classify records (4 levels: public, internal,
+  restricted, confidential). Tracks previous classification.
+- `GET /api/governance/classify/:recordId` — get classification.
+
+- `GET /api/governance/audit` — audit log with filters (action, actor, since).
+  12 audit action types.
+- `POST /api/governance/audit` — manually log audit events.
+
+- `POST /api/governance/retention` — apply retention policies. Marks records
+  exceeding retention period, returns daysOld per record.
+
+- `POST /api/governance/consent` — record consent (4 statuses: granted,
+  withdrawn, pending, not_required). Tracks grantedAt/withdrawnAt.
+- `GET /api/governance/consent` — query consent records.
+
+- `POST /api/governance/rtbf` — Right To Be Forgotten (GDPR Article 17).
+  Supports anonymize (replace PII with [ANONYMIZED]) or delete (soft delete).
+  Processes by recordId or personName across all matching records.
+
+- `POST /api/governance/export-personal` — GDPR data portability (Article 20).
+  Exports all personal data: records, consent records, classifications.
+
+- `POST /api/governance/check` — full compliance check. Evaluates all policies,
+  checks: unclassified records, withdrawn consents, retention violations,
+  RTBF violations. Returns compliance score 0-100, issues with severity.
+
+New models: GovernancePolicy, DataClassification, ComplianceReport (3 inner classes)
+API client: createGovernancePolicy(), listGovernancePolicies(), classifyRecord(),
+runComplianceCheck(), rightToBeForgotten(), exportPersonalData()
+AI system prompt updated, 3 new suggested prompts
+120+ new tests (phase16-25.test.js)
+
+
 ## [7.2.24] — 2026-08-16
 
 ### Phase 16.24: AI Search Intelligence
