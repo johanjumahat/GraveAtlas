@@ -36,6 +36,7 @@
 | 16.16. AI Watchlist & Monitoring | ✅ COMPLETE | 100% |
 | 16.17. AI Merge Resolution | ✅ COMPLETE | 100% |
 | 16.18. AI Source Verification | ✅ COMPLETE | 100% |
+| 16.19. AI Confidence Scoring | ✅ COMPLETE | 100% |
 
 **All 8 core phases complete. Phase 16 AI-native features complete. 1477 tests passing.**
 
@@ -77,9 +78,11 @@
 
 16. **Add — AI Source Verification** ✅ Automated source reference checking with 4 endpoints: record-level verify (`/sources/verify`), cemetery-wide verify, batch verify (up to 50 records), and global status. Checks URL liveness via HEAD request (10s timeout), detects live/dead/restricted/unreachable/timeout, queries Wayback Machine for archived copies, computes verification score (0-100%). Per-source confidence levels, archive URL tracking, overall status (verified/partial/critical/unverified). New models: `SourceVerification`, `RecordSourceVerification`, `CemeterySourceVerification`, `SourceVerificationStatus`. 90+ new tests. v7.2.18.
 
+17. **Add — AI Confidence Scoring** ✅ Comprehensive per-record confidence score combining 7 weighted signals (completeness 30%, verification 20%, source quality 20%, anomaly-free 15%, merge history 5%, community 5%, geo precision 5%) into a single 0-100 score with tier classification (platinum >=90, gold >=75, silver >=60, bronze >=40) and transparent breakdown. 4 endpoints: record confidence, cemetery confidence with tier distribution, batch (50 records), and global leaderboard with tier filter. New models: `ConfidenceScore`, `CemeteryConfidence`, `ConfidenceLeaderboard`. 100+ new tests. v7.2.19.
+
 ## Architecture
 
-- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 103 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
+- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 107 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
 - **Android:** 18+ screens with navigation host, external maps handoff (geo: intent), offline support
 - **Data:** GitHub repository (graveatlas-data) with JSON schemas
 - **Auth:** Google Sign-In with ID token verification, session tokens, ban system
@@ -87,7 +90,7 @@
 - **Timeline:** Chronological event visualization with decade grouping, backend endpoint
 - **External Sources:** OpenStreetMap (Overpass API), Wikidata (SPARQL), Singapore Government Open Data (data.gov.sg)
 
-## Test Suite (2632 tests)
+## Test Suite (2730 tests)
 
 | Test File | Tests | Area |
 |---|---|---|

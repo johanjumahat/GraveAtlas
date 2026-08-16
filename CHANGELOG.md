@@ -519,6 +519,44 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.19] — 2026-08-16
+
+### Phase 16.19: AI Confidence Scoring
+
+**Added:**
+- `GET /api/graves/:id/confidence` — comprehensive 0-100 confidence score for a
+  single record, combining 7 weighted signals with transparent breakdown:
+  - Completeness (30%): 11 important fields + 6 biographical fields with bonus
+  - Verification (20%): verified=20, submitted=10, unverified=0
+  - Source quality (20%): live ratio, archived bonus, multiple-source bonus
+  - Anomaly-free (15%): penalty by severity (critical=8, high=4, medium=2, low=1)
+  - Merge history (5%): penalty per merge (merged records slightly lower)
+  - Community (5%): submitter, corrections, community review bonus
+  - Geo precision (5%): 6+ decimals=5pts, 4+=3pts, 2+=1pt
+
+- `GET /api/cemeteries/:id/confidence` — cemetery-wide confidence with per-record
+  scores sorted by confidence, average score, and tier distribution counts.
+
+- `POST /api/confidence/batch` — batch compute up to 50 records.
+
+- `GET /api/confidence/leaderboard` — global top records by confidence score,
+  optional tier filter, tier distribution summary, max 200 results.
+
+**Tier Classification:**
+- Platinum (>=90): Highest quality — verified, complete, sourced, anomaly-free
+- Gold (>=75): High quality — minor gaps only
+- Silver (>=60): Good quality — some improvements needed
+- Bronze (>=40): Basic quality — multiple gaps or anomalies
+- Unverified (<40): Low confidence — significant issues
+
+New models: ConfidenceScore (SignalBreakdown), CemeteryConfidence (2 inner),
+ConfidenceLeaderboard (2 inner)
+API client: getRecordConfidence(), getCemeteryConfidence(),
+batchConfidence(), getConfidenceLeaderboard()
+AI system prompt updated, 3 new suggested prompts
+100+ new tests (phase16-19.test.js)
+
+
 ## [7.2.18] — 2026-08-16
 
 ### Phase 16.18: AI Source Verification

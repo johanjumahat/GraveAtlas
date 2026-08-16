@@ -32,6 +32,9 @@ import com.putraworks.graveatlas.data.model.SourceVerification;
 import com.putraworks.graveatlas.data.model.RecordSourceVerification;
 import com.putraworks.graveatlas.data.model.CemeterySourceVerification;
 import com.putraworks.graveatlas.data.model.SourceVerificationStatus;
+import com.putraworks.graveatlas.data.model.ConfidenceScore;
+import com.putraworks.graveatlas.data.model.CemeteryConfidence;
+import com.putraworks.graveatlas.data.model.ConfidenceLeaderboard;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -903,6 +906,176 @@ public class ApiClient {
         } catch (java.io.UnsupportedEncodingException e) {
             return value; // UTF-8 is always available on Android
         }
+    }
+
+    // ── Phase 16.19: AI Confidence Scoring ──
+
+    /**
+     * Get confidence score for a single record.
+     * GET /api/graves/{id}/confidence
+     */
+    public void getRecordConfidence(String recordId,
+                                       final ApiCallback<ConfidenceScore> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/graves/" + recordId + "/confidence")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        JSONObject conf = obj.optJSONObject("confidence");
+                        if (conf != null) {
+                            callback.onSuccess(ConfidenceScore.fromJson(conf));
+                        } else {
+                            callback.onError("Confidence not found in response.");
+                        }
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse confidence score.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get confidence scores for all records in a cemetery.
+     * GET /api/cemeteries/{id}/confidence
+     */
+    public void getCemeteryConfidence(String cemeteryId,
+                                         final ApiCallback<CemeteryConfidence> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/cemeteries/" + cemeteryId + "/confidence")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        callback.onSuccess(CemeteryConfidence.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse cemetery confidence.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Batch compute confidence scores for up to 50 records.
+     * POST /api/confidence/batch
+     */
+    public void batchConfidence(java.util.List<String> recordIds,
+                                   final ApiCallback<java.util.List<ConfidenceScore>> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            JSONArray arr = new JSONArray();
+            for (String id : recordIds) arr.put(id);
+            body.put("recordIds", arr);
+        } catch (Exception e) { /* ignore */ }
+
+        RequestBody rb = RequestBody.create(body.toString(), MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/confidence/batch")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        java.util.List<ConfidenceScore> results = new java.util.ArrayList<>();
+                        JSONArray arr = obj.optJSONArray("results");
+                        if (arr != null) {
+                            for (int i = 0; i < arr.length(); i++) {
+                                JSONObject r = arr.optJSONObject(i);
+                                if (r != null && r.has("score")) {
+                                    // Wrap in confidence object for parsing
+                                    JSONObject confObj = new JSONObject();
+                                    confObj.put("score", r.optInt("score"));
+                                    confObj.put("tier", r.optString("tier", "unverified"));
+                                    results.add(ConfidenceScore.fromJson(confObj));
+                                }
+                            }
+                        }
+                        callback.onSuccess(results);
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse batch confidence results.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get global confidence leaderboard.
+     * GET /api/confidence/leaderboard?limit=50&tier=platinum
+     */
+    public void getConfidenceLeaderboard(int limit, String tierFilter,
+                                            final ApiCallback<ConfidenceLeaderboard> callback) {
+        String url = baseUrl + "/api/confidence/leaderboard?limit=" + limit;
+        if (tierFilter != null && !tierFilter.isEmpty()) {
+            url += "&tier=" + tierFilter;
+        }
+
+        Request request = new Request.Builder()
+                .url(url)
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        callback.onSuccess(ConfidenceLeaderboard.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse confidence leaderboard.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
     }
 
     // ── Phase 16.18: AI Source Verification ──

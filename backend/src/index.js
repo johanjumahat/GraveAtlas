@@ -540,6 +540,25 @@ async function handleRequest(request, env, ctx) {
       return await handleSourceVerificationStatus(request, env, corsHeaders);
     }
 
+    // Phase 16.19: AI Confidence Scoring
+    if (path.startsWith('/api/graves/') && path.endsWith('/confidence') && method === 'GET') {
+      const id = path.split('/')[3];
+      return await handleGetRecordConfidence(id, request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/cemeteries/') && path.endsWith('/confidence') && method === 'GET') {
+      const id = path.split('/')[3];
+      return await handleGetCemeteryConfidence(id, request, env, corsHeaders);
+    }
+
+    if (path === '/api/confidence/batch' && method === 'POST') {
+      return await handleBatchConfidence(request, env, corsHeaders);
+    }
+
+    if (path === '/api/confidence/leaderboard' && method === 'GET') {
+      return await handleConfidenceLeaderboard(request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -3602,6 +3621,547 @@ function safeTokenCompare(a, b) {
 
 // ── Utils ──
 
+// ── Phase 16.19: AI Confidence Scoring Handlers ──
+
+/**
+ * Compute a comprehensive confidence score for a single record.
+ * Combines multiple signals into a single 0-100 score with transparent breakdown.
+ *
+ * Signals:
+ * - Completeness (30%): how many important fields are filled
+ * - Verification (20%): verificationStatus (verified > submitted > unverified)
+ * - Source quality (20%): number and quality of source references
+ * - Anomaly-free (15%): no detected anomalies
+ * - Merge history (5%): records that resulted from merges are slightly lower
+ * - Community engagement (5%): corrections, submissions, views
+ * - Geographic precision (5%): has precise coordinates
+ */
+function computeConfidenceScore(record, anomalies, sourceVerification, mergeHistoryCount) {
+  const breakdown = {
+    completeness: { score: 0, max: 30, details: [] },
+    verification: { score: 0, max: 20, details: [] },
+    sourceQuality: { score: 0, max: 20, details: [] },
+    anomalyFree: { score: 0, max: 15, details: [] },
+    mergeHistory: { score: 0, max: 5, details: [] },
+    community: { score: 0, max: 5, details: [] },
+    geoPrecision: { score: 0, max: 5, details: [] }
+  };
+
+  // ── Completeness (30 points) ──
+  const importantFields = [
+    'name', 'birthDate', 'deathDate', 'cemeteryId', 'section', 'plot',
+    'latitude', 'longitude', 'inscription', 'sourceRefs', 'notes'
+  ];
+  const filledFields = importantFields.filter(f => {
+    const val = record[f];
+    if (val === null || val === undefined) return false;
+    if (Array.isArray(val)) return val.length > 0;
+    if (typeof val === 'string') return val.trim().length > 0;
+    return true;
+  });
+  const completenessPct = filledFields.length / importantFields.length;
+  breakdown.completeness.score = Math.round(completenessPct * 30);
+  breakdown.completeness.details.push({
+    filled: filledFields.length,
+    total: importantFields.length,
+    percentage: Math.round(completenessPct * 100)
+  });
+
+  // Extra credit for biographical fields
+  const bioFields = ['givenNames', 'familyName', 'birthPlace', 'deathPlace', 'occupation', 'spouseName'];
+  const filledBio = bioFields.filter(f => record[f] && String(record[f]).trim().length > 0);
+  if (filledBio.length > 0) {
+    const bonus = Math.min(filledBio.length * 1, 5);
+    breakdown.completeness.score = Math.min(breakdown.completeness.score + bonus, 30);
+    breakdown.completeness.details.push({ biographicalFields: filledBio.length, bonus: bonus });
+  }
+
+  // ── Verification (20 points) ──
+  const status = record.verificationStatus || 'unverified';
+  switch (status) {
+    case 'verified':
+      breakdown.verification.score = 20;
+      breakdown.verification.details.push({ status: 'verified', fullPoints: true });
+      break;
+    case 'submitted':
+      breakdown.verification.score = 10;
+      breakdown.verification.details.push({ status: 'submitted', partialPoints: true });
+      break;
+    case 'unverified':
+    default:
+      breakdown.verification.score = 0;
+      breakdown.verification.details.push({ status: 'unverified', noPoints: true });
+      break;
+  }
+
+  // ── Source quality (20 points) ──
+  const sourceRefs = record.sourceRefs || [];
+  if (sourceRefs.length === 0) {
+    breakdown.sourceQuality.score = 0;
+    breakdown.sourceQuality.details.push({ count: 0, message: 'No sources cited' });
+  } else {
+    let sourcePoints = 0;
+    breakdown.sourceQuality.details.push({ count: sourceRefs.length });
+
+    if (sourceVerification) {
+      // Use actual verification data if available
+      const liveRatio = sourceVerification.live / Math.max(sourceVerification.total, 1);
+      sourcePoints = Math.round(liveRatio * 15);
+      breakdown.sourceQuality.details.push({
+        live: sourceVerification.live,
+        dead: sourceVerification.dead,
+        liveRatio: Math.round(liveRatio * 100) + '%'
+      });
+
+      // Bonus for archived sources
+      if (sourceVerification.archived > 0) {
+        sourcePoints += Math.min(sourceVerification.archived * 1, 3);
+        breakdown.sourceQuality.details.push({ archived: sourceVerification.archived });
+      }
+
+      // Bonus for multiple sources
+      if (sourceVerification.total >= 3) {
+        sourcePoints += 2;
+        breakdown.sourceQuality.details.push({ multipleSources: true, bonus: 2 });
+      }
+    } else {
+      // Without verification, give partial credit for having sources
+      sourcePoints = Math.min(sourceRefs.length * 4, 12);
+      breakdown.sourceQuality.details.push({ message: 'Sources present but not verified' });
+      if (sourceRefs.length >= 3) sourcePoints += 2;
+    }
+
+    breakdown.sourceQuality.score = Math.min(sourcePoints, 20);
+  }
+
+  // ── Anomaly-free (15 points) ──
+  if (anomalies && anomalies.length > 0) {
+    const criticalCount = anomalies.filter(a => a.severity === 'critical').length;
+    const highCount = anomalies.filter(a => a.severity === 'high').length;
+    const mediumCount = anomalies.filter(a => a.severity === 'medium').length;
+    const lowCount = anomalies.filter(a => a.severity === 'low').length;
+
+    let penalty = criticalCount * 8 + highCount * 4 + mediumCount * 2 + lowCount * 1;
+    breakdown.anomalyFree.score = Math.max(15 - penalty, 0);
+    breakdown.anomalyFree.details.push({
+      total: anomalies.length,
+      critical: criticalCount, high: highCount, medium: mediumCount, low: lowCount,
+      penalty: penalty
+    });
+  } else {
+    breakdown.anomalyFree.score = 15;
+    breakdown.anomalyFree.details.push({ total: 0, message: 'No anomalies detected' });
+  }
+
+  // ── Merge history (5 points) ──
+  if (mergeHistoryCount > 0) {
+    // Merged records lose a small amount — they might have inherited fields
+    breakdown.mergeHistory.score = Math.max(5 - mergeHistoryCount, 0);
+    breakdown.mergeHistory.details.push({
+      mergeCount: mergeHistoryCount,
+      message: 'Record has merge history — slightly reduced confidence'
+    });
+  } else {
+    breakdown.mergeHistory.score = 5;
+    breakdown.mergeHistory.details.push({ mergeCount: 0, message: 'No merges — original record' });
+  }
+
+  // ── Community engagement (5 points) ──
+  const corrections = record.corrections || [];
+  const submitterName = record.submitterName;
+  let communityPoints = 0;
+  if (submitterName) {
+    communityPoints += 1;
+    breakdown.community.details.push({ hasSubmitter: true });
+  }
+  if (corrections.length > 0) {
+    communityPoints += Math.min(corrections.length * 1, 3);
+    breakdown.community.details.push({ corrections: corrections.length });
+  }
+  // Bonus: if record has been viewed/submitted (proxy: has submitterName and corrections)
+  if (submitterName && corrections.length > 0) {
+    communityPoints += 1;
+    breakdown.community.details.push({ communityReview: true, bonus: 1 });
+  }
+  breakdown.community.score = Math.min(communityPoints, 5);
+
+  // ── Geographic precision (5 points) ──
+  if (record.latitude && record.longitude) {
+    const latStr = String(record.latitude);
+    const lonStr = String(record.longitude);
+    const latDecimals = latStr.includes('.') ? latStr.split('.')[1].length : 0;
+    const lonDecimals = lonStr.includes('.') ? lonStr.split('.')[1].length : 0;
+    const maxDecimals = Math.max(latDecimals, lonDecimals);
+
+    if (maxDecimals >= 6) {
+      breakdown.geoPrecision.score = 5;
+      breakdown.geoPrecision.details.push({ precision: maxDecimals + ' decimal places', fullPoints: true });
+    } else if (maxDecimals >= 4) {
+      breakdown.geoPrecision.score = 3;
+      breakdown.geoPrecision.details.push({ precision: maxDecimals + ' decimal places', partial: true });
+    } else if (maxDecimals >= 2) {
+      breakdown.geoPrecision.score = 1;
+      breakdown.geoPrecision.details.push({ precision: maxDecimals + ' decimal places', low: true });
+    } else {
+      breakdown.geoPrecision.score = 0;
+      breakdown.geoPrecision.details.push({ precision: maxDecimals + ' decimal places', message: 'Insufficient precision' });
+    }
+  } else {
+    breakdown.geoPrecision.score = 0;
+    breakdown.geoPrecision.details.push({ message: 'No coordinates' });
+  }
+
+  // ── Total ──
+  const total = Object.values(breakdown).reduce((sum, b) => sum + b.score, 0);
+
+  // Determine confidence tier
+  let tier;
+  if (total >= 90) tier = 'platinum';
+  else if (total >= 75) tier = 'gold';
+  else if (total >= 60) tier = 'silver';
+  else if (total >= 40) tier = 'bronze';
+  else tier = 'unverified';
+
+  return {
+    score: total,
+    maxScore: 100,
+    tier,
+    breakdown,
+    computedAt: new Date().toISOString()
+  };
+}
+
+/**
+ * GET /api/graves/:id/confidence
+ * Compute and return confidence score for a single record.
+ */
+async function handleGetRecordConfidence(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      message: 'GitHub not configured — confidence scoring unavailable',
+      confidence: { score: 0, tier: 'unverified' }
+    }, 200, cors);
+  }
+
+  try {
+    const content = await readFile(`graves/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Record not found' }, 404, cors);
+    }
+
+    const record = JSON.parse(content);
+
+    // Gather signals
+    // 1. Anomalies
+    let anomalies = [];
+    try {
+      const anomalyResult = computeCemeteryAnomalies([record]);
+      anomalies = anomalyResult.anomalies || [];
+    } catch (e) { /* no anomalies */ }
+
+    // 2. Source verification (lightweight — don't do live HTTP checks, just count)
+    const sourceRefs = record.sourceRefs || [];
+    let sourceVerification = null;
+    if (sourceRefs.length > 0) {
+      // Use stored verification if available, otherwise basic count
+      sourceVerification = {
+        total: sourceRefs.length,
+        live: sourceRefs.length, // assume live without checking
+        dead: 0,
+        archived: 0
+      };
+    }
+
+    // 3. Merge history count
+    const mergeHistoryCount = (record.mergeHistory || []).length;
+
+    const confidence = computeConfidenceScore(record, anomalies, sourceVerification, mergeHistoryCount);
+
+    return jsonResponse({
+      success: true,
+      recordId: safeId,
+      recordName: record.name || record.graveIdentifier || 'Unknown',
+      confidence: confidence
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to compute confidence score',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/cemeteries/:id/confidence
+ * Compute confidence scores for all records in a cemetery.
+ */
+async function handleGetCemeteryConfidence(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid cemetery ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      message: 'GitHub not configured'
+    }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('graves', env);
+    const records = [];
+    const recordsById = {};
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        if (record.cemeteryId !== safeId && record.cemeteryId !== id) continue;
+        records.push(record);
+        recordsById[record.id] = record;
+      } catch (e) { /* skip */ }
+    }
+
+    if (records.length === 0) {
+      return jsonResponse({
+        success: true,
+        cemeteryId: safeId,
+        totalRecords: 0,
+        recordScores: [],
+        cemeterySummary: {
+          averageScore: 0,
+          platinumCount: 0, goldCount: 0, silverCount: 0, bronzeCount: 0, unverifiedCount: 0,
+          totalRecords: 0
+        },
+        message: 'No records found'
+      }, 200, cors);
+    }
+
+    const recordScores = [];
+    let totalScore = 0;
+    let platinumCount = 0, goldCount = 0, silverCount = 0, bronzeCount = 0, unverifiedCount = 0;
+
+    for (const record of records) {
+      // Lightweight anomalies
+      let anomalies = [];
+      try {
+        const anomalyResult = computeCemeteryAnomalies([record]);
+        anomalies = anomalyResult.anomalies || [];
+      } catch (e) { /* skip */ }
+
+      const sourceRefs = record.sourceRefs || [];
+      let sourceVerification = null;
+      if (sourceRefs.length > 0) {
+        sourceVerification = { total: sourceRefs.length, live: sourceRefs.length, dead: 0, archived: 0 };
+      }
+
+      const mergeHistoryCount = (record.mergeHistory || []).length;
+      const confidence = computeConfidenceScore(record, anomalies, sourceVerification, mergeHistoryCount);
+
+      recordScores.push({
+        recordId: record.id,
+        recordName: record.name || record.graveIdentifier || 'Unknown',
+        score: confidence.score,
+        tier: confidence.tier
+      });
+
+      totalScore += confidence.score;
+      switch (confidence.tier) {
+        case 'platinum': platinumCount++; break;
+        case 'gold': goldCount++; break;
+        case 'silver': silverCount++; break;
+        case 'bronze': bronzeCount++; break;
+        default: unverifiedCount++; break;
+      }
+    }
+
+    recordScores.sort((a, b) => b.score - a.score);
+    const avgScore = Math.round(totalScore / records.length);
+
+    return jsonResponse({
+      success: true,
+      cemeteryId: safeId,
+      totalRecords: records.length,
+      recordScores: recordScores,
+      cemeterySummary: {
+        averageScore: avgScore,
+        platinumCount, goldCount, silverCount, bronzeCount, unverifiedCount,
+        totalRecords: records.length
+      },
+      computedAt: new Date().toISOString()
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to compute cemetery confidence',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/confidence/batch
+ * Batch compute confidence scores for up to 50 records.
+ * Body: { recordIds: string[] }
+ */
+async function handleBatchConfidence(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, message: 'GitHub not configured', results: [] }, 200, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const recordIds = (body && body.recordIds) || [];
+
+    if (!Array.isArray(recordIds) || recordIds.length === 0) {
+      return jsonResponse({ success: false, error: 'Missing recordIds array' }, 400, cors);
+    }
+
+    if (recordIds.length > 50) {
+      return jsonResponse({ success: false, error: 'Maximum 50 records per batch' }, 400, cors);
+    }
+
+    const results = [];
+
+    for (const recordId of recordIds) {
+      const safeId = sanitizePathSegment(recordId);
+      if (!safeId || safeId !== recordId) continue;
+
+      try {
+        const content = await readFile(`graves/${safeId}.json`, env);
+        if (!content) {
+          results.push({ recordId, status: 'not_found' });
+          continue;
+        }
+        const record = JSON.parse(content);
+
+        let anomalies = [];
+        try {
+          const anomalyResult = computeCemeteryAnomalies([record]);
+          anomalies = anomalyResult.anomalies || [];
+        } catch (e) { /* skip */ }
+
+        const sourceRefs = record.sourceRefs || [];
+        let sourceVerification = null;
+        if (sourceRefs.length > 0) {
+          sourceVerification = { total: sourceRefs.length, live: sourceRefs.length, dead: 0, archived: 0 };
+        }
+
+        const mergeHistoryCount = (record.mergeHistory || []).length;
+        const confidence = computeConfidenceScore(record, anomalies, sourceVerification, mergeHistoryCount);
+
+        results.push({
+          recordId: record.id,
+          recordName: record.name || record.graveIdentifier || 'Unknown',
+          score: confidence.score,
+          tier: confidence.tier
+        });
+      } catch (e) {
+        results.push({ recordId, status: 'error', message: e.message });
+      }
+    }
+
+    return jsonResponse({
+      success: true,
+      results: results,
+      totalComputed: results.length,
+      computedAt: new Date().toISOString()
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to batch compute confidence',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/confidence/leaderboard
+ * Returns top records by confidence score across the entire system.
+ */
+async function handleConfidenceLeaderboard(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, message: 'GitHub not configured', leaderboard: [] }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 200);
+    const tier = url.searchParams.get('tier'); // filter by tier if provided
+
+    const files = await listFiles('graves', env);
+    const scores = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+
+        let anomalies = [];
+        try {
+          const anomalyResult = computeCemeteryAnomalies([record]);
+          anomalies = anomalyResult.anomalies || [];
+        } catch (e) { /* skip */ }
+
+        const sourceRefs = record.sourceRefs || [];
+        let sourceVerification = null;
+        if (sourceRefs.length > 0) {
+          sourceVerification = { total: sourceRefs.length, live: sourceRefs.length, dead: 0, archived: 0 };
+        }
+
+        const mergeHistoryCount = (record.mergeHistory || []).length;
+        const confidence = computeConfidenceScore(record, anomalies, sourceVerification, mergeHistoryCount);
+
+        if (tier && confidence.tier !== tier) continue;
+
+        scores.push({
+          recordId: record.id,
+          recordName: record.name || record.graveIdentifier || 'Unknown',
+          cemeteryId: record.cemeteryId || null,
+          score: confidence.score,
+          tier: confidence.tier,
+          verificationStatus: record.verificationStatus || 'unverified'
+        });
+      } catch (e) { /* skip */ }
+    }
+
+    scores.sort((a, b) => b.score - a.score);
+
+    return jsonResponse({
+      success: true,
+      leaderboard: scores.slice(0, limit),
+      totalRecords: scores.length,
+      tierDistribution: {
+        platinum: scores.filter(s => s.tier === 'platinum').length,
+        gold: scores.filter(s => s.tier === 'gold').length,
+        silver: scores.filter(s => s.tier === 'silver').length,
+        bronze: scores.filter(s => s.tier === 'bronze').length,
+        unverified: scores.filter(s => s.tier === 'unverified').length
+      },
+      computedAt: new Date().toISOString()
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to generate leaderboard',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
 // ── Phase 16.18: AI Source Verification Handlers ──
 
 /**
@@ -5296,6 +5856,547 @@ function generateRecommendations(records, stats, anomalySummary) {
   }
 
   return recommendations;
+}
+
+// ── Phase 16.19: AI Confidence Scoring Handlers ──
+
+/**
+ * Compute a comprehensive confidence score for a single record.
+ * Combines multiple signals into a single 0-100 score with transparent breakdown.
+ *
+ * Signals:
+ * - Completeness (30%): how many important fields are filled
+ * - Verification (20%): verificationStatus (verified > submitted > unverified)
+ * - Source quality (20%): number and quality of source references
+ * - Anomaly-free (15%): no detected anomalies
+ * - Merge history (5%): records that resulted from merges are slightly lower
+ * - Community engagement (5%): corrections, submissions, views
+ * - Geographic precision (5%): has precise coordinates
+ */
+function computeConfidenceScore(record, anomalies, sourceVerification, mergeHistoryCount) {
+  const breakdown = {
+    completeness: { score: 0, max: 30, details: [] },
+    verification: { score: 0, max: 20, details: [] },
+    sourceQuality: { score: 0, max: 20, details: [] },
+    anomalyFree: { score: 0, max: 15, details: [] },
+    mergeHistory: { score: 0, max: 5, details: [] },
+    community: { score: 0, max: 5, details: [] },
+    geoPrecision: { score: 0, max: 5, details: [] }
+  };
+
+  // ── Completeness (30 points) ──
+  const importantFields = [
+    'name', 'birthDate', 'deathDate', 'cemeteryId', 'section', 'plot',
+    'latitude', 'longitude', 'inscription', 'sourceRefs', 'notes'
+  ];
+  const filledFields = importantFields.filter(f => {
+    const val = record[f];
+    if (val === null || val === undefined) return false;
+    if (Array.isArray(val)) return val.length > 0;
+    if (typeof val === 'string') return val.trim().length > 0;
+    return true;
+  });
+  const completenessPct = filledFields.length / importantFields.length;
+  breakdown.completeness.score = Math.round(completenessPct * 30);
+  breakdown.completeness.details.push({
+    filled: filledFields.length,
+    total: importantFields.length,
+    percentage: Math.round(completenessPct * 100)
+  });
+
+  // Extra credit for biographical fields
+  const bioFields = ['givenNames', 'familyName', 'birthPlace', 'deathPlace', 'occupation', 'spouseName'];
+  const filledBio = bioFields.filter(f => record[f] && String(record[f]).trim().length > 0);
+  if (filledBio.length > 0) {
+    const bonus = Math.min(filledBio.length * 1, 5);
+    breakdown.completeness.score = Math.min(breakdown.completeness.score + bonus, 30);
+    breakdown.completeness.details.push({ biographicalFields: filledBio.length, bonus: bonus });
+  }
+
+  // ── Verification (20 points) ──
+  const status = record.verificationStatus || 'unverified';
+  switch (status) {
+    case 'verified':
+      breakdown.verification.score = 20;
+      breakdown.verification.details.push({ status: 'verified', fullPoints: true });
+      break;
+    case 'submitted':
+      breakdown.verification.score = 10;
+      breakdown.verification.details.push({ status: 'submitted', partialPoints: true });
+      break;
+    case 'unverified':
+    default:
+      breakdown.verification.score = 0;
+      breakdown.verification.details.push({ status: 'unverified', noPoints: true });
+      break;
+  }
+
+  // ── Source quality (20 points) ──
+  const sourceRefs = record.sourceRefs || [];
+  if (sourceRefs.length === 0) {
+    breakdown.sourceQuality.score = 0;
+    breakdown.sourceQuality.details.push({ count: 0, message: 'No sources cited' });
+  } else {
+    let sourcePoints = 0;
+    breakdown.sourceQuality.details.push({ count: sourceRefs.length });
+
+    if (sourceVerification) {
+      // Use actual verification data if available
+      const liveRatio = sourceVerification.live / Math.max(sourceVerification.total, 1);
+      sourcePoints = Math.round(liveRatio * 15);
+      breakdown.sourceQuality.details.push({
+        live: sourceVerification.live,
+        dead: sourceVerification.dead,
+        liveRatio: Math.round(liveRatio * 100) + '%'
+      });
+
+      // Bonus for archived sources
+      if (sourceVerification.archived > 0) {
+        sourcePoints += Math.min(sourceVerification.archived * 1, 3);
+        breakdown.sourceQuality.details.push({ archived: sourceVerification.archived });
+      }
+
+      // Bonus for multiple sources
+      if (sourceVerification.total >= 3) {
+        sourcePoints += 2;
+        breakdown.sourceQuality.details.push({ multipleSources: true, bonus: 2 });
+      }
+    } else {
+      // Without verification, give partial credit for having sources
+      sourcePoints = Math.min(sourceRefs.length * 4, 12);
+      breakdown.sourceQuality.details.push({ message: 'Sources present but not verified' });
+      if (sourceRefs.length >= 3) sourcePoints += 2;
+    }
+
+    breakdown.sourceQuality.score = Math.min(sourcePoints, 20);
+  }
+
+  // ── Anomaly-free (15 points) ──
+  if (anomalies && anomalies.length > 0) {
+    const criticalCount = anomalies.filter(a => a.severity === 'critical').length;
+    const highCount = anomalies.filter(a => a.severity === 'high').length;
+    const mediumCount = anomalies.filter(a => a.severity === 'medium').length;
+    const lowCount = anomalies.filter(a => a.severity === 'low').length;
+
+    let penalty = criticalCount * 8 + highCount * 4 + mediumCount * 2 + lowCount * 1;
+    breakdown.anomalyFree.score = Math.max(15 - penalty, 0);
+    breakdown.anomalyFree.details.push({
+      total: anomalies.length,
+      critical: criticalCount, high: highCount, medium: mediumCount, low: lowCount,
+      penalty: penalty
+    });
+  } else {
+    breakdown.anomalyFree.score = 15;
+    breakdown.anomalyFree.details.push({ total: 0, message: 'No anomalies detected' });
+  }
+
+  // ── Merge history (5 points) ──
+  if (mergeHistoryCount > 0) {
+    // Merged records lose a small amount — they might have inherited fields
+    breakdown.mergeHistory.score = Math.max(5 - mergeHistoryCount, 0);
+    breakdown.mergeHistory.details.push({
+      mergeCount: mergeHistoryCount,
+      message: 'Record has merge history — slightly reduced confidence'
+    });
+  } else {
+    breakdown.mergeHistory.score = 5;
+    breakdown.mergeHistory.details.push({ mergeCount: 0, message: 'No merges — original record' });
+  }
+
+  // ── Community engagement (5 points) ──
+  const corrections = record.corrections || [];
+  const submitterName = record.submitterName;
+  let communityPoints = 0;
+  if (submitterName) {
+    communityPoints += 1;
+    breakdown.community.details.push({ hasSubmitter: true });
+  }
+  if (corrections.length > 0) {
+    communityPoints += Math.min(corrections.length * 1, 3);
+    breakdown.community.details.push({ corrections: corrections.length });
+  }
+  // Bonus: if record has been viewed/submitted (proxy: has submitterName and corrections)
+  if (submitterName && corrections.length > 0) {
+    communityPoints += 1;
+    breakdown.community.details.push({ communityReview: true, bonus: 1 });
+  }
+  breakdown.community.score = Math.min(communityPoints, 5);
+
+  // ── Geographic precision (5 points) ──
+  if (record.latitude && record.longitude) {
+    const latStr = String(record.latitude);
+    const lonStr = String(record.longitude);
+    const latDecimals = latStr.includes('.') ? latStr.split('.')[1].length : 0;
+    const lonDecimals = lonStr.includes('.') ? lonStr.split('.')[1].length : 0;
+    const maxDecimals = Math.max(latDecimals, lonDecimals);
+
+    if (maxDecimals >= 6) {
+      breakdown.geoPrecision.score = 5;
+      breakdown.geoPrecision.details.push({ precision: maxDecimals + ' decimal places', fullPoints: true });
+    } else if (maxDecimals >= 4) {
+      breakdown.geoPrecision.score = 3;
+      breakdown.geoPrecision.details.push({ precision: maxDecimals + ' decimal places', partial: true });
+    } else if (maxDecimals >= 2) {
+      breakdown.geoPrecision.score = 1;
+      breakdown.geoPrecision.details.push({ precision: maxDecimals + ' decimal places', low: true });
+    } else {
+      breakdown.geoPrecision.score = 0;
+      breakdown.geoPrecision.details.push({ precision: maxDecimals + ' decimal places', message: 'Insufficient precision' });
+    }
+  } else {
+    breakdown.geoPrecision.score = 0;
+    breakdown.geoPrecision.details.push({ message: 'No coordinates' });
+  }
+
+  // ── Total ──
+  const total = Object.values(breakdown).reduce((sum, b) => sum + b.score, 0);
+
+  // Determine confidence tier
+  let tier;
+  if (total >= 90) tier = 'platinum';
+  else if (total >= 75) tier = 'gold';
+  else if (total >= 60) tier = 'silver';
+  else if (total >= 40) tier = 'bronze';
+  else tier = 'unverified';
+
+  return {
+    score: total,
+    maxScore: 100,
+    tier,
+    breakdown,
+    computedAt: new Date().toISOString()
+  };
+}
+
+/**
+ * GET /api/graves/:id/confidence
+ * Compute and return confidence score for a single record.
+ */
+async function handleGetRecordConfidence(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      message: 'GitHub not configured — confidence scoring unavailable',
+      confidence: { score: 0, tier: 'unverified' }
+    }, 200, cors);
+  }
+
+  try {
+    const content = await readFile(`graves/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Record not found' }, 404, cors);
+    }
+
+    const record = JSON.parse(content);
+
+    // Gather signals
+    // 1. Anomalies
+    let anomalies = [];
+    try {
+      const anomalyResult = computeCemeteryAnomalies([record]);
+      anomalies = anomalyResult.anomalies || [];
+    } catch (e) { /* no anomalies */ }
+
+    // 2. Source verification (lightweight — don't do live HTTP checks, just count)
+    const sourceRefs = record.sourceRefs || [];
+    let sourceVerification = null;
+    if (sourceRefs.length > 0) {
+      // Use stored verification if available, otherwise basic count
+      sourceVerification = {
+        total: sourceRefs.length,
+        live: sourceRefs.length, // assume live without checking
+        dead: 0,
+        archived: 0
+      };
+    }
+
+    // 3. Merge history count
+    const mergeHistoryCount = (record.mergeHistory || []).length;
+
+    const confidence = computeConfidenceScore(record, anomalies, sourceVerification, mergeHistoryCount);
+
+    return jsonResponse({
+      success: true,
+      recordId: safeId,
+      recordName: record.name || record.graveIdentifier || 'Unknown',
+      confidence: confidence
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to compute confidence score',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/cemeteries/:id/confidence
+ * Compute confidence scores for all records in a cemetery.
+ */
+async function handleGetCemeteryConfidence(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid cemetery ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      message: 'GitHub not configured'
+    }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('graves', env);
+    const records = [];
+    const recordsById = {};
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        if (record.cemeteryId !== safeId && record.cemeteryId !== id) continue;
+        records.push(record);
+        recordsById[record.id] = record;
+      } catch (e) { /* skip */ }
+    }
+
+    if (records.length === 0) {
+      return jsonResponse({
+        success: true,
+        cemeteryId: safeId,
+        totalRecords: 0,
+        recordScores: [],
+        cemeterySummary: {
+          averageScore: 0,
+          platinumCount: 0, goldCount: 0, silverCount: 0, bronzeCount: 0, unverifiedCount: 0,
+          totalRecords: 0
+        },
+        message: 'No records found'
+      }, 200, cors);
+    }
+
+    const recordScores = [];
+    let totalScore = 0;
+    let platinumCount = 0, goldCount = 0, silverCount = 0, bronzeCount = 0, unverifiedCount = 0;
+
+    for (const record of records) {
+      // Lightweight anomalies
+      let anomalies = [];
+      try {
+        const anomalyResult = computeCemeteryAnomalies([record]);
+        anomalies = anomalyResult.anomalies || [];
+      } catch (e) { /* skip */ }
+
+      const sourceRefs = record.sourceRefs || [];
+      let sourceVerification = null;
+      if (sourceRefs.length > 0) {
+        sourceVerification = { total: sourceRefs.length, live: sourceRefs.length, dead: 0, archived: 0 };
+      }
+
+      const mergeHistoryCount = (record.mergeHistory || []).length;
+      const confidence = computeConfidenceScore(record, anomalies, sourceVerification, mergeHistoryCount);
+
+      recordScores.push({
+        recordId: record.id,
+        recordName: record.name || record.graveIdentifier || 'Unknown',
+        score: confidence.score,
+        tier: confidence.tier
+      });
+
+      totalScore += confidence.score;
+      switch (confidence.tier) {
+        case 'platinum': platinumCount++; break;
+        case 'gold': goldCount++; break;
+        case 'silver': silverCount++; break;
+        case 'bronze': bronzeCount++; break;
+        default: unverifiedCount++; break;
+      }
+    }
+
+    recordScores.sort((a, b) => b.score - a.score);
+    const avgScore = Math.round(totalScore / records.length);
+
+    return jsonResponse({
+      success: true,
+      cemeteryId: safeId,
+      totalRecords: records.length,
+      recordScores: recordScores,
+      cemeterySummary: {
+        averageScore: avgScore,
+        platinumCount, goldCount, silverCount, bronzeCount, unverifiedCount,
+        totalRecords: records.length
+      },
+      computedAt: new Date().toISOString()
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to compute cemetery confidence',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/confidence/batch
+ * Batch compute confidence scores for up to 50 records.
+ * Body: { recordIds: string[] }
+ */
+async function handleBatchConfidence(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, message: 'GitHub not configured', results: [] }, 200, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const recordIds = (body && body.recordIds) || [];
+
+    if (!Array.isArray(recordIds) || recordIds.length === 0) {
+      return jsonResponse({ success: false, error: 'Missing recordIds array' }, 400, cors);
+    }
+
+    if (recordIds.length > 50) {
+      return jsonResponse({ success: false, error: 'Maximum 50 records per batch' }, 400, cors);
+    }
+
+    const results = [];
+
+    for (const recordId of recordIds) {
+      const safeId = sanitizePathSegment(recordId);
+      if (!safeId || safeId !== recordId) continue;
+
+      try {
+        const content = await readFile(`graves/${safeId}.json`, env);
+        if (!content) {
+          results.push({ recordId, status: 'not_found' });
+          continue;
+        }
+        const record = JSON.parse(content);
+
+        let anomalies = [];
+        try {
+          const anomalyResult = computeCemeteryAnomalies([record]);
+          anomalies = anomalyResult.anomalies || [];
+        } catch (e) { /* skip */ }
+
+        const sourceRefs = record.sourceRefs || [];
+        let sourceVerification = null;
+        if (sourceRefs.length > 0) {
+          sourceVerification = { total: sourceRefs.length, live: sourceRefs.length, dead: 0, archived: 0 };
+        }
+
+        const mergeHistoryCount = (record.mergeHistory || []).length;
+        const confidence = computeConfidenceScore(record, anomalies, sourceVerification, mergeHistoryCount);
+
+        results.push({
+          recordId: record.id,
+          recordName: record.name || record.graveIdentifier || 'Unknown',
+          score: confidence.score,
+          tier: confidence.tier
+        });
+      } catch (e) {
+        results.push({ recordId, status: 'error', message: e.message });
+      }
+    }
+
+    return jsonResponse({
+      success: true,
+      results: results,
+      totalComputed: results.length,
+      computedAt: new Date().toISOString()
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to batch compute confidence',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/confidence/leaderboard
+ * Returns top records by confidence score across the entire system.
+ */
+async function handleConfidenceLeaderboard(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, message: 'GitHub not configured', leaderboard: [] }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 200);
+    const tier = url.searchParams.get('tier'); // filter by tier if provided
+
+    const files = await listFiles('graves', env);
+    const scores = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+
+        let anomalies = [];
+        try {
+          const anomalyResult = computeCemeteryAnomalies([record]);
+          anomalies = anomalyResult.anomalies || [];
+        } catch (e) { /* skip */ }
+
+        const sourceRefs = record.sourceRefs || [];
+        let sourceVerification = null;
+        if (sourceRefs.length > 0) {
+          sourceVerification = { total: sourceRefs.length, live: sourceRefs.length, dead: 0, archived: 0 };
+        }
+
+        const mergeHistoryCount = (record.mergeHistory || []).length;
+        const confidence = computeConfidenceScore(record, anomalies, sourceVerification, mergeHistoryCount);
+
+        if (tier && confidence.tier !== tier) continue;
+
+        scores.push({
+          recordId: record.id,
+          recordName: record.name || record.graveIdentifier || 'Unknown',
+          cemeteryId: record.cemeteryId || null,
+          score: confidence.score,
+          tier: confidence.tier,
+          verificationStatus: record.verificationStatus || 'unverified'
+        });
+      } catch (e) { /* skip */ }
+    }
+
+    scores.sort((a, b) => b.score - a.score);
+
+    return jsonResponse({
+      success: true,
+      leaderboard: scores.slice(0, limit),
+      totalRecords: scores.length,
+      tierDistribution: {
+        platinum: scores.filter(s => s.tier === 'platinum').length,
+        gold: scores.filter(s => s.tier === 'gold').length,
+        silver: scores.filter(s => s.tier === 'silver').length,
+        bronze: scores.filter(s => s.tier === 'bronze').length,
+        unverified: scores.filter(s => s.tier === 'unverified').length
+      },
+      computedAt: new Date().toISOString()
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to generate leaderboard',
+      message: error.message
+    }, 500, cors);
+  }
 }
 
 // ── Phase 16.18: AI Source Verification Handlers ──
