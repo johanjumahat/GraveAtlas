@@ -521,6 +521,25 @@ async function handleRequest(request, env, ctx) {
       return await handleMergeHistory(request, env, corsHeaders);
     }
 
+    // Phase 16.18: AI Source Verification
+    if (path.startsWith('/api/graves/') && path.endsWith('/sources/verify') && method === 'POST') {
+      const id = path.split('/')[3];
+      return await handleVerifyRecordSources(id, request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/cemeteries/') && path.endsWith('/sources/verify') && method === 'POST') {
+      const id = path.split('/')[3];
+      return await handleVerifyCemeterySources(id, request, env, corsHeaders);
+    }
+
+    if (path === '/api/sources/verify/batch' && method === 'POST') {
+      return await handleBatchVerifySources(request, env, corsHeaders);
+    }
+
+    if (path === '/api/sources/verify/status' && method === 'GET') {
+      return await handleSourceVerificationStatus(request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -3583,6 +3602,509 @@ function safeTokenCompare(a, b) {
 
 // ── Utils ──
 
+// ── Phase 16.18: AI Source Verification Handlers ──
+
+/**
+ * Verify a single source reference.
+ * Checks: URL liveness (HEAD request), content type, archive availability.
+ * Returns verification result with status, confidence, and notes.
+ */
+async function verifySourceRef(sourceRef) {
+  if (!sourceRef || typeof sourceRef !== 'string') {
+    return { ref: sourceRef, status: 'invalid', confidence: 0, notes: 'Invalid source reference' };
+  }
+
+  // Check if it's a URL
+  const urlPattern = /^https?:\/\/[^\s]+$/i;
+  if (!urlPattern.test(sourceRef)) {
+    // Non-URL reference — check if it looks like a citation
+    if (sourceRef.length > 10) {
+      return {
+        ref: sourceRef,
+        status: 'unverifiable',
+        confidence: 0,
+        notes: 'Non-URL reference — manual verification needed',
+        type: 'citation'
+      };
+    }
+    return { ref: sourceRef, status: 'invalid', confidence: 0, notes: 'Source reference too short' };
+  }
+
+  const result = {
+    ref: sourceRef,
+    url: sourceRef,
+    status: 'unknown',
+    confidence: 0,
+    statusCode: null,
+    contentType: null,
+    archived: false,
+    archiveUrl: null,
+    notes: []
+  };
+
+  // Try HEAD request to check liveness
+  try {
+    const response = await fetch(sourceRef, {
+      method: 'HEAD',
+      redirect: 'follow',
+      signal: AbortSignal.timeout(10000)
+    });
+
+    result.statusCode = response.status;
+    result.contentType = response.headers.get('content-type') || 'unknown';
+
+    if (response.ok) {
+      result.status = 'live';
+      result.confidence = 85;
+      result.notes.push('URL is accessible and returns content');
+    } else if (response.status === 404) {
+      result.status = 'dead';
+      result.confidence = 95;
+      result.notes.push('URL returns 404 — source may have been removed');
+    } else if (response.status === 403 || response.status === 401) {
+      result.status = 'restricted';
+      result.confidence = 50;
+      result.notes.push('URL exists but access is restricted');
+    } else if (response.status >= 500) {
+      result.status = 'error';
+      result.confidence = 30;
+      result.notes.push(`Server error (${response.status}) — temporarily unavailable`);
+    } else if (response.status >= 300 && response.status < 400) {
+      result.status = 'redirect';
+      result.confidence = 70;
+      result.notes.push('URL redirects — source likely still accessible');
+    } else {
+      result.status = 'unknown';
+      result.confidence = 20;
+      result.notes.push(`Unexpected status code: ${response.status}`);
+    }
+  } catch (error) {
+    // Network error — might be DNS failure, timeout, or SSL issue
+    result.status = 'unreachable';
+    result.confidence = 60;
+    result.notes.push(`Network error: ${error.message || 'unable to reach URL'}`);
+
+    // Check if it's a timeout
+    if (error.name === 'TimeoutError' || (error.message && error.message.includes('timeout'))) {
+      result.status = 'timeout';
+      result.confidence = 40;
+      result.notes = ['Request timed out — source may be slow or down'];
+    }
+  }
+
+  // Check Wayback Machine for archived copy
+  try {
+    const waybackUrl = `https://archive.org/wayback/available?url=${encodeURIComponent(sourceRef)}`;
+    const wbResponse = await fetch(waybackUrl, {
+      method: 'GET',
+      signal: AbortSignal.timeout(8000)
+    });
+
+    if (wbResponse.ok) {
+      const wbData = await wbResponse.json();
+      if (wbData.archived_snapshots && wbData.archived_snapshots.closest) {
+        result.archived = true;
+        result.archiveUrl = wbData.archived_snapshots.closest.url;
+        result.archiveTimestamp = wbData.archived_snapshots.closest.timestamp;
+        result.notes.push('Archived copy available on Wayback Machine');
+
+        // If the URL is dead but we have an archive, boost confidence
+        if (result.status === 'dead' || result.status === 'unreachable') {
+          result.confidence = Math.max(result.confidence, 65);
+          result.notes.push('Original URL is dead but archived copy exists');
+        }
+      }
+    }
+  } catch (e) {
+    // Wayback check failed — not critical
+  }
+
+  return result;
+}
+
+/**
+ * Verify all source references for a record.
+ * Returns per-source verification results and an overall verification summary.
+ */
+async function verifyRecordSources(record) {
+  const sourceRefs = record.sourceRefs || [];
+
+  if (sourceRefs.length === 0) {
+    return {
+      recordId: record.id,
+      recordName: record.name || record.graveIdentifier || 'Unknown',
+      totalSources: 0,
+      results: [],
+      summary: {
+        total: 0,
+        live: 0,
+        dead: 0,
+        restricted: 0,
+        unreachable: 0,
+        unverifiable: 0,
+        archived: 0,
+        overallStatus: 'no_sources',
+        overallConfidence: 0,
+        verificationScore: 0
+      }
+    };
+  }
+
+  const results = [];
+  for (const ref of sourceRefs) {
+    const result = await verifySourceRef(ref);
+    results.push(result);
+  }
+
+  // Compute summary
+  let live = 0, dead = 0, restricted = 0, unreachable = 0, unverifiable = 0;
+  let archived = 0;
+  let totalConfidence = 0;
+
+  for (const r of results) {
+    switch (r.status) {
+      case 'live': live++; break;
+      case 'dead': dead++; break;
+      case 'restricted': restricted++; break;
+      case 'unreachable': unreachable++; break;
+      case 'unverifiable': unverifiable++; break;
+    }
+    if (r.archived) archived++;
+    totalConfidence += r.confidence || 0;
+  }
+
+  const total = results.length;
+  const avgConfidence = total > 0 ? Math.round(totalConfidence / total) : 0;
+
+  // Overall status: if any dead and not archived, that's critical
+  let overallStatus;
+  if (dead > 0 && archived < dead) {
+    overallStatus = 'critical';
+  } else if (live === total) {
+    overallStatus = 'verified';
+  } else if (live > 0) {
+    overallStatus = 'partial';
+  } else if (unreachable > 0 && live === 0) {
+    overallStatus = 'unverified';
+  } else {
+    overallStatus = 'unverified';
+  }
+
+  // Verification score: percentage of live sources
+  const verificationScore = total > 0 ? Math.round((live / total) * 100) : 0;
+
+  return {
+    recordId: record.id,
+    recordName: record.name || record.graveIdentifier || 'Unknown',
+    totalSources: total,
+    results: results,
+    summary: {
+      total: total,
+      live: live,
+      dead: dead,
+      restricted: restricted,
+      unreachable: unreachable,
+      unverifiable: unverifiable,
+      archived: archived,
+      overallStatus: overallStatus,
+      overallConfidence: avgConfidence,
+      verificationScore: verificationScore
+    }
+  };
+}
+
+/**
+ * POST /api/graves/:id/sources/verify
+ * Verify all source references for a single record.
+ */
+async function handleVerifyRecordSources(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      message: 'GitHub not configured — source verification unavailable',
+      verification: { summary: { overallStatus: 'unverified', verificationScore: 0 } }
+    }, 200, cors);
+  }
+
+  try {
+    const content = await readFile(`graves/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Record not found' }, 404, cors);
+    }
+
+    const record = JSON.parse(content);
+    const verification = await verifyRecordSources(record);
+
+    return jsonResponse({
+      success: true,
+      verification: verification
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to verify sources',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/cemeteries/:id/sources/verify
+ * Verify source references for all records in a cemetery.
+ * Returns per-record summaries and an overall cemetery verification report.
+ */
+async function handleVerifyCemeterySources(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid cemetery ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      message: 'GitHub not configured — source verification unavailable'
+    }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('graves', env);
+    const records = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        if (record.cemeteryId !== safeId && record.cemeteryId !== id) continue;
+        if (!record.sourceRefs || record.sourceRefs.length === 0) continue;
+        records.push(record);
+      } catch (e) { /* skip */ }
+    }
+
+    if (records.length === 0) {
+      return jsonResponse({
+        success: true,
+        cemeteryId: safeId,
+        totalRecords: 0,
+        recordVerifications: [],
+        cemeterySummary: {
+          totalRecords: 0,
+          recordsWithSources: 0,
+          totalSources: 0,
+          liveSources: 0,
+          deadSources: 0,
+          overallStatus: 'no_sources',
+          verificationScore: 0
+        },
+        message: 'No records with source references found'
+      }, 200, cors);
+    }
+
+    const recordVerifications = [];
+    let totalSources = 0, liveSources = 0, deadSources = 0;
+    let totalScore = 0;
+
+    for (const record of records) {
+      const verification = await verifyRecordSources(record);
+      recordVerifications.push({
+        recordId: verification.recordId,
+        recordName: verification.recordName,
+        totalSources: verification.totalSources,
+        summary: verification.summary
+      });
+      totalSources += verification.summary.total;
+      liveSources += verification.summary.live;
+      deadSources += verification.summary.dead;
+      totalScore += verification.summary.verificationScore;
+    }
+
+    const avgScore = records.length > 0 ? Math.round(totalScore / records.length) : 0;
+
+    return jsonResponse({
+      success: true,
+      cemeteryId: safeId,
+      totalRecords: records.length,
+      recordVerifications: recordVerifications,
+      cemeterySummary: {
+        totalRecords: records.length,
+        recordsWithSources: records.length,
+        totalSources: totalSources,
+        liveSources: liveSources,
+        deadSources: deadSources,
+        overallStatus: avgScore >= 80 ? 'verified' : avgScore >= 50 ? 'partial' : 'unverified',
+        verificationScore: avgScore
+      },
+      verifiedAt: new Date().toISOString()
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to verify cemetery sources',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/sources/verify/batch
+ * Batch verify sources across multiple records.
+ * Body: { recordIds: string[] }
+ */
+async function handleBatchVerifySources(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      message: 'GitHub not configured',
+      results: []
+    }, 200, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const recordIds = (body && body.recordIds) || [];
+
+    if (!Array.isArray(recordIds) || recordIds.length === 0) {
+      return jsonResponse({
+        success: false,
+        error: 'Missing recordIds array'
+      }, 400, cors);
+    }
+
+    if (recordIds.length > 50) {
+      return jsonResponse({
+        success: false,
+        error: 'Maximum 50 records per batch'
+      }, 400, cors);
+    }
+
+    const results = [];
+
+    for (const recordId of recordIds) {
+      const safeId = sanitizePathSegment(recordId);
+      if (!safeId || safeId !== recordId) continue;
+
+      try {
+        const content = await readFile(`graves/${safeId}.json`, env);
+        if (!content) {
+          results.push({ recordId, status: 'not_found' });
+          continue;
+        }
+        const record = JSON.parse(content);
+        const verification = await verifyRecordSources(record);
+        results.push({
+          recordId: verification.recordId,
+          recordName: verification.recordName,
+          totalSources: verification.totalSources,
+          summary: verification.summary
+        });
+      } catch (e) {
+        results.push({ recordId, status: 'error', message: e.message });
+      }
+    }
+
+    return jsonResponse({
+      success: true,
+      results: results,
+      totalVerified: results.length,
+      verifiedAt: new Date().toISOString()
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to batch verify sources',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/sources/verify/status
+ * Returns a summary of source verification status across all records.
+ */
+async function handleSourceVerificationStatus(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      message: 'GitHub not configured'
+    }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('graves', env);
+    let totalRecords = 0;
+    let recordsWithSources = 0;
+    let totalSourceRefs = 0;
+    let recordsFullyVerified = 0;
+    let recordsWithDeadSources = 0;
+    let recordsWithArchivedSources = 0;
+
+    // Track source URLs we've already checked (avoid redundant fetches)
+    const checkedUrls = new Map();
+    let liveUrls = 0, deadUrls = 0, totalUrlsChecked = 0;
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        totalRecords++;
+
+        const sourceRefs = record.sourceRefs || [];
+        if (sourceRefs.length === 0) continue;
+
+        recordsWithSources++;
+        totalSourceRefs += sourceRefs.length;
+
+        // Check unique URLs only
+        const newUrls = sourceRefs.filter(ref =>
+          typeof ref === 'string' && /^https?:\/\//i.test(ref) && !checkedUrls.has(ref)
+        );
+
+        for (const url of newUrls) {
+          checkedUrls.set(url, true);
+          totalUrlsChecked++;
+          try {
+            const response = await fetch(url, {
+              method: 'HEAD',
+              redirect: 'follow',
+              signal: AbortSignal.timeout(8000)
+            });
+            if (response.ok) liveUrls++;
+            else if (response.status === 404) deadUrls++;
+          } catch (e) {
+            deadUrls++;
+          }
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    return jsonResponse({
+      success: true,
+      totalRecords: totalRecords,
+      recordsWithSources: recordsWithSources,
+      totalSourceRefs: totalSourceRefs,
+      uniqueUrlsChecked: totalUrlsChecked,
+      liveUrls: liveUrls,
+      deadUrls: deadUrls,
+      sourceHealthScore: totalUrlsChecked > 0 ? Math.round((liveUrls / totalUrlsChecked) * 100) : 0,
+      checkedAt: new Date().toISOString()
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to get verification status',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
 // ── Phase 16.17: AI Merge Resolution Handlers ──
 
 /**
@@ -4774,6 +5296,509 @@ function generateRecommendations(records, stats, anomalySummary) {
   }
 
   return recommendations;
+}
+
+// ── Phase 16.18: AI Source Verification Handlers ──
+
+/**
+ * Verify a single source reference.
+ * Checks: URL liveness (HEAD request), content type, archive availability.
+ * Returns verification result with status, confidence, and notes.
+ */
+async function verifySourceRef(sourceRef) {
+  if (!sourceRef || typeof sourceRef !== 'string') {
+    return { ref: sourceRef, status: 'invalid', confidence: 0, notes: 'Invalid source reference' };
+  }
+
+  // Check if it's a URL
+  const urlPattern = /^https?:\/\/[^\s]+$/i;
+  if (!urlPattern.test(sourceRef)) {
+    // Non-URL reference — check if it looks like a citation
+    if (sourceRef.length > 10) {
+      return {
+        ref: sourceRef,
+        status: 'unverifiable',
+        confidence: 0,
+        notes: 'Non-URL reference — manual verification needed',
+        type: 'citation'
+      };
+    }
+    return { ref: sourceRef, status: 'invalid', confidence: 0, notes: 'Source reference too short' };
+  }
+
+  const result = {
+    ref: sourceRef,
+    url: sourceRef,
+    status: 'unknown',
+    confidence: 0,
+    statusCode: null,
+    contentType: null,
+    archived: false,
+    archiveUrl: null,
+    notes: []
+  };
+
+  // Try HEAD request to check liveness
+  try {
+    const response = await fetch(sourceRef, {
+      method: 'HEAD',
+      redirect: 'follow',
+      signal: AbortSignal.timeout(10000)
+    });
+
+    result.statusCode = response.status;
+    result.contentType = response.headers.get('content-type') || 'unknown';
+
+    if (response.ok) {
+      result.status = 'live';
+      result.confidence = 85;
+      result.notes.push('URL is accessible and returns content');
+    } else if (response.status === 404) {
+      result.status = 'dead';
+      result.confidence = 95;
+      result.notes.push('URL returns 404 — source may have been removed');
+    } else if (response.status === 403 || response.status === 401) {
+      result.status = 'restricted';
+      result.confidence = 50;
+      result.notes.push('URL exists but access is restricted');
+    } else if (response.status >= 500) {
+      result.status = 'error';
+      result.confidence = 30;
+      result.notes.push(`Server error (${response.status}) — temporarily unavailable`);
+    } else if (response.status >= 300 && response.status < 400) {
+      result.status = 'redirect';
+      result.confidence = 70;
+      result.notes.push('URL redirects — source likely still accessible');
+    } else {
+      result.status = 'unknown';
+      result.confidence = 20;
+      result.notes.push(`Unexpected status code: ${response.status}`);
+    }
+  } catch (error) {
+    // Network error — might be DNS failure, timeout, or SSL issue
+    result.status = 'unreachable';
+    result.confidence = 60;
+    result.notes.push(`Network error: ${error.message || 'unable to reach URL'}`);
+
+    // Check if it's a timeout
+    if (error.name === 'TimeoutError' || (error.message && error.message.includes('timeout'))) {
+      result.status = 'timeout';
+      result.confidence = 40;
+      result.notes = ['Request timed out — source may be slow or down'];
+    }
+  }
+
+  // Check Wayback Machine for archived copy
+  try {
+    const waybackUrl = `https://archive.org/wayback/available?url=${encodeURIComponent(sourceRef)}`;
+    const wbResponse = await fetch(waybackUrl, {
+      method: 'GET',
+      signal: AbortSignal.timeout(8000)
+    });
+
+    if (wbResponse.ok) {
+      const wbData = await wbResponse.json();
+      if (wbData.archived_snapshots && wbData.archived_snapshots.closest) {
+        result.archived = true;
+        result.archiveUrl = wbData.archived_snapshots.closest.url;
+        result.archiveTimestamp = wbData.archived_snapshots.closest.timestamp;
+        result.notes.push('Archived copy available on Wayback Machine');
+
+        // If the URL is dead but we have an archive, boost confidence
+        if (result.status === 'dead' || result.status === 'unreachable') {
+          result.confidence = Math.max(result.confidence, 65);
+          result.notes.push('Original URL is dead but archived copy exists');
+        }
+      }
+    }
+  } catch (e) {
+    // Wayback check failed — not critical
+  }
+
+  return result;
+}
+
+/**
+ * Verify all source references for a record.
+ * Returns per-source verification results and an overall verification summary.
+ */
+async function verifyRecordSources(record) {
+  const sourceRefs = record.sourceRefs || [];
+
+  if (sourceRefs.length === 0) {
+    return {
+      recordId: record.id,
+      recordName: record.name || record.graveIdentifier || 'Unknown',
+      totalSources: 0,
+      results: [],
+      summary: {
+        total: 0,
+        live: 0,
+        dead: 0,
+        restricted: 0,
+        unreachable: 0,
+        unverifiable: 0,
+        archived: 0,
+        overallStatus: 'no_sources',
+        overallConfidence: 0,
+        verificationScore: 0
+      }
+    };
+  }
+
+  const results = [];
+  for (const ref of sourceRefs) {
+    const result = await verifySourceRef(ref);
+    results.push(result);
+  }
+
+  // Compute summary
+  let live = 0, dead = 0, restricted = 0, unreachable = 0, unverifiable = 0;
+  let archived = 0;
+  let totalConfidence = 0;
+
+  for (const r of results) {
+    switch (r.status) {
+      case 'live': live++; break;
+      case 'dead': dead++; break;
+      case 'restricted': restricted++; break;
+      case 'unreachable': unreachable++; break;
+      case 'unverifiable': unverifiable++; break;
+    }
+    if (r.archived) archived++;
+    totalConfidence += r.confidence || 0;
+  }
+
+  const total = results.length;
+  const avgConfidence = total > 0 ? Math.round(totalConfidence / total) : 0;
+
+  // Overall status: if any dead and not archived, that's critical
+  let overallStatus;
+  if (dead > 0 && archived < dead) {
+    overallStatus = 'critical';
+  } else if (live === total) {
+    overallStatus = 'verified';
+  } else if (live > 0) {
+    overallStatus = 'partial';
+  } else if (unreachable > 0 && live === 0) {
+    overallStatus = 'unverified';
+  } else {
+    overallStatus = 'unverified';
+  }
+
+  // Verification score: percentage of live sources
+  const verificationScore = total > 0 ? Math.round((live / total) * 100) : 0;
+
+  return {
+    recordId: record.id,
+    recordName: record.name || record.graveIdentifier || 'Unknown',
+    totalSources: total,
+    results: results,
+    summary: {
+      total: total,
+      live: live,
+      dead: dead,
+      restricted: restricted,
+      unreachable: unreachable,
+      unverifiable: unverifiable,
+      archived: archived,
+      overallStatus: overallStatus,
+      overallConfidence: avgConfidence,
+      verificationScore: verificationScore
+    }
+  };
+}
+
+/**
+ * POST /api/graves/:id/sources/verify
+ * Verify all source references for a single record.
+ */
+async function handleVerifyRecordSources(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid record ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      message: 'GitHub not configured — source verification unavailable',
+      verification: { summary: { overallStatus: 'unverified', verificationScore: 0 } }
+    }, 200, cors);
+  }
+
+  try {
+    const content = await readFile(`graves/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Record not found' }, 404, cors);
+    }
+
+    const record = JSON.parse(content);
+    const verification = await verifyRecordSources(record);
+
+    return jsonResponse({
+      success: true,
+      verification: verification
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to verify sources',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/cemeteries/:id/sources/verify
+ * Verify source references for all records in a cemetery.
+ * Returns per-record summaries and an overall cemetery verification report.
+ */
+async function handleVerifyCemeterySources(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid cemetery ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      message: 'GitHub not configured — source verification unavailable'
+    }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('graves', env);
+    const records = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        if (record.cemeteryId !== safeId && record.cemeteryId !== id) continue;
+        if (!record.sourceRefs || record.sourceRefs.length === 0) continue;
+        records.push(record);
+      } catch (e) { /* skip */ }
+    }
+
+    if (records.length === 0) {
+      return jsonResponse({
+        success: true,
+        cemeteryId: safeId,
+        totalRecords: 0,
+        recordVerifications: [],
+        cemeterySummary: {
+          totalRecords: 0,
+          recordsWithSources: 0,
+          totalSources: 0,
+          liveSources: 0,
+          deadSources: 0,
+          overallStatus: 'no_sources',
+          verificationScore: 0
+        },
+        message: 'No records with source references found'
+      }, 200, cors);
+    }
+
+    const recordVerifications = [];
+    let totalSources = 0, liveSources = 0, deadSources = 0;
+    let totalScore = 0;
+
+    for (const record of records) {
+      const verification = await verifyRecordSources(record);
+      recordVerifications.push({
+        recordId: verification.recordId,
+        recordName: verification.recordName,
+        totalSources: verification.totalSources,
+        summary: verification.summary
+      });
+      totalSources += verification.summary.total;
+      liveSources += verification.summary.live;
+      deadSources += verification.summary.dead;
+      totalScore += verification.summary.verificationScore;
+    }
+
+    const avgScore = records.length > 0 ? Math.round(totalScore / records.length) : 0;
+
+    return jsonResponse({
+      success: true,
+      cemeteryId: safeId,
+      totalRecords: records.length,
+      recordVerifications: recordVerifications,
+      cemeterySummary: {
+        totalRecords: records.length,
+        recordsWithSources: records.length,
+        totalSources: totalSources,
+        liveSources: liveSources,
+        deadSources: deadSources,
+        overallStatus: avgScore >= 80 ? 'verified' : avgScore >= 50 ? 'partial' : 'unverified',
+        verificationScore: avgScore
+      },
+      verifiedAt: new Date().toISOString()
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to verify cemetery sources',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/sources/verify/batch
+ * Batch verify sources across multiple records.
+ * Body: { recordIds: string[] }
+ */
+async function handleBatchVerifySources(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      message: 'GitHub not configured',
+      results: []
+    }, 200, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const recordIds = (body && body.recordIds) || [];
+
+    if (!Array.isArray(recordIds) || recordIds.length === 0) {
+      return jsonResponse({
+        success: false,
+        error: 'Missing recordIds array'
+      }, 400, cors);
+    }
+
+    if (recordIds.length > 50) {
+      return jsonResponse({
+        success: false,
+        error: 'Maximum 50 records per batch'
+      }, 400, cors);
+    }
+
+    const results = [];
+
+    for (const recordId of recordIds) {
+      const safeId = sanitizePathSegment(recordId);
+      if (!safeId || safeId !== recordId) continue;
+
+      try {
+        const content = await readFile(`graves/${safeId}.json`, env);
+        if (!content) {
+          results.push({ recordId, status: 'not_found' });
+          continue;
+        }
+        const record = JSON.parse(content);
+        const verification = await verifyRecordSources(record);
+        results.push({
+          recordId: verification.recordId,
+          recordName: verification.recordName,
+          totalSources: verification.totalSources,
+          summary: verification.summary
+        });
+      } catch (e) {
+        results.push({ recordId, status: 'error', message: e.message });
+      }
+    }
+
+    return jsonResponse({
+      success: true,
+      results: results,
+      totalVerified: results.length,
+      verifiedAt: new Date().toISOString()
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to batch verify sources',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/sources/verify/status
+ * Returns a summary of source verification status across all records.
+ */
+async function handleSourceVerificationStatus(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      message: 'GitHub not configured'
+    }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('graves', env);
+    let totalRecords = 0;
+    let recordsWithSources = 0;
+    let totalSourceRefs = 0;
+    let recordsFullyVerified = 0;
+    let recordsWithDeadSources = 0;
+    let recordsWithArchivedSources = 0;
+
+    // Track source URLs we've already checked (avoid redundant fetches)
+    const checkedUrls = new Map();
+    let liveUrls = 0, deadUrls = 0, totalUrlsChecked = 0;
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        totalRecords++;
+
+        const sourceRefs = record.sourceRefs || [];
+        if (sourceRefs.length === 0) continue;
+
+        recordsWithSources++;
+        totalSourceRefs += sourceRefs.length;
+
+        // Check unique URLs only
+        const newUrls = sourceRefs.filter(ref =>
+          typeof ref === 'string' && /^https?:\/\//i.test(ref) && !checkedUrls.has(ref)
+        );
+
+        for (const url of newUrls) {
+          checkedUrls.set(url, true);
+          totalUrlsChecked++;
+          try {
+            const response = await fetch(url, {
+              method: 'HEAD',
+              redirect: 'follow',
+              signal: AbortSignal.timeout(8000)
+            });
+            if (response.ok) liveUrls++;
+            else if (response.status === 404) deadUrls++;
+          } catch (e) {
+            deadUrls++;
+          }
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    return jsonResponse({
+      success: true,
+      totalRecords: totalRecords,
+      recordsWithSources: recordsWithSources,
+      totalSourceRefs: totalSourceRefs,
+      uniqueUrlsChecked: totalUrlsChecked,
+      liveUrls: liveUrls,
+      deadUrls: deadUrls,
+      sourceHealthScore: totalUrlsChecked > 0 ? Math.round((liveUrls / totalUrlsChecked) * 100) : 0,
+      checkedAt: new Date().toISOString()
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to get verification status',
+      message: error.message
+    }, 500, cors);
+  }
 }
 
 // ── Phase 16.17: AI Merge Resolution Handlers ──

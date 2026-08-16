@@ -519,6 +519,47 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.18] — 2026-08-16
+
+### Phase 16.18: AI Source Verification
+
+**Added:**
+- `POST /api/graves/:id/sources/verify` — verify all source references for
+  a single record. For each source: performs HEAD request to check URL liveness,
+  detects status (live, dead, restricted, unreachable, timeout), checks Wayback
+  Machine for archived copies, returns per-source verification with confidence
+  level, status code, content type, and archive URL.
+
+- `POST /api/cemeteries/:id/sources/verify` — cemetery-wide source verification.
+  Verifies sources for all published records with source references, returns
+  per-record summaries and cemetery-level aggregate (total sources, live/dead
+  counts, overall verification score).
+
+- `POST /api/sources/verify/batch` — batch verify sources for up to 50 records.
+  Accepts recordIds array, returns per-record verification summaries.
+
+- `GET /api/sources/verify/status` — global source health summary.
+  Counts total records, records with sources, unique URLs checked (deduplicated),
+  live/dead URL counts, and source health score (0-100%).
+
+**Verification Logic:**
+- URL liveness: HEAD request with 10s timeout
+- Status mapping: 200=live, 404=dead, 403/401=restricted, 5xx=error, 3xx=redirect
+- Network failure: unreachable (60% confidence)
+- Timeout: separate status (40% confidence)
+- Wayback Machine: checks archive.org for archived copies
+- Dead URL + archive available: confidence boosted to 65%
+- Non-URL citations: marked as unverifiable (manual review needed)
+- Overall status: verified (all live), partial (some live), critical (dead w/o archive)
+
+New models: SourceVerification, RecordSourceVerification (VerificationSummary),
+CemeterySourceVerification (2 inner classes), SourceVerificationStatus
+API client: verifyRecordSources(), verifyCemeterySources(),
+batchVerifySources(), getSourceVerificationStatus()
+AI system prompt updated, 3 new suggested prompts
+90+ new tests (phase16-18.test.js)
+
+
 ## [7.2.17] — 2026-08-16
 
 ### Phase 16.17: AI Merge Resolution

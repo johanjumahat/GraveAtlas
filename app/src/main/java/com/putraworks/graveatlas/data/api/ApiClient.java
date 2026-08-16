@@ -28,6 +28,10 @@ import com.putraworks.graveatlas.data.model.MergeProposal;
 import com.putraworks.graveatlas.data.model.MergeResult;
 import com.putraworks.graveatlas.data.model.MergeSuggestion;
 import com.putraworks.graveatlas.data.model.MergeHistory;
+import com.putraworks.graveatlas.data.model.SourceVerification;
+import com.putraworks.graveatlas.data.model.RecordSourceVerification;
+import com.putraworks.graveatlas.data.model.CemeterySourceVerification;
+import com.putraworks.graveatlas.data.model.SourceVerificationStatus;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -899,6 +903,168 @@ public class ApiClient {
         } catch (java.io.UnsupportedEncodingException e) {
             return value; // UTF-8 is always available on Android
         }
+    }
+
+    // ── Phase 16.18: AI Source Verification ──
+
+    /**
+     * Verify all source references for a single record.
+     * POST /api/graves/{id}/sources/verify
+     */
+    public void verifyRecordSources(String recordId,
+                                       final ApiCallback<RecordSourceVerification> callback) {
+        RequestBody rb = RequestBody.create("{}", MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/graves/" + recordId + "/sources/verify")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        JSONObject ver = obj.optJSONObject("verification");
+                        if (ver != null) {
+                            callback.onSuccess(RecordSourceVerification.fromJson(ver));
+                        } else {
+                            callback.onError("Verification not found in response.");
+                        }
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse source verification.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Verify source references for all records in a cemetery.
+     * POST /api/cemeteries/{id}/sources/verify
+     */
+    public void verifyCemeterySources(String cemeteryId,
+                                         final ApiCallback<CemeterySourceVerification> callback) {
+        RequestBody rb = RequestBody.create("{}", MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/cemeteries/" + cemeteryId + "/sources/verify")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        callback.onSuccess(CemeterySourceVerification.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse cemetery source verification.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Batch verify sources across multiple records.
+     * POST /api/sources/verify/batch
+     */
+    public void batchVerifySources(java.util.List<String> recordIds,
+                                      final ApiCallback<java.util.List<RecordSourceVerification>> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            JSONArray arr = new JSONArray();
+            for (String id : recordIds) arr.put(id);
+            body.put("recordIds", arr);
+        } catch (Exception e) { /* ignore */ }
+
+        RequestBody rb = RequestBody.create(body.toString(), MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/sources/verify/batch")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        java.util.List<RecordSourceVerification> results = new java.util.ArrayList<>();
+                        JSONArray arr = obj.optJSONArray("results");
+                        if (arr != null) {
+                            for (int i = 0; i < arr.length(); i++) {
+                                JSONObject r = arr.optJSONObject(i);
+                                if (r != null && r.has("summary")) {
+                                    results.add(RecordSourceVerification.fromJson(r));
+                                }
+                            }
+                        }
+                        callback.onSuccess(results);
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse batch verification results.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get global source verification status.
+     * GET /api/sources/verify/status
+     */
+    public void getSourceVerificationStatus(final ApiCallback<SourceVerificationStatus> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/sources/verify/status")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        callback.onSuccess(SourceVerificationStatus.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse verification status.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
     }
 
     // ── Phase 16.17: AI Merge Resolution ──
