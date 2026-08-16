@@ -648,6 +648,58 @@ async function handleRequest(request, env, ctx) {
       return await handleCurationStats(request, env, corsHeaders);
     }
 
+    // Phase 16.23: AI Notification & Alert System
+    if (path === '/api/notifications' && method === 'POST') {
+      return await handleCreateNotification(request, env, corsHeaders);
+    }
+
+    if (path === '/api/notifications' && method === 'GET') {
+      return await handleListNotifications(request, env, corsHeaders);
+    }
+
+    if (path === '/api/notifications/unread' && method === 'GET') {
+      return await handleGetUnreadNotifications(request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/notifications/') && method === 'GET') {
+      const id = path.split('/')[2];
+      return await handleGetNotification(id, request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/notifications/') && path.endsWith('/read') && method === 'POST') {
+      const id = path.split('/')[2];
+      return await handleMarkNotificationRead(id, request, env, corsHeaders);
+    }
+
+    if (path === '/api/notifications/read-all' && method === 'POST') {
+      return await handleMarkAllRead(request, env, corsHeaders);
+    }
+
+    if (path === '/api/notifications/dismiss' && method === 'DELETE') {
+      return await handleDismissNotification(request, env, corsHeaders);
+    }
+
+    if (path === '/api/alerts/rules' && method === 'POST') {
+      return await handleCreateAlertRule(request, env, corsHeaders);
+    }
+
+    if (path === '/api/alerts/rules' && method === 'GET') {
+      return await handleListAlertRules(request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/alerts/rules/') && method === 'DELETE') {
+      const id = path.split('/')[3];
+      return await handleDeleteAlertRule(id, request, env, corsHeaders);
+    }
+
+    if (path === '/api/alerts/check' && method === 'POST') {
+      return await handleCheckAlerts(request, env, corsHeaders);
+    }
+
+    if (path === '/api/alerts/digest' && method === 'GET') {
+      return await handleAlertDigest(request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -3709,6 +3761,822 @@ function safeTokenCompare(a, b) {
 }
 
 // ── Utils ──
+
+// ── Phase 16.23: AI Notification & Alert System Handlers ──
+
+const NOTIFICATION_TYPES = [
+  'anomaly_detected', 'confidence_drop', 'source_dead', 'duplicate_found',
+  'review_needed', 'lock_expiring', 'task_assigned', 'task_completed',
+  'task_rejected', 'merge_available', 'fix_available', 'data_loss', 'new_record', 'custom'
+];
+const NOTIFICATION_SEVERITY = ['info', 'warning', 'critical'];
+const ALERT_CONDITIONS = [
+  'anomaly_count_above', 'confidence_below', 'source_dead_above',
+  'duplicate_count_above', 'review_queue_above', 'lock_expiry_below',
+  'records_below'
+];
+
+/**
+ * POST /api/notifications
+ * Create a notification.
+ * Body: { type, severity, title, message, recordId, cemeteryId, metadata, recipient }
+ */
+async function handleCreateNotification(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { type, severity, title, message, recordId, cemeteryId, metadata, recipient } = body || {};
+
+    if (!type || !NOTIFICATION_TYPES.includes(type)) {
+      return jsonResponse({
+        success: false,
+        error: `Invalid type. Must be one of: ${NOTIFICATION_TYPES.join(', ')}`
+      }, 400, cors);
+    }
+    if (!title) {
+      return jsonResponse({ success: false, error: 'Missing required field: title' }, 400, cors);
+    }
+    if (severity && !NOTIFICATION_SEVERITY.includes(severity)) {
+      return jsonResponse({
+        success: false,
+        error: `Invalid severity. Must be one of: ${NOTIFICATION_SEVERITY.join(', ')}`
+      }, 400, cors);
+    }
+
+    const notifId = 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+    const now = new Date().toISOString();
+
+    const notification = {
+      id: notifId,
+      type,
+      severity: severity || 'info',
+      title,
+      message: message || '',
+      recordId: recordId || null,
+      cemeteryId: cemeteryId || null,
+      metadata: metadata || {},
+      recipient: recipient || 'all',
+      read: false,
+      dismissed: false,
+      createdAt: now,
+      readAt: null,
+      dismissedAt: null
+    };
+
+    await writeFile(`notifications/${notifId}.json`, JSON.stringify(notification, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      message: 'Notification created',
+      notification: notification
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to create notification', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/notifications
+ * List notifications with filters.
+ * Query params: type, severity, read, recipient, limit, since
+ */
+async function handleListNotifications(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, notifications: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const typeFilter = url.searchParams.get('type');
+    const severityFilter = url.searchParams.get('severity');
+    const readFilter = url.searchParams.get('read');
+    const recipientFilter = url.searchParams.get('recipient');
+    const since = url.searchParams.get('since');
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '100'), 500);
+
+    const files = await listFiles('notifications', env);
+    const notifications = [];
+
+    for (const file of files) {
+      if (notifications.length >= limit) break;
+      try {
+        const content = await readFile(`notifications/${file}`, env);
+        if (!content) continue;
+        const notif = JSON.parse(content);
+        if (notif.dismissed) continue;
+
+        if (typeFilter && notif.type !== typeFilter) continue;
+        if (severityFilter && notif.severity !== severityFilter) continue;
+        if (readFilter === 'true' && !notif.read) continue;
+        if (readFilter === 'false' && notif.read) continue;
+        if (recipientFilter && notif.recipient !== recipientFilter && notif.recipient !== 'all') continue;
+        if (since) {
+          const notifDate = new Date(notif.createdAt).getTime() || 0;
+          if (notifDate < new Date(since).getTime()) continue;
+        }
+
+        notifications.push({
+          id: notif.id,
+          type: notif.type,
+          severity: notif.severity,
+          title: notif.title,
+          message: notif.message,
+          recordId: notif.recordId,
+          cemeteryId: notif.cemeteryId,
+          read: notif.read,
+          createdAt: notif.createdAt
+        });
+      } catch (e) { /* skip */ }
+    }
+
+    // Sort newest first
+    notifications.sort((a, b) => {
+      const ta = new Date(a.createdAt).getTime() || 0;
+      const tb = new Date(b.createdAt).getTime() || 0;
+      return tb - ta;
+    });
+
+    return jsonResponse({
+      success: true,
+      notifications: notifications,
+      totalFound: notifications.length,
+      unreadCount: notifications.filter(n => !n.read).length
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to list notifications', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/notifications/unread
+ * Get only unread notifications (quick check).
+ */
+async function handleGetUnreadNotifications(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, notifications: [], count: 0 }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('notifications', env);
+    const unread = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`notifications/${file}`, env);
+        if (!content) continue;
+        const notif = JSON.parse(content);
+        if (notif.read || notif.dismissed) continue;
+
+        unread.push({
+          id: notif.id,
+          type: notif.type,
+          severity: notif.severity,
+          title: notif.title,
+          message: notif.message,
+          createdAt: notif.createdAt
+        });
+      } catch (e) { /* skip */ }
+    }
+
+    // Sort by severity (critical first), then by date
+    const sevOrder = { critical: 0, warning: 1, info: 2 };
+    unread.sort((a, b) => {
+      const sa = sevOrder[a.severity] || 2;
+      const sb = sevOrder[b.severity] || 2;
+      if (sa !== sb) return sa - sb;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    return jsonResponse({
+      success: true,
+      notifications: unread,
+      count: unread.length,
+      bySeverity: {
+        critical: unread.filter(n => n.severity === 'critical').length,
+        warning: unread.filter(n => n.severity === 'warning').length,
+        info: unread.filter(n => n.severity === 'info').length
+      }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get unread notifications', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/notifications/:id
+ * Get a single notification with full details.
+ */
+async function handleGetNotification(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid notification ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const content = await readFile(`notifications/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Notification not found' }, 404, cors);
+    }
+
+    const notif = JSON.parse(content);
+    return jsonResponse({ success: true, notification: notif }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get notification', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/notifications/:id/read
+ * Mark a notification as read.
+ */
+async function handleMarkNotificationRead(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid notification ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const content = await readFile(`notifications/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Notification not found' }, 404, cors);
+    }
+
+    const notif = JSON.parse(content);
+    notif.read = true;
+    notif.readAt = new Date().toISOString();
+
+    await writeFile(`notifications/${safeId}.json`, JSON.stringify(notif, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      message: 'Notification marked as read',
+      id: notif.id
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to mark notification', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/notifications/read-all
+ * Mark all notifications as read.
+ */
+async function handleMarkAllRead(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, message: 'GitHub not configured', markedCount: 0 }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('notifications', env);
+    let markedCount = 0;
+    const now = new Date().toISOString();
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`notifications/${file}`, env);
+        if (!content) continue;
+        const notif = JSON.parse(content);
+        if (!notif.read && !notif.dismissed) {
+          notif.read = true;
+          notif.readAt = now;
+          await writeFile(`notifications/${file}`, JSON.stringify(notif, null, 2), env);
+          markedCount++;
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    return jsonResponse({
+      success: true,
+      message: `${markedCount} notification(s) marked as read`,
+      markedCount
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to mark all read', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * DELETE /api/notifications/dismiss?id=
+ * Dismiss (soft-delete) a notification.
+ */
+async function handleDismissNotification(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const notifId = url.searchParams.get('id');
+
+    if (!notifId) {
+      return jsonResponse({ success: false, error: 'Missing required param: id' }, 400, cors);
+    }
+
+    const safeId = sanitizePathSegment(notifId);
+    if (!safeId || safeId !== notifId) {
+      return jsonResponse({ success: false, error: 'Invalid notification ID' }, 400, cors);
+    }
+
+    const content = await readFile(`notifications/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Notification not found' }, 404, cors);
+    }
+
+    const notif = JSON.parse(content);
+    notif.dismissed = true;
+    notif.dismissedAt = new Date().toISOString();
+
+    await writeFile(`notifications/${safeId}.json`, JSON.stringify(notif, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      message: 'Notification dismissed',
+      id: notif.id
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to dismiss notification', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/alerts/rules
+ * Create an alert rule (automated trigger for notifications).
+ * Body: { name, condition, threshold, cemeteryId, type, severity, message, enabled }
+ */
+async function handleCreateAlertRule(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { name, condition, threshold, cemeteryId, type, severity, message, enabled, createdBy } = body || {};
+
+    if (!name || !condition) {
+      return jsonResponse({ success: false, error: 'Missing required fields: name, condition' }, 400, cors);
+    }
+    if (!ALERT_CONDITIONS.includes(condition)) {
+      return jsonResponse({
+        success: false,
+        error: `Invalid condition. Must be one of: ${ALERT_CONDITIONS.join(', ')}`
+      }, 400, cors);
+    }
+    if (threshold === undefined) {
+      return jsonResponse({ success: false, error: 'Missing required field: threshold' }, 400, cors);
+    }
+
+    const ruleId = 'alert_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+    const now = new Date().toISOString();
+
+    const rule = {
+      id: ruleId,
+      name,
+      condition,
+      threshold: Number(threshold),
+      cemeteryId: cemeteryId || null,
+      type: type || 'custom',
+      severity: severity || 'warning',
+      message: message || '',
+      enabled: enabled !== false,
+      createdBy: createdBy || 'system',
+      createdAt: now,
+      updatedAt: now,
+      lastTriggered: null,
+      triggerCount: 0
+    };
+
+    await writeFile(`alerts/${ruleId}.json`, JSON.stringify(rule, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      message: 'Alert rule created',
+      rule: rule
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to create alert rule', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/alerts/rules
+ * List all alert rules.
+ * Query params: enabled, condition, cemeteryId
+ */
+async function handleListAlertRules(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, rules: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const enabledFilter = url.searchParams.get('enabled');
+    const conditionFilter = url.searchParams.get('condition');
+    const cemeteryIdFilter = url.searchParams.get('cemeteryId');
+
+    const files = await listFiles('alerts', env);
+    const rules = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`alerts/${file}`, env);
+        if (!content) continue;
+        const rule = JSON.parse(content);
+
+        if (enabledFilter === 'true' && !rule.enabled) continue;
+        if (enabledFilter === 'false' && rule.enabled) continue;
+        if (conditionFilter && rule.condition !== conditionFilter) continue;
+        if (cemeteryIdFilter && rule.cemeteryId !== cemeteryIdFilter) continue;
+
+        rules.push(rule);
+      } catch (e) { /* skip */ }
+    }
+
+    return jsonResponse({
+      success: true,
+      rules: rules,
+      totalFound: rules.length,
+      activeRules: rules.filter(r => r.enabled).length
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to list alert rules', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * DELETE /api/alerts/rules/:id
+ * Delete an alert rule.
+ */
+async function handleDeleteAlertRule(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid rule ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const content = await readFile(`alerts/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Rule not found' }, 404, cors);
+    }
+
+    // Overwrite with empty (soft delete)
+    await writeFile(`alerts/${safeId}.json`, '', env);
+
+    return jsonResponse({
+      success: true,
+      message: 'Alert rule deleted',
+      id: safeId
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to delete rule', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/alerts/check
+ * Check all enabled alert rules against current data and fire notifications.
+ * Body: { checkedBy }
+ */
+async function handleCheckAlerts(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, message: 'GitHub not configured', triggered: [] }, 200, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const checkedBy = (body && body.checkedBy) || 'system';
+
+    // Load all alert rules
+    const alertFiles = await listFiles('alerts', env);
+    const rules = [];
+    for (const file of alertFiles) {
+      try {
+        const content = await readFile(`alerts/${file}`, env);
+        if (!content) continue;
+        const rule = JSON.parse(content);
+        if (rule.enabled) rules.push(rule);
+      } catch (e) { /* skip */ }
+    }
+
+    // Load all grave records (for condition checks)
+    const graveFiles = await listFiles('graves', env);
+    const records = [];
+    for (const file of graveFiles) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        if (records.length >= 10000) break;
+        records.push(record);
+      } catch (e) { /* skip */ }
+    }
+
+    // Load existing notifications to avoid duplicates
+    const notifFiles = await listFiles('notifications', env);
+    const existingNotifs = [];
+    for (const file of notifFiles) {
+      try {
+        const content = await readFile(`notifications/${file}`, env);
+        if (!content) continue;
+        existingNotifs.push(JSON.parse(content));
+      } catch (e) { /* skip */ }
+    }
+
+    const triggered = [];
+    const now = new Date().toISOString();
+
+    for (const rule of rules) {
+      let shouldFire = false;
+      let notifTitle = rule.name;
+      let notifMessage = rule.message;
+      let notifRecordId = null;
+      let notifCemeteryId = rule.cemeteryId;
+
+      // Check condition
+      switch (rule.condition) {
+        case 'anomaly_count_above': {
+          let totalAnomalies = 0;
+          for (const record of records) {
+            if (rule.cemeteryId && record.cemeteryId !== rule.cemeteryId) continue;
+            try {
+              const result = computeCemeteryAnomalies([record]);
+              totalAnomalies += (result.anomalies || []).length;
+            } catch (e) { /* skip */ }
+          }
+          if (totalAnomalies > rule.threshold) {
+            shouldFire = true;
+            notifMessage = notifMessage || `${totalAnomalies} anomalies detected (threshold: ${rule.threshold})`;
+          }
+          break;
+        }
+        case 'confidence_below': {
+          let lowConfidence = 0;
+          for (const record of records) {
+            if (rule.cemeteryId && record.cemeteryId !== rule.cemeteryId) continue;
+            try {
+              const anomalies = [];
+              const anomalyResult = computeCemeteryAnomalies([record]);
+              const srcRefs = record.sourceRefs || [];
+              const sv = srcRefs.length > 0 ? { total: srcRefs.length, live: srcRefs.length, dead: 0, archived: 0 } : null;
+              const mc = (record.mergeHistory || []).length;
+              const confidence = computeConfidenceScore(record, anomalyResult.anomalies || [], sv, mc);
+              if (confidence.score < rule.threshold) lowConfidence++;
+            } catch (e) { /* skip */ }
+          }
+          if (lowConfidence > 0) {
+            shouldFire = true;
+            notifMessage = notifMessage || `${lowConfidence} records below confidence threshold ${rule.threshold}`;
+          }
+          break;
+        }
+        case 'source_dead_above': {
+          let deadCount = 0;
+          for (const record of records) {
+            if (rule.cemeteryId && record.cemeteryId !== rule.cemeteryId) continue;
+            const srcs = record.sourceRefs || [];
+            // Simplified: count records with sources but potentially dead
+            if (srcs.length === 0 && record.status === 'published') deadCount++;
+          }
+          if (deadCount > rule.threshold) {
+            shouldFire = true;
+            notifMessage = notifMessage || `${deadCount} records with no source references`;
+          }
+          break;
+        }
+        case 'duplicate_count_above': {
+          // Check for potential duplicates within records
+          let dupPairs = 0;
+          const checked = new Set();
+          for (let i = 0; i < records.length; i++) {
+            for (let j = i + 1; j < Math.min(records.length, i + 100); j++) {
+              const key = `${records[i].id}-${records[j].id}`;
+              if (checked.has(key)) continue;
+              checked.add(key);
+              if (rule.cemeteryId && records[i].cemeteryId !== rule.cemeteryId) continue;
+              const sim = recordSimilarity(records[i], records[j]);
+              if (sim.score >= 0.85) dupPairs++;
+            }
+          }
+          if (dupPairs > rule.threshold) {
+            shouldFire = true;
+            notifMessage = notifMessage || `${dupPairs} potential duplicate pairs detected`;
+          }
+          break;
+        }
+        case 'review_queue_above': {
+          let reviewCount = 0;
+          try {
+            const curationFiles = await listFiles('curation', env);
+            for (const file of curationFiles) {
+              try {
+                const content = await readFile(`curation/${file}`, env);
+                if (!content) continue;
+                const task = JSON.parse(content);
+                if (task.status === 'submitted') reviewCount++;
+              } catch (e) { /* skip */ }
+            }
+          } catch (e) { /* skip */ }
+          if (reviewCount > rule.threshold) {
+            shouldFire = true;
+            notifMessage = notifMessage || `${reviewCount} tasks awaiting review`;
+          }
+          break;
+        }
+        case 'lock_expiry_below': {
+          let expiringLocks = 0;
+          try {
+            const lockFiles = await listFiles('locks', env);
+            for (const file of lockFiles) {
+              try {
+                const content = await readFile(`locks/${file}`, env);
+                if (!content) continue;
+                const lock = JSON.parse(content);
+                const remaining = (new Date(lock.expiresAt).getTime() - Date.now()) / 60000;
+                if (remaining < rule.threshold && remaining > 0) expiringLocks++;
+              } catch (e) { /* skip */ }
+            }
+          } catch (e) { /* skip */ }
+          if (expiringLocks > 0) {
+            shouldFire = true;
+            notifMessage = notifMessage || `${expiringLocks} record locks expiring soon (< ${rule.threshold} min)`;
+          }
+          break;
+        }
+        case 'records_below': {
+          let count = 0;
+          for (const record of records) {
+            if (rule.cemeteryId && record.cemeteryId !== rule.cemeteryId) continue;
+            count++;
+          }
+          if (count < rule.threshold) {
+            shouldFire = true;
+            notifMessage = notifMessage || `Record count ${count} below threshold ${rule.threshold}`;
+          }
+          break;
+        }
+      }
+
+      if (shouldFire) {
+        // Check if we already have a recent notification for this rule (within last hour)
+        const recentExisting = existingNotifs.find(n =>
+          n.type === rule.type &&
+          !n.dismissed &&
+          n.title === notifTitle &&
+          new Date(n.createdAt).getTime() > Date.now() - 3600000
+        );
+
+        if (!recentExisting) {
+          const notifId = 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+          const notification = {
+            id: notifId,
+            type: rule.type,
+            severity: rule.severity,
+            title: notifTitle,
+            message: notifMessage,
+            recordId: notifRecordId,
+            cemeteryId: notifCemeteryId,
+            metadata: { ruleId: rule.id, condition: rule.condition, threshold: rule.threshold },
+            recipient: 'all',
+            read: false,
+            dismissed: false,
+            createdAt: now,
+            readAt: null,
+            dismissedAt: null
+          };
+
+          await writeFile(`notifications/${notifId}.json`, JSON.stringify(notification, null, 2), env);
+          triggered.push(notification);
+
+          // Update rule trigger info
+          rule.lastTriggered = now;
+          rule.triggerCount = (rule.triggerCount || 0) + 1;
+          rule.updatedAt = now;
+          await writeFile(`alerts/${rule.id}.json`, JSON.stringify(rule, null, 2), env);
+        }
+      }
+    }
+
+    return jsonResponse({
+      success: true,
+      message: `${triggered.length} alert(s) triggered`,
+      triggered: triggered,
+      rulesChecked: rules.length,
+      checkedBy
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to check alerts', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/alerts/digest
+ * Generate a summary digest of recent notifications and alert status.
+ * Query params: hours (default 24)
+ */
+async function handleAlertDigest(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, digest: {}, message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const hours = parseInt(url.searchParams.get('hours') || '24');
+    const since = new Date(Date.now() - hours * 3600000).toISOString();
+
+    const files = await listFiles('notifications', env);
+    let total = 0, unread = 0, dismissed = 0;
+    const byType = {};
+    const bySeverity = { info: 0, warning: 0, critical: 0 };
+    const recentNotifications = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`notifications/${file}`, env);
+        if (!content) continue;
+        const notif = JSON.parse(content);
+
+        const notifDate = new Date(notif.createdAt).getTime() || 0;
+        if (notifDate < new Date(since).getTime()) continue;
+
+        total++;
+        if (!notif.read && !notif.dismissed) unread++;
+        if (notif.dismissed) dismissed++;
+
+        byType[notif.type] = (byType[notif.type] || 0) + 1;
+        bySeverity[notif.severity] = (bySeverity[notif.severity] || 0) + 1;
+
+        if (recentNotifications.length < 20) {
+          recentNotifications.push({
+            id: notif.id,
+            type: notif.type,
+            severity: notif.severity,
+            title: notif.title,
+            message: notif.message,
+            read: notif.read,
+            createdAt: notif.createdAt
+          });
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    // Sort recent by date
+    recentNotifications.sort((a, b) => {
+      const ta = new Date(a.createdAt).getTime() || 0;
+      const tb = new Date(b.createdAt).getTime() || 0;
+      return tb - ta;
+    });
+
+    // Get active alert rules
+    let activeRules = 0;
+    try {
+      const alertFiles = await listFiles('alerts', env);
+      for (const file of alertFiles) {
+        try {
+          const content = await readFile(`alerts/${file}`, env);
+          if (!content) continue;
+          const rule = JSON.parse(content);
+          if (rule.enabled) activeRules++;
+        } catch (e) { /* skip */ }
+      }
+    } catch (e) { /* skip */ }
+
+    const digest = {
+      period: `Last ${hours} hours`,
+      generatedAt: new Date().toISOString(),
+      summary: {
+        totalNotifications: total,
+        unread: unread,
+        dismissed: dismissed,
+        activeAlertRules: activeRules
+      },
+      byType: byType,
+      bySeverity: bySeverity,
+      recentNotifications: recentNotifications
+    };
+
+    return jsonResponse({
+      success: true,
+      digest: digest
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to generate digest', message: error.message }, 500, cors);
+  }
+}
 
 // ── Phase 16.22: AI Collaborative Curation Handlers ──
 
@@ -7505,6 +8373,822 @@ function generateRecommendations(records, stats, anomalySummary) {
   }
 
   return recommendations;
+}
+
+// ── Phase 16.23: AI Notification & Alert System Handlers ──
+
+const NOTIFICATION_TYPES = [
+  'anomaly_detected', 'confidence_drop', 'source_dead', 'duplicate_found',
+  'review_needed', 'lock_expiring', 'task_assigned', 'task_completed',
+  'task_rejected', 'merge_available', 'fix_available', 'data_loss', 'new_record', 'custom'
+];
+const NOTIFICATION_SEVERITY = ['info', 'warning', 'critical'];
+const ALERT_CONDITIONS = [
+  'anomaly_count_above', 'confidence_below', 'source_dead_above',
+  'duplicate_count_above', 'review_queue_above', 'lock_expiry_below',
+  'records_below'
+];
+
+/**
+ * POST /api/notifications
+ * Create a notification.
+ * Body: { type, severity, title, message, recordId, cemeteryId, metadata, recipient }
+ */
+async function handleCreateNotification(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { type, severity, title, message, recordId, cemeteryId, metadata, recipient } = body || {};
+
+    if (!type || !NOTIFICATION_TYPES.includes(type)) {
+      return jsonResponse({
+        success: false,
+        error: `Invalid type. Must be one of: ${NOTIFICATION_TYPES.join(', ')}`
+      }, 400, cors);
+    }
+    if (!title) {
+      return jsonResponse({ success: false, error: 'Missing required field: title' }, 400, cors);
+    }
+    if (severity && !NOTIFICATION_SEVERITY.includes(severity)) {
+      return jsonResponse({
+        success: false,
+        error: `Invalid severity. Must be one of: ${NOTIFICATION_SEVERITY.join(', ')}`
+      }, 400, cors);
+    }
+
+    const notifId = 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+    const now = new Date().toISOString();
+
+    const notification = {
+      id: notifId,
+      type,
+      severity: severity || 'info',
+      title,
+      message: message || '',
+      recordId: recordId || null,
+      cemeteryId: cemeteryId || null,
+      metadata: metadata || {},
+      recipient: recipient || 'all',
+      read: false,
+      dismissed: false,
+      createdAt: now,
+      readAt: null,
+      dismissedAt: null
+    };
+
+    await writeFile(`notifications/${notifId}.json`, JSON.stringify(notification, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      message: 'Notification created',
+      notification: notification
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to create notification', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/notifications
+ * List notifications with filters.
+ * Query params: type, severity, read, recipient, limit, since
+ */
+async function handleListNotifications(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, notifications: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const typeFilter = url.searchParams.get('type');
+    const severityFilter = url.searchParams.get('severity');
+    const readFilter = url.searchParams.get('read');
+    const recipientFilter = url.searchParams.get('recipient');
+    const since = url.searchParams.get('since');
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '100'), 500);
+
+    const files = await listFiles('notifications', env);
+    const notifications = [];
+
+    for (const file of files) {
+      if (notifications.length >= limit) break;
+      try {
+        const content = await readFile(`notifications/${file}`, env);
+        if (!content) continue;
+        const notif = JSON.parse(content);
+        if (notif.dismissed) continue;
+
+        if (typeFilter && notif.type !== typeFilter) continue;
+        if (severityFilter && notif.severity !== severityFilter) continue;
+        if (readFilter === 'true' && !notif.read) continue;
+        if (readFilter === 'false' && notif.read) continue;
+        if (recipientFilter && notif.recipient !== recipientFilter && notif.recipient !== 'all') continue;
+        if (since) {
+          const notifDate = new Date(notif.createdAt).getTime() || 0;
+          if (notifDate < new Date(since).getTime()) continue;
+        }
+
+        notifications.push({
+          id: notif.id,
+          type: notif.type,
+          severity: notif.severity,
+          title: notif.title,
+          message: notif.message,
+          recordId: notif.recordId,
+          cemeteryId: notif.cemeteryId,
+          read: notif.read,
+          createdAt: notif.createdAt
+        });
+      } catch (e) { /* skip */ }
+    }
+
+    // Sort newest first
+    notifications.sort((a, b) => {
+      const ta = new Date(a.createdAt).getTime() || 0;
+      const tb = new Date(b.createdAt).getTime() || 0;
+      return tb - ta;
+    });
+
+    return jsonResponse({
+      success: true,
+      notifications: notifications,
+      totalFound: notifications.length,
+      unreadCount: notifications.filter(n => !n.read).length
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to list notifications', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/notifications/unread
+ * Get only unread notifications (quick check).
+ */
+async function handleGetUnreadNotifications(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, notifications: [], count: 0 }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('notifications', env);
+    const unread = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`notifications/${file}`, env);
+        if (!content) continue;
+        const notif = JSON.parse(content);
+        if (notif.read || notif.dismissed) continue;
+
+        unread.push({
+          id: notif.id,
+          type: notif.type,
+          severity: notif.severity,
+          title: notif.title,
+          message: notif.message,
+          createdAt: notif.createdAt
+        });
+      } catch (e) { /* skip */ }
+    }
+
+    // Sort by severity (critical first), then by date
+    const sevOrder = { critical: 0, warning: 1, info: 2 };
+    unread.sort((a, b) => {
+      const sa = sevOrder[a.severity] || 2;
+      const sb = sevOrder[b.severity] || 2;
+      if (sa !== sb) return sa - sb;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    return jsonResponse({
+      success: true,
+      notifications: unread,
+      count: unread.length,
+      bySeverity: {
+        critical: unread.filter(n => n.severity === 'critical').length,
+        warning: unread.filter(n => n.severity === 'warning').length,
+        info: unread.filter(n => n.severity === 'info').length
+      }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get unread notifications', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/notifications/:id
+ * Get a single notification with full details.
+ */
+async function handleGetNotification(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid notification ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const content = await readFile(`notifications/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Notification not found' }, 404, cors);
+    }
+
+    const notif = JSON.parse(content);
+    return jsonResponse({ success: true, notification: notif }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get notification', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/notifications/:id/read
+ * Mark a notification as read.
+ */
+async function handleMarkNotificationRead(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid notification ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const content = await readFile(`notifications/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Notification not found' }, 404, cors);
+    }
+
+    const notif = JSON.parse(content);
+    notif.read = true;
+    notif.readAt = new Date().toISOString();
+
+    await writeFile(`notifications/${safeId}.json`, JSON.stringify(notif, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      message: 'Notification marked as read',
+      id: notif.id
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to mark notification', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/notifications/read-all
+ * Mark all notifications as read.
+ */
+async function handleMarkAllRead(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, message: 'GitHub not configured', markedCount: 0 }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('notifications', env);
+    let markedCount = 0;
+    const now = new Date().toISOString();
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`notifications/${file}`, env);
+        if (!content) continue;
+        const notif = JSON.parse(content);
+        if (!notif.read && !notif.dismissed) {
+          notif.read = true;
+          notif.readAt = now;
+          await writeFile(`notifications/${file}`, JSON.stringify(notif, null, 2), env);
+          markedCount++;
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    return jsonResponse({
+      success: true,
+      message: `${markedCount} notification(s) marked as read`,
+      markedCount
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to mark all read', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * DELETE /api/notifications/dismiss?id=
+ * Dismiss (soft-delete) a notification.
+ */
+async function handleDismissNotification(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const notifId = url.searchParams.get('id');
+
+    if (!notifId) {
+      return jsonResponse({ success: false, error: 'Missing required param: id' }, 400, cors);
+    }
+
+    const safeId = sanitizePathSegment(notifId);
+    if (!safeId || safeId !== notifId) {
+      return jsonResponse({ success: false, error: 'Invalid notification ID' }, 400, cors);
+    }
+
+    const content = await readFile(`notifications/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Notification not found' }, 404, cors);
+    }
+
+    const notif = JSON.parse(content);
+    notif.dismissed = true;
+    notif.dismissedAt = new Date().toISOString();
+
+    await writeFile(`notifications/${safeId}.json`, JSON.stringify(notif, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      message: 'Notification dismissed',
+      id: notif.id
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to dismiss notification', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/alerts/rules
+ * Create an alert rule (automated trigger for notifications).
+ * Body: { name, condition, threshold, cemeteryId, type, severity, message, enabled }
+ */
+async function handleCreateAlertRule(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { name, condition, threshold, cemeteryId, type, severity, message, enabled, createdBy } = body || {};
+
+    if (!name || !condition) {
+      return jsonResponse({ success: false, error: 'Missing required fields: name, condition' }, 400, cors);
+    }
+    if (!ALERT_CONDITIONS.includes(condition)) {
+      return jsonResponse({
+        success: false,
+        error: `Invalid condition. Must be one of: ${ALERT_CONDITIONS.join(', ')}`
+      }, 400, cors);
+    }
+    if (threshold === undefined) {
+      return jsonResponse({ success: false, error: 'Missing required field: threshold' }, 400, cors);
+    }
+
+    const ruleId = 'alert_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+    const now = new Date().toISOString();
+
+    const rule = {
+      id: ruleId,
+      name,
+      condition,
+      threshold: Number(threshold),
+      cemeteryId: cemeteryId || null,
+      type: type || 'custom',
+      severity: severity || 'warning',
+      message: message || '',
+      enabled: enabled !== false,
+      createdBy: createdBy || 'system',
+      createdAt: now,
+      updatedAt: now,
+      lastTriggered: null,
+      triggerCount: 0
+    };
+
+    await writeFile(`alerts/${ruleId}.json`, JSON.stringify(rule, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      message: 'Alert rule created',
+      rule: rule
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to create alert rule', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/alerts/rules
+ * List all alert rules.
+ * Query params: enabled, condition, cemeteryId
+ */
+async function handleListAlertRules(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, rules: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const enabledFilter = url.searchParams.get('enabled');
+    const conditionFilter = url.searchParams.get('condition');
+    const cemeteryIdFilter = url.searchParams.get('cemeteryId');
+
+    const files = await listFiles('alerts', env);
+    const rules = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`alerts/${file}`, env);
+        if (!content) continue;
+        const rule = JSON.parse(content);
+
+        if (enabledFilter === 'true' && !rule.enabled) continue;
+        if (enabledFilter === 'false' && rule.enabled) continue;
+        if (conditionFilter && rule.condition !== conditionFilter) continue;
+        if (cemeteryIdFilter && rule.cemeteryId !== cemeteryIdFilter) continue;
+
+        rules.push(rule);
+      } catch (e) { /* skip */ }
+    }
+
+    return jsonResponse({
+      success: true,
+      rules: rules,
+      totalFound: rules.length,
+      activeRules: rules.filter(r => r.enabled).length
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to list alert rules', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * DELETE /api/alerts/rules/:id
+ * Delete an alert rule.
+ */
+async function handleDeleteAlertRule(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid rule ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 503, cors);
+  }
+
+  try {
+    const content = await readFile(`alerts/${safeId}.json`, env);
+    if (!content) {
+      return jsonResponse({ success: false, error: 'Rule not found' }, 404, cors);
+    }
+
+    // Overwrite with empty (soft delete)
+    await writeFile(`alerts/${safeId}.json`, '', env);
+
+    return jsonResponse({
+      success: true,
+      message: 'Alert rule deleted',
+      id: safeId
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to delete rule', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/alerts/check
+ * Check all enabled alert rules against current data and fire notifications.
+ * Body: { checkedBy }
+ */
+async function handleCheckAlerts(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, message: 'GitHub not configured', triggered: [] }, 200, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const checkedBy = (body && body.checkedBy) || 'system';
+
+    // Load all alert rules
+    const alertFiles = await listFiles('alerts', env);
+    const rules = [];
+    for (const file of alertFiles) {
+      try {
+        const content = await readFile(`alerts/${file}`, env);
+        if (!content) continue;
+        const rule = JSON.parse(content);
+        if (rule.enabled) rules.push(rule);
+      } catch (e) { /* skip */ }
+    }
+
+    // Load all grave records (for condition checks)
+    const graveFiles = await listFiles('graves', env);
+    const records = [];
+    for (const file of graveFiles) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        if (records.length >= 10000) break;
+        records.push(record);
+      } catch (e) { /* skip */ }
+    }
+
+    // Load existing notifications to avoid duplicates
+    const notifFiles = await listFiles('notifications', env);
+    const existingNotifs = [];
+    for (const file of notifFiles) {
+      try {
+        const content = await readFile(`notifications/${file}`, env);
+        if (!content) continue;
+        existingNotifs.push(JSON.parse(content));
+      } catch (e) { /* skip */ }
+    }
+
+    const triggered = [];
+    const now = new Date().toISOString();
+
+    for (const rule of rules) {
+      let shouldFire = false;
+      let notifTitle = rule.name;
+      let notifMessage = rule.message;
+      let notifRecordId = null;
+      let notifCemeteryId = rule.cemeteryId;
+
+      // Check condition
+      switch (rule.condition) {
+        case 'anomaly_count_above': {
+          let totalAnomalies = 0;
+          for (const record of records) {
+            if (rule.cemeteryId && record.cemeteryId !== rule.cemeteryId) continue;
+            try {
+              const result = computeCemeteryAnomalies([record]);
+              totalAnomalies += (result.anomalies || []).length;
+            } catch (e) { /* skip */ }
+          }
+          if (totalAnomalies > rule.threshold) {
+            shouldFire = true;
+            notifMessage = notifMessage || `${totalAnomalies} anomalies detected (threshold: ${rule.threshold})`;
+          }
+          break;
+        }
+        case 'confidence_below': {
+          let lowConfidence = 0;
+          for (const record of records) {
+            if (rule.cemeteryId && record.cemeteryId !== rule.cemeteryId) continue;
+            try {
+              const anomalies = [];
+              const anomalyResult = computeCemeteryAnomalies([record]);
+              const srcRefs = record.sourceRefs || [];
+              const sv = srcRefs.length > 0 ? { total: srcRefs.length, live: srcRefs.length, dead: 0, archived: 0 } : null;
+              const mc = (record.mergeHistory || []).length;
+              const confidence = computeConfidenceScore(record, anomalyResult.anomalies || [], sv, mc);
+              if (confidence.score < rule.threshold) lowConfidence++;
+            } catch (e) { /* skip */ }
+          }
+          if (lowConfidence > 0) {
+            shouldFire = true;
+            notifMessage = notifMessage || `${lowConfidence} records below confidence threshold ${rule.threshold}`;
+          }
+          break;
+        }
+        case 'source_dead_above': {
+          let deadCount = 0;
+          for (const record of records) {
+            if (rule.cemeteryId && record.cemeteryId !== rule.cemeteryId) continue;
+            const srcs = record.sourceRefs || [];
+            // Simplified: count records with sources but potentially dead
+            if (srcs.length === 0 && record.status === 'published') deadCount++;
+          }
+          if (deadCount > rule.threshold) {
+            shouldFire = true;
+            notifMessage = notifMessage || `${deadCount} records with no source references`;
+          }
+          break;
+        }
+        case 'duplicate_count_above': {
+          // Check for potential duplicates within records
+          let dupPairs = 0;
+          const checked = new Set();
+          for (let i = 0; i < records.length; i++) {
+            for (let j = i + 1; j < Math.min(records.length, i + 100); j++) {
+              const key = `${records[i].id}-${records[j].id}`;
+              if (checked.has(key)) continue;
+              checked.add(key);
+              if (rule.cemeteryId && records[i].cemeteryId !== rule.cemeteryId) continue;
+              const sim = recordSimilarity(records[i], records[j]);
+              if (sim.score >= 0.85) dupPairs++;
+            }
+          }
+          if (dupPairs > rule.threshold) {
+            shouldFire = true;
+            notifMessage = notifMessage || `${dupPairs} potential duplicate pairs detected`;
+          }
+          break;
+        }
+        case 'review_queue_above': {
+          let reviewCount = 0;
+          try {
+            const curationFiles = await listFiles('curation', env);
+            for (const file of curationFiles) {
+              try {
+                const content = await readFile(`curation/${file}`, env);
+                if (!content) continue;
+                const task = JSON.parse(content);
+                if (task.status === 'submitted') reviewCount++;
+              } catch (e) { /* skip */ }
+            }
+          } catch (e) { /* skip */ }
+          if (reviewCount > rule.threshold) {
+            shouldFire = true;
+            notifMessage = notifMessage || `${reviewCount} tasks awaiting review`;
+          }
+          break;
+        }
+        case 'lock_expiry_below': {
+          let expiringLocks = 0;
+          try {
+            const lockFiles = await listFiles('locks', env);
+            for (const file of lockFiles) {
+              try {
+                const content = await readFile(`locks/${file}`, env);
+                if (!content) continue;
+                const lock = JSON.parse(content);
+                const remaining = (new Date(lock.expiresAt).getTime() - Date.now()) / 60000;
+                if (remaining < rule.threshold && remaining > 0) expiringLocks++;
+              } catch (e) { /* skip */ }
+            }
+          } catch (e) { /* skip */ }
+          if (expiringLocks > 0) {
+            shouldFire = true;
+            notifMessage = notifMessage || `${expiringLocks} record locks expiring soon (< ${rule.threshold} min)`;
+          }
+          break;
+        }
+        case 'records_below': {
+          let count = 0;
+          for (const record of records) {
+            if (rule.cemeteryId && record.cemeteryId !== rule.cemeteryId) continue;
+            count++;
+          }
+          if (count < rule.threshold) {
+            shouldFire = true;
+            notifMessage = notifMessage || `Record count ${count} below threshold ${rule.threshold}`;
+          }
+          break;
+        }
+      }
+
+      if (shouldFire) {
+        // Check if we already have a recent notification for this rule (within last hour)
+        const recentExisting = existingNotifs.find(n =>
+          n.type === rule.type &&
+          !n.dismissed &&
+          n.title === notifTitle &&
+          new Date(n.createdAt).getTime() > Date.now() - 3600000
+        );
+
+        if (!recentExisting) {
+          const notifId = 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+          const notification = {
+            id: notifId,
+            type: rule.type,
+            severity: rule.severity,
+            title: notifTitle,
+            message: notifMessage,
+            recordId: notifRecordId,
+            cemeteryId: notifCemeteryId,
+            metadata: { ruleId: rule.id, condition: rule.condition, threshold: rule.threshold },
+            recipient: 'all',
+            read: false,
+            dismissed: false,
+            createdAt: now,
+            readAt: null,
+            dismissedAt: null
+          };
+
+          await writeFile(`notifications/${notifId}.json`, JSON.stringify(notification, null, 2), env);
+          triggered.push(notification);
+
+          // Update rule trigger info
+          rule.lastTriggered = now;
+          rule.triggerCount = (rule.triggerCount || 0) + 1;
+          rule.updatedAt = now;
+          await writeFile(`alerts/${rule.id}.json`, JSON.stringify(rule, null, 2), env);
+        }
+      }
+    }
+
+    return jsonResponse({
+      success: true,
+      message: `${triggered.length} alert(s) triggered`,
+      triggered: triggered,
+      rulesChecked: rules.length,
+      checkedBy
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to check alerts', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/alerts/digest
+ * Generate a summary digest of recent notifications and alert status.
+ * Query params: hours (default 24)
+ */
+async function handleAlertDigest(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, digest: {}, message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const hours = parseInt(url.searchParams.get('hours') || '24');
+    const since = new Date(Date.now() - hours * 3600000).toISOString();
+
+    const files = await listFiles('notifications', env);
+    let total = 0, unread = 0, dismissed = 0;
+    const byType = {};
+    const bySeverity = { info: 0, warning: 0, critical: 0 };
+    const recentNotifications = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`notifications/${file}`, env);
+        if (!content) continue;
+        const notif = JSON.parse(content);
+
+        const notifDate = new Date(notif.createdAt).getTime() || 0;
+        if (notifDate < new Date(since).getTime()) continue;
+
+        total++;
+        if (!notif.read && !notif.dismissed) unread++;
+        if (notif.dismissed) dismissed++;
+
+        byType[notif.type] = (byType[notif.type] || 0) + 1;
+        bySeverity[notif.severity] = (bySeverity[notif.severity] || 0) + 1;
+
+        if (recentNotifications.length < 20) {
+          recentNotifications.push({
+            id: notif.id,
+            type: notif.type,
+            severity: notif.severity,
+            title: notif.title,
+            message: notif.message,
+            read: notif.read,
+            createdAt: notif.createdAt
+          });
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    // Sort recent by date
+    recentNotifications.sort((a, b) => {
+      const ta = new Date(a.createdAt).getTime() || 0;
+      const tb = new Date(b.createdAt).getTime() || 0;
+      return tb - ta;
+    });
+
+    // Get active alert rules
+    let activeRules = 0;
+    try {
+      const alertFiles = await listFiles('alerts', env);
+      for (const file of alertFiles) {
+        try {
+          const content = await readFile(`alerts/${file}`, env);
+          if (!content) continue;
+          const rule = JSON.parse(content);
+          if (rule.enabled) activeRules++;
+        } catch (e) { /* skip */ }
+      }
+    } catch (e) { /* skip */ }
+
+    const digest = {
+      period: `Last ${hours} hours`,
+      generatedAt: new Date().toISOString(),
+      summary: {
+        totalNotifications: total,
+        unread: unread,
+        dismissed: dismissed,
+        activeAlertRules: activeRules
+      },
+      byType: byType,
+      bySeverity: bySeverity,
+      recentNotifications: recentNotifications
+    };
+
+    return jsonResponse({
+      success: true,
+      digest: digest
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to generate digest', message: error.message }, 500, cors);
+  }
 }
 
 // ── Phase 16.22: AI Collaborative Curation Handlers ──

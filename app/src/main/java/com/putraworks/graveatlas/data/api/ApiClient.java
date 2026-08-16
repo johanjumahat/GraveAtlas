@@ -46,6 +46,9 @@ import com.putraworks.graveatlas.data.model.CurationTask;
 import com.putraworks.graveatlas.data.model.CurationQueue;
 import com.putraworks.graveatlas.data.model.RecordLock;
 import com.putraworks.graveatlas.data.model.CurationStats;
+import com.putraworks.graveatlas.data.model.Notification;
+import com.putraworks.graveatlas.data.model.AlertRule;
+import com.putraworks.graveatlas.data.model.AlertDigest;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -917,6 +920,427 @@ public class ApiClient {
         } catch (java.io.UnsupportedEncodingException e) {
             return value; // UTF-8 is always available on Android
         }
+    }
+
+    // ── Phase 16.23: AI Notification & Alert System ──
+
+    /**
+     * Create a notification.
+     * POST /api/notifications
+     */
+    public void createNotification(String type, String severity, String title,
+            String message, String recordId, String cemeteryId,
+            final ApiCallback<Notification> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("type", type);
+            if (severity != null) body.put("severity", severity);
+            body.put("title", title);
+            if (message != null) body.put("message", message);
+            if (recordId != null) body.put("recordId", recordId);
+            if (cemeteryId != null) body.put("cemeteryId", cemeteryId);
+        } catch (Exception e) { /* ignore */ }
+
+        RequestBody rb = RequestBody.create(body.toString(), MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/notifications")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        JSONObject notif = obj.optJSONObject("notification");
+                        if (notif != null) callback.onSuccess(Notification.fromJson(notif));
+                        else callback.onError("Notification not found in response.");
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse notification.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * List notifications with filters.
+     * GET /api/notifications?type=&severity=&read=&recipient=&since=&limit=
+     */
+    public void listNotifications(String type, String severity, String read,
+            int limit, final ApiCallback<java.util.List<Notification>> callback) {
+        java.util.List<String> params = new java.util.ArrayList<>();
+        if (type != null) params.add("type=" + type);
+        if (severity != null) params.add("severity=" + severity);
+        if (read != null) params.add("read=" + read);
+        params.add("limit=" + limit);
+
+        String url = baseUrl + "/api/notifications?" + String.join("&", params);
+        Request request = new Request.Builder().url(url).get().build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        java.util.List<Notification> notifs = new java.util.ArrayList<>();
+                        JSONArray arr = obj.optJSONArray("notifications");
+                        if (arr != null) {
+                            for (int i = 0; i < arr.length(); i++) {
+                                JSONObject n = arr.optJSONObject(i);
+                                if (n != null) notifs.add(Notification.fromJson(n));
+                            }
+                        }
+                        callback.onSuccess(notifs);
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse notifications.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get unread notifications.
+     * GET /api/notifications/unread
+     */
+    public void getUnreadNotifications(final ApiCallback<java.util.List<Notification>> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/notifications/unread")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        java.util.List<Notification> notifs = new java.util.ArrayList<>();
+                        JSONArray arr = obj.optJSONArray("notifications");
+                        if (arr != null) {
+                            for (int i = 0; i < arr.length(); i++) {
+                                JSONObject n = arr.optJSONObject(i);
+                                if (n != null) notifs.add(Notification.fromJson(n));
+                            }
+                        }
+                        callback.onSuccess(notifs);
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse unread notifications.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Mark a notification as read.
+     * POST /api/notifications/{id}/read
+     */
+    public void markNotificationRead(String notifId, final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/notifications/" + notifId + "/read")
+                .post(RequestBody.create("", null))
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse response.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Mark all notifications as read.
+     * POST /api/notifications/read-all
+     */
+    public void markAllNotificationsRead(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/notifications/read-all")
+                .post(RequestBody.create("", null))
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse response.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Dismiss a notification.
+     * DELETE /api/notifications/dismiss?id=
+     */
+    public void dismissNotification(String notifId, final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/notifications/dismiss?id=" + notifId)
+                .delete()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse response.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Create an alert rule.
+     * POST /api/alerts/rules
+     */
+    public void createAlertRule(String name, String condition, double threshold,
+            String cemeteryId, String type, String severity, String message,
+            final ApiCallback<AlertRule> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("name", name);
+            body.put("condition", condition);
+            body.put("threshold", threshold);
+            if (cemeteryId != null) body.put("cemeteryId", cemeteryId);
+            if (type != null) body.put("type", type);
+            if (severity != null) body.put("severity", severity);
+            if (message != null) body.put("message", message);
+        } catch (Exception e) { /* ignore */ }
+
+        RequestBody rb = RequestBody.create(body.toString(), MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/alerts/rules")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        JSONObject rule = obj.optJSONObject("rule");
+                        if (rule != null) callback.onSuccess(AlertRule.fromJson(rule));
+                        else callback.onError("Rule not found in response.");
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse alert rule.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * List alert rules.
+     * GET /api/alerts/rules?enabled=&condition=&cemeteryId=
+     */
+    public void listAlertRules(final ApiCallback<java.util.List<AlertRule>> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/alerts/rules")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        java.util.List<AlertRule> rules = new java.util.ArrayList<>();
+                        JSONArray arr = obj.optJSONArray("rules");
+                        if (arr != null) {
+                            for (int i = 0; i < arr.length(); i++) {
+                                JSONObject r = arr.optJSONObject(i);
+                                if (r != null) rules.add(AlertRule.fromJson(r));
+                            }
+                        }
+                        callback.onSuccess(rules);
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse alert rules.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Delete an alert rule.
+     * DELETE /api/alerts/rules/{id}
+     */
+    public void deleteAlertRule(String ruleId, final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/alerts/rules/" + ruleId)
+                .delete()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse response.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Check all alert rules and fire notifications.
+     * POST /api/alerts/check
+     */
+    public void checkAlerts(final ApiCallback<JSONObject> callback) {
+        JSONObject body = new JSONObject();
+        RequestBody rb = RequestBody.create(body.toString(), MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/alerts/check")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse alert check result.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get alert digest for recent period.
+     * GET /api/alerts/digest?hours=
+     */
+    public void getAlertDigest(int hours, final ApiCallback<AlertDigest> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/alerts/digest?hours=" + hours)
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(AlertDigest.fromJson(new JSONObject(body)));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse alert digest.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
     }
 
     // ── Phase 16.22: AI Collaborative Curation ──

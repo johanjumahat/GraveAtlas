@@ -519,6 +519,62 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.23] — 2026-08-16
+
+### Phase 16.23: AI Notification & Alert System
+
+**Added:**
+- `POST /api/notifications` — create notifications (14 types: anomaly_detected,
+  confidence_drop, source_dead, duplicate_found, review_needed, lock_expiring,
+  task_assigned, task_completed, task_rejected, merge_available, fix_available,
+  data_loss, new_record, custom; 3 severities: info/warning/critical).
+
+- `GET /api/notifications` — list with filters (type, severity, read, recipient,
+  since, limit). Excludes dismissed, sorts newest first, returns unreadCount.
+
+- `GET /api/notifications/unread` — unread only, sorted by severity (critical
+  first), with bySeverity breakdown.
+
+- `GET /api/notifications/:id` — full notification details.
+
+- `POST /api/notifications/:id/read` — mark single as read.
+
+- `POST /api/notifications/read-all` — mark all as read, returns markedCount.
+
+- `DELETE /api/notifications/dismiss?id=` — dismiss (soft-delete).
+
+- `POST /api/alerts/rules` — create automated alert rules (7 conditions:
+  anomaly_count_above, confidence_below, source_dead_above, duplicate_count_above,
+  review_queue_above, lock_expiry_below, records_below). Configurable threshold,
+  cemetery filter, type, severity, message, enabled flag.
+
+- `GET /api/alerts/rules` — list rules with filters (enabled, condition, cemeteryId).
+  Returns activeRules count.
+
+- `DELETE /api/alerts/rules/:id` — delete a rule.
+
+- `POST /api/alerts/check` — check all enabled rules against current data and
+  fire notifications. Deduplicates within 1 hour. Updates triggerCount and
+  lastTriggered on each fire. Evaluates: anomaly counts, confidence scores,
+  dead sources, duplicate pairs, review queue size, lock expiry, record counts.
+
+- `GET /api/alerts/digest` — summary digest (configurable hours, default 24).
+  Total/unread/dismissed counts, by type/severity, recent 20 notifications,
+  active alert rules count.
+
+**Notification Lifecycle:** create → read → dismiss (soft-delete)
+**Alert Rule Lifecycle:** create (enabled) → check → fire notification → track triggers
+**Deduplication:** same type+title within 1 hour = suppressed
+
+New models: Notification, AlertRule, AlertDigest (DigestSummary)
+API client: createNotification(), listNotifications(), getUnreadNotifications(),
+markNotificationRead(), markAllNotificationsRead(), dismissNotification(),
+createAlertRule(), listAlertRules(), deleteAlertRule(), checkAlerts(),
+getAlertDigest()
+AI system prompt updated, 3 new suggested prompts
+130+ new tests (phase16-23.test.js)
+
+
 ## [7.2.22] — 2026-08-16
 
 ### Phase 16.22: AI Collaborative Curation
