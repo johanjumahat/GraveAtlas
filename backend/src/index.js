@@ -445,6 +445,21 @@ async function handleRequest(request, env, ctx) {
       return await handleRecordAutoFixApply(id, request, env, corsHeaders);
     }
 
+    // Phase 16.14: AI Batch Operations
+    if (path.startsWith('/api/cemeteries/') && path.endsWith('/cleanup') && method === 'POST') {
+      const id = path.split('/')[3];
+      return await handleCemeteryCleanup(id, request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/cemeteries/') && path.endsWith('/cleanup/preview') && method === 'GET') {
+      const id = path.split('/')[3];
+      return await handleCemeteryCleanupPreview(id, request, env, corsHeaders);
+    }
+
+    if (path === '/api/cleanup/global' && method === 'POST') {
+      return await handleGlobalCleanup(request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -3506,6 +3521,482 @@ function safeTokenCompare(a, b) {
 }
 
 // ── Utils ──
+
+// ── Phase 16.14: AI Batch Operations Handlers ──
+
+/**
+ * Computes a quick health score for a set of records.
+ * Reuses the same scoring logic as Phase 16.11 but works on an in-memory array.
+ */
+function computeQuickHealth(records) {
+  const recordCount = records.length;
+  if (recordCount === 0) return { grade: 'N/A', overallScore: 0 };
+
+  const essentialFields = ['name', 'birthDate', 'deathDate', 'cemeteryId'];
+  const optionalFields = ['photoRefs', 'inscription', 'sourceRefs', 'latitude', 'longitude', 'section', 'plot'];
+  let totalCompleteness = 0, totalCoverage = 0;
+  let criticalCount = 0, warningCount = 0, infoCount = 0;
+  let withPhotos = 0, withInscriptions = 0, withSources = 0, withCoords = 0;
+  let duplicateCount = 0;
+  const nameDateMap = {};
+  const currentYear = new Date().getFullYear();
+
+  for (const rec of records) {
+    let completeness = 0;
+    for (const field of essentialFields) {
+      if (rec[field] !== undefined && rec[field] !== null && rec[field] !== '') completeness += 25;
+    }
+    totalCompleteness += completeness;
+
+    let coverage = 0;
+    for (const field of optionalFields) {
+      if (rec[field] !== undefined && rec[field] !== null && rec[field] !== '') {
+        if (Array.isArray(rec[field]) ? rec[field].length > 0 : true) coverage += 100 / optionalFields.length;
+      }
+    }
+    totalCoverage += coverage;
+
+    // Quick anomaly count
+    if (rec.birthDate && rec.deathDate) {
+      const by = parseInt(String(rec.birthDate).substring(0, 4));
+      const dy = parseInt(String(rec.deathDate).substring(0, 4));
+      if (!isNaN(by) && !isNaN(dy)) {
+        if (by > dy) criticalCount++;
+        if (dy - by > 120) warningCount++;
+      }
+    }
+    if (rec.birthDate) {
+      const by = parseInt(String(rec.birthDate).substring(0, 4));
+      if (!isNaN(by) && by > currentYear) criticalCount++;
+    }
+    if (!rec.name && !rec.graveIdentifier) criticalCount++;
+
+    // Content coverage
+    if (rec.photoRefs && rec.photoRefs.length > 0) withPhotos++;
+    if (rec.inscription && rec.inscription.trim()) withInscriptions++;
+    if (rec.sourceRefs && rec.sourceRefs.length > 0) withSources++;
+    if (rec.latitude && rec.longitude) withCoords++;
+
+    // Duplicates
+    if (rec.name && rec.deathDate) {
+      const key = (rec.name || '').toLowerCase().trim() + '|' + rec.deathDate;
+      if (nameDateMap[key]) duplicateCount++;
+      else nameDateMap[key] = true;
+    }
+  }
+
+  const avgCompleteness = Math.round(totalCompleteness / recordCount);
+  const avgCoverage = Math.round(totalCoverage / recordCount);
+  const dataQualityScore = Math.round(avgCompleteness * 0.5 + avgCoverage * 0.5);
+  const totalAnomalies = criticalCount + warningCount + infoCount;
+  const anomalyRate = Math.round((totalAnomalies / recordCount) * 100);
+  const anomalyScore = Math.max(0, 100 - anomalyRate);
+  const photoCoverage = Math.round((withPhotos / recordCount) * 100);
+  const inscriptionCoverage = Math.round((withInscriptions / recordCount) * 100);
+  const sourceCoverage = Math.round((withSources / recordCount) * 100);
+  const coordinateCoverage = Math.round((withCoords / recordCount) * 100);
+  const contentAvg = Math.round((photoCoverage + inscriptionCoverage + sourceCoverage + coordinateCoverage) / 4);
+  const duplicateRate = Math.round((duplicateCount / recordCount) * 100);
+  const duplicateScore = Math.max(0, 100 - duplicateRate * 5);
+
+  const overallScore = Math.round(
+    dataQualityScore * 0.30 + anomalyScore * 0.25 +
+    contentAvg * 0.15 + duplicateScore * 0.15 + contentAvg * 0.15
+  );
+
+  let grade;
+  if (overallScore >= 90) grade = 'A';
+  else if (overallScore >= 80) grade = 'B';
+  else if (overallScore >= 70) grade = 'C';
+  else if (overallScore >= 60) grade = 'D';
+  else grade = 'F';
+
+  return {
+    grade,
+    overallScore,
+    dataQuality: dataQualityScore,
+    anomalyFree: anomalyScore,
+    contentCoverage: contentAvg,
+    duplicateFree: duplicateScore,
+    anomalies: { critical: criticalCount, warning: warningCount, total: totalAnomalies },
+    content: { photoCoverage, inscriptionCoverage, sourceCoverage, coordinateCoverage },
+    duplicates: { count: duplicateCount, rate: duplicateRate },
+    completeness: avgCompleteness,
+    coverage: avgCoverage
+  };
+}
+
+/**
+ * GET /api/cemeteries/:id/cleanup/preview
+ * Simulates a full cleanup pass without applying any changes.
+ * Returns before-health, proposed fixes, and estimated after-health.
+ */
+async function handleCemeteryCleanupPreview(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid cemetery ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      cemeteryId: safeId,
+      message: 'GitHub not configured — no cleanup preview available'
+    }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('graves', env);
+    const records = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        if (record.cemeteryId !== safeId && record.cemeteryId !== id) continue;
+        records.push(record);
+      } catch (e) { /* skip */ }
+    }
+
+    if (records.length === 0) {
+      return jsonResponse({
+        success: true,
+        cemeteryId: safeId,
+        message: 'No published records found'
+      }, 200, cors);
+    }
+
+    // Compute before-health
+    const beforeHealth = computeQuickHealth(records);
+
+    // Generate simulated fixes
+    let totalProposed = 0;
+    let safeProposed = 0;
+    let riskyProposed = 0;
+    const fixTypeCounts = {};
+    const simulatedRecords = records.map(rec => {
+      const fixes = generateAutoFixes(rec);
+      for (const fix of fixes) {
+        totalProposed++;
+        fixTypeCounts[fix.action] = (fixTypeCounts[fix.action] || 0) + 1;
+        if (fix.confidence === 'high') safeProposed++;
+        else riskyProposed++;
+      }
+
+      // Simulate applying safe fixes
+      const simulated = { ...rec };
+      for (const fix of fixes) {
+        if (fix.confidence === 'high') {
+          simulated[fix.field] = fix.proposedValue;
+        }
+      }
+      return simulated;
+    });
+
+    // Compute estimated after-health
+    const afterHealth = computeQuickHealth(simulatedRecords);
+
+    // Compute improvement
+    const scoreDelta = afterHealth.overallScore - beforeHealth.overallScore;
+    const gradeDelta = afterHealth.grade !== beforeHealth.grade
+      ? `${beforeHealth.grade} → ${afterHealth.grade}`
+      : null;
+    const anomalyDelta = beforeHealth.anomalies.total - afterHealth.anomalies.total;
+    const contentDelta = afterHealth.contentCoverage - beforeHealth.contentCoverage;
+
+    return jsonResponse({
+      success: true,
+      cemeteryId: safeId,
+      recordCount: records.length,
+      before: beforeHealth,
+      after: afterHealth,
+      improvement: {
+        scoreDelta: scoreDelta,
+        gradeChange: gradeDelta,
+        anomalyReduction: anomalyDelta,
+        contentCoverageGain: contentDelta,
+        fixesProposed: totalProposed,
+        safeFixes: safeProposed,
+        riskyFixes: riskyProposed,
+        fixTypeCounts: fixTypeCounts
+      }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to generate cleanup preview',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/cemeteries/:id/cleanup
+ * Runs a full cleanup pass: apply auto-fixes → re-score health.
+ * Body: { dryRun: boolean, fixTypes: string[] }
+ * Returns before/after health comparison and applied fix summary.
+ */
+async function handleCemeteryCleanup(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid cemetery ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      cemeteryId: safeId,
+      message: 'GitHub not configured — no cleanup available'
+    }, 200, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const dryRun = body && body.dryRun === true;
+    const allowedTypes = body && Array.isArray(body.fixTypes) ? body.fixTypes : null;
+
+    const files = await listFiles('graves', env);
+    const records = [];
+    const recordFiles = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        if (record.cemeteryId !== safeId && record.cemeteryId !== id) continue;
+        records.push(record);
+        recordFiles.push(file);
+      } catch (e) { /* skip */ }
+    }
+
+    if (records.length === 0) {
+      return jsonResponse({
+        success: true,
+        cemeteryId: safeId,
+        message: 'No published records found'
+      }, 200, cors);
+    }
+
+    // Compute before-health
+    const beforeHealth = computeQuickHealth(records);
+
+    // Apply fixes
+    let recordsFixed = 0;
+    let totalApplied = 0;
+    let totalFlagged = 0;
+    const fixTypeCounts = {};
+    const appliedSummary = [];
+
+    for (let i = 0; i < records.length; i++) {
+      const record = records[i];
+      const fixes = generateAutoFixes(record);
+      const filteredFixes = allowedTypes
+        ? fixes.filter(f => allowedTypes.includes(f.action))
+        : fixes;
+
+      const safeFixes = filteredFixes.filter(f => f.confidence === 'high');
+      const riskyFixes = filteredFixes.filter(f => f.confidence === 'medium');
+
+      totalApplied += safeFixes.length;
+      totalFlagged += riskyFixes.length;
+
+      for (const fix of safeFixes) {
+        fixTypeCounts[fix.action] = (fixTypeCounts[fix.action] || 0) + 1;
+      }
+
+      if (dryRun) continue;
+
+      if (safeFixes.length > 0) {
+        const updatedRecord = { ...record };
+        for (const fix of safeFixes) {
+          updatedRecord[fix.field] = fix.proposedValue;
+        }
+        updatedRecord.updated_date = new Date().toISOString();
+        await writeFile(`graves/${recordFiles[i]}`, JSON.stringify(updatedRecord, null, 2), env);
+        recordsFixed++;
+
+        appliedSummary.push({
+          recordId: record.id,
+          recordName: record.name || 'Unknown',
+          fixesApplied: safeFixes.length,
+          flagged: riskyFixes.length
+        });
+      }
+    }
+
+    // Compute after-health
+    // For dry run, simulate; for real run, re-read is expensive, so compute from simulated
+    const simulatedRecords = records.map(rec => {
+      const fixes = generateAutoFixes(rec);
+      const filtered = allowedTypes
+        ? fixes.filter(f => allowedTypes.includes(f.action))
+        : fixes;
+      const simulated = { ...rec };
+      for (const fix of filtered) {
+        if (fix.confidence === 'high') {
+          simulated[fix.field] = fix.proposedValue;
+        }
+      }
+      return simulated;
+    });
+
+    const afterHealth = computeQuickHealth(simulatedRecords);
+
+    // Compute improvement
+    const scoreDelta = afterHealth.overallScore - beforeHealth.overallScore;
+    const gradeDelta = afterHealth.grade !== beforeHealth.grade
+      ? `${beforeHealth.grade} → ${afterHealth.grade}`
+      : null;
+    const anomalyReduction = beforeHealth.anomalies.total - afterHealth.anomalies.total;
+    const contentGain = afterHealth.contentCoverage - beforeHealth.contentCoverage;
+
+    return jsonResponse({
+      success: true,
+      cemeteryId: safeId,
+      dryRun: dryRun,
+      recordCount: records.length,
+      before: beforeHealth,
+      after: afterHealth,
+      improvement: {
+        scoreDelta: scoreDelta,
+        gradeChange: gradeDelta,
+        anomalyReduction: anomalyReduction,
+        contentCoverageGain: contentGain
+      },
+      fixes: {
+        totalApplied: totalApplied,
+        totalFlagged: totalFlagged,
+        recordsFixed: dryRun ? 0 : recordsFixed,
+        byType: fixTypeCounts
+      },
+      appliedDetails: dryRun ? undefined : appliedSummary.slice(0, 100)
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to run cleanup',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/cleanup/global
+ * Runs cleanup preview across all cemeteries — no changes applied.
+ * Returns aggregated before/after stats.
+ */
+async function handleGlobalCleanup(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      message: 'GitHub not configured — no cleanup available'
+    }, 200, cors);
+  }
+
+  try {
+    // Gather all published records
+    const files = await listFiles('graves', env);
+    const records = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        records.push(record);
+      } catch (e) { /* skip */ }
+    }
+
+    if (records.length === 0) {
+      return jsonResponse({
+        success: true,
+        message: 'No published records found'
+      }, 200, cors);
+    }
+
+    // Compute global before-health
+    const beforeHealth = computeQuickHealth(records);
+
+    // Simulate fixes
+    let totalProposed = 0;
+    let safeProposed = 0;
+    let riskyProposed = 0;
+    const fixTypeCounts = {};
+    const cemeteryStats = {};
+
+    const simulatedRecords = records.map(rec => {
+      const fixes = generateAutoFixes(rec);
+      for (const fix of fixes) {
+        totalProposed++;
+        fixTypeCounts[fix.action] = (fixTypeCounts[fix.action] || 0) + 1;
+        if (fix.confidence === 'high') safeProposed++;
+        else riskyProposed++;
+      }
+
+      // Track per-cemetery stats
+      const cemId = rec.cemeteryId || 'unknown';
+      if (!cemeteryStats[cemId]) {
+        cemeteryStats[cemId] = { records: 0, fixes: 0 };
+      }
+      cemeteryStats[cemId].records++;
+      cemeteryStats[cemId].fixes += fixes.length;
+
+      // Simulate safe fixes
+      const simulated = { ...rec };
+      for (const fix of fixes) {
+        if (fix.confidence === 'high') {
+          simulated[fix.field] = fix.proposedValue;
+        }
+      }
+      return simulated;
+    });
+
+    const afterHealth = computeQuickHealth(simulatedRecords);
+
+    const scoreDelta = afterHealth.overallScore - beforeHealth.overallScore;
+    const gradeDelta = afterHealth.grade !== beforeHealth.grade
+      ? `${beforeHealth.grade} → ${afterHealth.grade}`
+      : null;
+
+    // Top cemeteries by fix count
+    const topCemeteries = Object.entries(cemeteryStats)
+      .map(([id, stats]) => ({ cemeteryId: id, records: stats.records, proposedFixes: stats.fixes }))
+      .sort((a, b) => b.proposedFixes - a.proposedFixes)
+      .slice(0, 10);
+
+    return jsonResponse({
+      success: true,
+      totalRecords: records.length,
+      totalCemeteries: Object.keys(cemeteryStats).length,
+      before: beforeHealth,
+      after: afterHealth,
+      improvement: {
+        scoreDelta: scoreDelta,
+        gradeChange: gradeDelta,
+        anomalyReduction: beforeHealth.anomalies.total - afterHealth.anomalies.total,
+        contentCoverageGain: afterHealth.contentCoverage - beforeHealth.contentCoverage
+      },
+      fixes: {
+        totalProposed: totalProposed,
+        safeFixes: safeProposed,
+        riskyFixes: riskyProposed,
+        byType: fixTypeCounts
+      },
+      topCemeteries: topCemeteries
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to run global cleanup',
+      message: error.message
+    }, 500, cors);
+  }
+}
 
 // ── Phase 16.13: AI Data Quality Auto-Fix Handlers ──
 

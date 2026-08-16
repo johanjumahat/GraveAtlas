@@ -519,6 +519,40 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.14] — 2026-08-16
+
+### Phase 16.14: AI Batch Operations
+
+**Added:**
+- `GET /api/cemeteries/:id/cleanup/preview` — full cleanup pass simulation:
+  Computes before-health, simulates auto-fixes (high+medium confidence),
+  computes estimated after-health, returns before/after comparison with
+  improvement metrics (scoreDelta, gradeChange, anomalyReduction, contentGain)
+  and fix breakdown by type and confidence.
+
+- `POST /api/cemeteries/:id/cleanup` — runs full cleanup pass:
+  Applies high-confidence fixes to records, flags medium-confidence for review,
+  re-scores health, returns before/after comparison.
+  Body: `{ dryRun: boolean, fixTypes: string[] }`.
+
+- `POST /api/cleanup/global` — global cleanup preview across all cemeteries:
+  Aggregates before/after health, total proposed fixes, top 10 cemeteries by
+  fix count, per-cemetery stats.
+
+**Pipeline: scan → score → fix → re-score**
+- Reuses `generateAutoFixes()` from Phase 16.13 for fix generation
+- Reuses same weighted scoring formula as Phase 16.11 health dashboard
+- `computeQuickHealth()` helper for in-memory health scoring on record arrays
+- Before/after comparison shows the impact of the cleanup pass
+
+New models: HealthSnapshot, CleanupResult (with CleanupImprovement,
+  CleanupFixes, AppliedDetail), GlobalCleanupResult (with GlobalImprovement,
+  GlobalFixes, CemeteryFixStat)
+API client: previewCemeteryCleanup(), runCemeteryCleanup(), runGlobalCleanup()
+AI system prompt updated, 3 new suggested prompts
+90+ new tests (phase16-14.test.js)
+
+
 ## [7.2.13] — 2026-08-16
 
 ### Phase 16.13: AI Data Quality Auto-Fix

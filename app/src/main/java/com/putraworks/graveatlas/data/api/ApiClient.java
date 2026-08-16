@@ -16,6 +16,8 @@ import com.putraworks.graveatlas.data.model.GlobalRecommendations;
 import com.putraworks.graveatlas.data.model.CemeteryAutoFixPreview;
 import com.putraworks.graveatlas.data.model.CemeteryAutoFixResult;
 import com.putraworks.graveatlas.data.model.RecordAutoFixResult;
+import com.putraworks.graveatlas.data.model.CleanupResult;
+import com.putraworks.graveatlas.data.model.GlobalCleanupResult;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -887,6 +889,123 @@ public class ApiClient {
         } catch (java.io.UnsupportedEncodingException e) {
             return value; // UTF-8 is always available on Android
         }
+    }
+
+    // ── Phase 16.14: AI Batch Operations ──
+
+    /**
+     * Preview a full cleanup pass for a cemetery (no changes applied).
+     * GET /api/cemeteries/{id}/cleanup/preview
+     */
+    public void previewCemeteryCleanup(String cemeteryId,
+                                          final ApiCallback<CleanupResult> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/cemeteries/" + cemeteryId + "/cleanup/preview")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        callback.onSuccess(CleanupResult.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse cleanup preview.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Run a full cleanup pass for a cemetery.
+     * POST /api/cemeteries/{id}/cleanup
+     * Body: { dryRun: boolean, fixTypes: string[] }
+     */
+    public void runCemeteryCleanup(String cemeteryId, boolean dryRun,
+                                     String[] fixTypes,
+                                     final ApiCallback<CleanupResult> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("dryRun", dryRun);
+            if (fixTypes != null) {
+                JSONArray arr = new JSONArray();
+                for (String t : fixTypes) arr.put(t);
+                body.put("fixTypes", arr);
+            }
+        } catch (Exception e) { /* ignore */ }
+
+        RequestBody rb = RequestBody.create(body.toString(), MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/cemeteries/" + cemeteryId + "/cleanup")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String respBody = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(respBody);
+                        callback.onSuccess(CleanupResult.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse cleanup result.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Run global cleanup preview across all cemeteries.
+     * POST /api/cleanup/global
+     */
+    public void runGlobalCleanup(final ApiCallback<GlobalCleanupResult> callback) {
+        RequestBody rb = RequestBody.create("{}", MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/cleanup/global")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        callback.onSuccess(GlobalCleanupResult.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse global cleanup result.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
     }
 
     // ── Phase 16.13: AI Data Quality Auto-Fix ──
