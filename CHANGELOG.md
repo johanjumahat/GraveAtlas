@@ -519,6 +519,48 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.12] — 2026-08-16
+
+### Phase 16.12: AI Smart Recommendations
+
+**Added:**
+- `GET /api/cemeteries/:id/recommendations` — analyzes cemetery data and generates
+  prioritized, actionable recommendations across 6 categories:
+  - data_quality: missing names, dates, coordinates, section/plot
+  - anomalies: critical issues, minor anomalies, statistical outliers
+  - enrichment: records that could benefit from AI enrichment
+  - duplicates: potential duplicate records (name + death date match)
+  - content: missing photos, inscriptions, sources
+  - connections: potential family groups from surname matching
+
+  Each recommendation includes:
+  - category, priority (critical/high/medium/low), title, description
+  - affectedRecords count, estimatedEffort (low/medium/high)
+  - actionEndpoint (nullable — API endpoint to address the issue)
+  - Sorted by priority (critical first)
+  - Summary with counts per priority level + recordsAnalyzed
+
+- `GET /api/recommendations/global` — global recommendations across all cemeteries:
+  - Aggregates missing sources, photos, dates, critical anomalies, duplicates
+  - Recommends per-cemetery health review for largest cemeteries
+  - Global summary with totalCemeteries and totalRecords
+
+- `CemeteryRecommendations` model with Recommendation inner class
+  (getPriorityOrder, getPriorityLabel, getCategoryIcon, getCriticalRecommendations,
+  getByCategory, hasUrgentIssues, getSummaryLine)
+- `GlobalRecommendations` model reusing Recommendation from CemeteryRecommendations
+- `ApiClient` methods: `getCemeteryRecommendations()`, `getGlobalRecommendations()`
+- AI system prompt updated with recommendations endpoint awareness
+- 3 new suggested prompts
+- 90 new tests (phase16-12.test.js)
+
+**Recommendation Logic:**
+- Critical: missing names, critical anomalies, >30% missing both dates
+- High: >50% missing sources, >60% missing photos, duplicates detected
+- Medium: >40% missing inscriptions, >30% enrichment needed, >50% missing coords
+- Low: family groups found, minor anomalies, statistical outliers, per-cemetery review
+
+
 ## [7.2.11] — 2026-08-16
 
 ### Phase 16.11: AI Cemetery Health Dashboard

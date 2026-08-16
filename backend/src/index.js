@@ -414,6 +414,16 @@ async function handleRequest(request, env, ctx) {
       return await handleGlobalHealthOverview(request, env, corsHeaders);
     }
 
+    // Phase 16.12: AI Smart Recommendations
+    if (path.startsWith('/api/cemeteries/') && path.endsWith('/recommendations') && method === 'GET') {
+      const id = path.split('/')[3];
+      return await handleCemeteryRecommendations(id, request, env, corsHeaders);
+    }
+
+    if (path === '/api/recommendations/global' && method === 'GET') {
+      return await handleGlobalRecommendations(request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -3475,6 +3485,557 @@ function safeTokenCompare(a, b) {
 }
 
 // ── Utils ──
+
+// ── Phase 16.12: AI Smart Recommendations Handlers ──
+
+/**
+ * GET /api/cemeteries/:id/recommendations
+ * Analyzes cemetery data and generates prioritized, actionable recommendations.
+ *
+ * Priority levels: critical, high, medium, low
+ * Each recommendation includes:
+ * - category: data_quality, anomalies, enrichment, duplicates, content, connections
+ * - priority: critical, high, medium, low
+ * - title: short actionable title
+ * - description: detailed explanation
+ * - affectedRecords: count of records affected
+ * - estimatedEffort: low, medium, high
+ * - actionEndpoint: API endpoint to address the issue
+ */
+async function handleCemeteryRecommendations(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid cemetery ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      cemeteryId: safeId,
+      recommendations: [],
+      message: 'GitHub not configured — no recommendations available'
+    }, 200, cors);
+  }
+
+  try {
+    // Gather all records for this cemetery
+    const files = await listFiles('graves', env);
+    const records = [];
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        if (record.cemeteryId !== safeId && record.cemeteryId !== id) continue;
+        records.push(record);
+      } catch (e) { /* skip */ }
+    }
+
+    const recordCount = records.length;
+    if (recordCount === 0) {
+      return jsonResponse({
+        success: true,
+        cemeteryId: safeId,
+        recommendations: [{
+          category: 'data_quality',
+          priority: 'critical',
+          title: 'No published records found',
+          description: 'This cemetery has no published records. Import or publish records to begin building the dataset.',
+          affectedRecords: 0,
+          estimatedEffort: 'medium',
+          actionEndpoint: '/api/import/score'
+        }],
+        summary: { total: 1, critical: 1, high: 0, medium: 0, low: 0 }
+      }, 200, cors);
+    }
+
+    const recommendations = [];
+    const currentYear = new Date().getFullYear();
+
+    // ── Analyze data quality ──
+    let missingBirthDate = 0, missingDeathDate = 0, missingName = 0, missingBothDates = 0;
+    let missingPhotos = 0, missingInscriptions = 0, missingSources = 0, missingCoords = 0;
+    let missingSectionPlot = 0;
+    let needsEnrichment = 0;
+    let criticalAnomalies = 0;
+    let warningAnomalies = 0;
+    let duplicateCount = 0;
+
+    // Track for duplicate detection
+    const nameDateMap = {};
+
+    // Track surname groups for connections
+    const surnameGroups = {};
+
+    // Track death years for outliers
+    const deathYears = [];
+
+    for (const rec of records) {
+      // Field completeness
+      if (!rec.birthDate) missingBirthDate++;
+      if (!rec.deathDate) missingDeathDate++;
+      if (!rec.birthDate && !rec.deathDate) missingBothDates++;
+      if (!rec.name && !rec.graveIdentifier) missingName++;
+      if (!rec.photoRefs || rec.photoRefs.length === 0) missingPhotos++;
+      if (!rec.inscription || !rec.inscription.trim()) missingInscriptions++;
+      if (!rec.sourceRefs || rec.sourceRefs.length === 0) missingSources++;
+      if (!rec.latitude || !rec.longitude) missingCoords++;
+      if (!rec.section || !rec.plot) missingSectionPlot++;
+
+      // Enrichment needs
+      if (rec.name && !rec.givenNames && !rec.familyName) needsEnrichment++;
+      if (rec.photoRefs && rec.photoRefs.length > 0 && (!rec.inscription || !rec.inscription.trim())) needsEnrichment++;
+
+      // Anomaly detection
+      if (rec.birthDate && rec.deathDate) {
+        const by = parseInt(String(rec.birthDate).substring(0, 4));
+        const dy = parseInt(String(rec.deathDate).substring(0, 4));
+        if (!isNaN(by) && !isNaN(dy)) {
+          if (by > dy) criticalAnomalies++;
+          if (dy - by > 120) warningAnomalies++;
+        }
+      }
+      if (rec.birthDate) {
+        const by = parseInt(String(rec.birthDate).substring(0, 4));
+        if (!isNaN(by) && by > currentYear) criticalAnomalies++;
+        if (!isNaN(by) && by < 1700) warningAnomalies++;
+      }
+      if (rec.deathDate) {
+        const dy = parseInt(String(rec.deathDate).substring(0, 4));
+        if (!isNaN(dy) && dy > currentYear) criticalAnomalies++;
+        if (!isNaN(dy)) deathYears.push(dy);
+      }
+      if (!rec.name && !rec.graveIdentifier) criticalAnomalies++;
+      if (rec.latitude && (rec.latitude < -90 || rec.latitude > 90)) criticalAnomalies++;
+      if (rec.longitude && (rec.longitude < -180 || rec.longitude > 180)) criticalAnomalies++;
+
+      // Duplicate detection
+      if (rec.name && rec.deathDate) {
+        const key = (rec.name || '').toLowerCase().trim() + '|' + rec.deathDate;
+        if (nameDateMap[key]) {
+          duplicateCount++;
+        } else {
+          nameDateMap[key] = true;
+        }
+      }
+
+      // Surname grouping for connections
+      if (rec.name) {
+        const parts = rec.name.trim().split(/\s+/);
+        const surname = parts.length > 1 ? parts[parts.length - 1] : '';
+        if (surname.length > 1) {
+          const key = surname.toLowerCase();
+          if (!surnameGroups[key]) surnameGroups[key] = 0;
+          surnameGroups[key]++;
+        }
+      }
+    }
+
+    const photoPct = Math.round((missingPhotos / recordCount) * 100);
+    const inscriptionPct = Math.round((missingInscriptions / recordCount) * 100);
+    const sourcePct = Math.round((missingSources / recordCount) * 100);
+    const coordPct = Math.round((missingCoords / recordCount) * 100);
+    const birthPct = Math.round((missingBirthDate / recordCount) * 100);
+    const enrichmentPct = Math.round((needsEnrichment / recordCount) * 100);
+
+    // ── Generate recommendations ──
+
+    // Critical: missing names
+    if (missingName > 0) {
+      recommendations.push({
+        category: 'data_quality',
+        priority: 'critical',
+        title: `${missingName} records missing name or identifier`,
+        description: `${missingName} record(s) have no name or grave identifier. These records cannot be properly searched, cited, or connected. Add names from inscriptions, photos, or source documents.`,
+        affectedRecords: missingName,
+        estimatedEffort: missingName > 10 ? 'high' : 'medium',
+        actionEndpoint: `/api/graves/{id}/enrich`
+      });
+    }
+
+    // Critical: date anomalies
+    if (criticalAnomalies > 0) {
+      recommendations.push({
+        category: 'anomalies',
+        priority: 'critical',
+        title: `${criticalAnomalies} critical anomalies detected`,
+        description: `${criticalAnomalies} critical anomaly/anomalies found (birth after death, future dates, invalid coordinates, missing names). These indicate data corruption and should be fixed immediately.`,
+        affectedRecords: criticalAnomalies,
+        estimatedEffort: criticalAnomalies > 10 ? 'high' : 'medium',
+        actionEndpoint: `/api/cemeteries/${safeId}/anomalies`
+      });
+    }
+
+    // Critical: missing both dates
+    if (missingBothDates > 0) {
+      const pct = Math.round((missingBothDates / recordCount) * 100);
+      recommendations.push({
+        category: 'data_quality',
+        priority: pct > 30 ? 'critical' : 'high',
+        title: `${missingBothDates} records have no birth or death date (${pct}%)`,
+        description: `${missingBothDates} record(s) lack both birth and death dates. Without dates, records cannot appear in timeline views or be sorted chronologically. Check inscriptions and sources for date information.`,
+        affectedRecords: missingBothDates,
+        estimatedEffort: missingBothDates > 20 ? 'high' : 'medium',
+        actionEndpoint: `/api/graves/{id}/enrich`
+      });
+    }
+
+    // High: missing sources
+    if (sourcePct > 50) {
+      recommendations.push({
+        category: 'content',
+        priority: 'high',
+        title: `${missingSources} records lack source attribution (${sourcePct}%)`,
+        description: `${sourcePct}% of records have no source references. Without sources, data cannot be verified or trusted. Add source citations from available archives, transcripts, or official records.`,
+        affectedRecords: missingSources,
+        estimatedEffort: 'high',
+        actionEndpoint: null
+      });
+    }
+
+    // High: missing photos
+    if (photoPct > 60) {
+      recommendations.push({
+        category: 'content',
+        priority: 'high',
+        title: `${missingPhotos} records have no photos (${photoPct}%)`,
+        description: `${photoPct}% of records have no associated photographs. Photos help with verification and user engagement. Consider organizing a photo survey or importing from available image archives.`,
+        affectedRecords: missingPhotos,
+        estimatedEffort: 'high',
+        actionEndpoint: null
+      });
+    }
+
+    // High: duplicates
+    if (duplicateCount > 0) {
+      recommendations.push({
+        category: 'duplicates',
+        priority: 'high',
+        title: `${duplicateCount} potential duplicate records detected`,
+        description: `${duplicateCount} record(s) share the same name and death date. Duplicates create confusion and split information. Review and merge duplicate records.`,
+        affectedRecords: duplicateCount,
+        estimatedEffort: 'medium',
+        actionEndpoint: `/api/cemeteries/${safeId}/duplicates`
+      });
+    }
+
+    // Medium: missing inscriptions
+    if (inscriptionPct > 40) {
+      recommendations.push({
+        category: 'content',
+        priority: 'medium',
+        title: `${missingInscriptions} records lack transcribed inscriptions (${inscriptionPct}%)`,
+        description: `${inscriptionPct}% of records have no transcribed inscription. Inscriptions often contain biographical details, family relationships, and epitaphs valuable for research.`,
+        affectedRecords: missingInscriptions,
+        estimatedEffort: 'high',
+        actionEndpoint: null
+      });
+    }
+
+    // Medium: enrichment needed
+    if (enrichmentPct > 30) {
+      recommendations.push({
+        category: 'enrichment',
+        priority: 'medium',
+        title: `${needsEnrichment} records could benefit from AI enrichment (${enrichmentPct}%)`,
+        description: `${enrichmentPct}% of records have names that could be parsed into given/family names, or photos without transcribed inscriptions. Run AI enrichment to extract structured data.`,
+        affectedRecords: needsEnrichment,
+        estimatedEffort: 'low',
+        actionEndpoint: `/api/graves/{id}/enrich`
+      });
+    }
+
+    // Medium: missing coordinates
+    if (coordPct > 50) {
+      recommendations.push({
+        category: 'data_quality',
+        priority: 'medium',
+        title: `${missingCoords} records lack GPS coordinates (${coordPct}%)`,
+        description: `${coordPct}% of records have no coordinates. Coordinates enable map-based discovery and spatial search. Add coordinates from GPS survey or cemetery plot maps.`,
+        affectedRecords: missingCoords,
+        estimatedEffort: 'medium',
+        actionEndpoint: null
+      });
+    }
+
+    // Medium: missing section/plot
+    if (missingSectionPlot > 0) {
+      const pct = Math.round((missingSectionPlot / recordCount) * 100);
+      if (pct > 50) {
+        recommendations.push({
+          category: 'data_quality',
+          priority: 'medium',
+          title: `${missingSectionPlot} records lack section/plot info (${pct}%)`,
+          description: `${pct}% of records have no section or plot assignment. This information helps visitors locate graves physically within the cemetery.`,
+          affectedRecords: missingSectionPlot,
+          estimatedEffort: 'medium',
+          actionEndpoint: null
+        });
+      }
+    }
+
+    // Low: family connections
+    const familyGroups = Object.values(surnameGroups).filter(c => c >= 2).length;
+    if (familyGroups > 0) {
+      recommendations.push({
+        category: 'connections',
+        priority: 'low',
+        title: `${familyGroups} potential family groups detected`,
+        description: `${familyGroups} surname group(s) with 2+ records were found. Explore family connections to build relationship networks between records.`,
+        affectedRecords: familyGroups,
+        estimatedEffort: 'low',
+        actionEndpoint: `/api/cemeteries/${safeId}/connections`
+      });
+    }
+
+    // Low: warning anomalies
+    if (warningAnomalies > 0) {
+      recommendations.push({
+        category: 'anomalies',
+        priority: 'low',
+        title: `${warningAnomalies} minor anomalies to review`,
+        description: `${warningAnomalies} warning-level anomaly/anomalies detected (lifespan >120, pre-1700 dates, short names). These may be valid but should be reviewed.`,
+        affectedRecords: warningAnomalies,
+        estimatedEffort: 'low',
+        actionEndpoint: `/api/cemeteries/${safeId}/anomalies`
+      });
+    }
+
+    // Low: statistical outliers
+    if (deathYears.length > 0) {
+      const sorted = [...deathYears].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      const median = sorted.length % 2 === 0 ? Math.round((sorted[mid - 1] + sorted[mid]) / 2) : sorted[mid];
+      let outliers = 0;
+      for (const y of deathYears) {
+        if (Math.abs(y - median) > 100) outliers++;
+      }
+      if (outliers > 0) {
+        recommendations.push({
+          category: 'anomalies',
+          priority: 'low',
+          title: `${outliers} statistical outliers in death dates`,
+          description: `${outliers} record(s) have death dates more than 100 years from the cemetery median (${median}). These may represent data entry errors or genuinely old records.`,
+          affectedRecords: outliers,
+          estimatedEffort: 'low',
+          actionEndpoint: `/api/cemeteries/${safeId}/anomalies`
+        });
+      }
+    }
+
+    // Sort by priority: critical > high > medium > low
+    const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+    recommendations.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+
+    // Build summary
+    const summary = {
+      total: recommendations.length,
+      critical: recommendations.filter(r => r.priority === 'critical').length,
+      high: recommendations.filter(r => r.priority === 'high').length,
+      medium: recommendations.filter(r => r.priority === 'medium').length,
+      low: recommendations.filter(r => r.priority === 'low').length,
+      recordsAnalyzed: recordCount
+    };
+
+    return jsonResponse({
+      success: true,
+      cemeteryId: safeId,
+      recommendations: recommendations,
+      summary: summary
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to generate recommendations',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/recommendations/global
+ * Returns prioritized recommendations across all cemeteries.
+ */
+async function handleGlobalRecommendations(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      recommendations: [],
+      message: 'GitHub not configured — no recommendations available'
+    }, 200, cors);
+  }
+
+  try {
+    // List all cemetery files
+    const cemFiles = await listFiles('cemeteries', env);
+    const cemeteryIds = [];
+    for (const file of cemFiles) {
+      try {
+        const content = await readFile(`cemeteries/${file}`, env);
+        if (!content) continue;
+        const cem = JSON.parse(content);
+        cemeteryIds.push({ id: cem.id || file.replace('.json', ''), name: cem.name || cem.id });
+      } catch (e) { /* skip */ }
+    }
+
+    // Aggregate stats across all records
+    const graveFiles = await listFiles('graves', env);
+    let totalRecords = 0;
+    let totalMissingSources = 0;
+    let totalMissingPhotos = 0;
+    let totalMissingDates = 0;
+    let totalCriticalAnomalies = 0;
+    let totalDuplicates = 0;
+    const nameDateMap = {};
+    const cemeteryRecordCounts = {};
+
+    for (const file of graveFiles) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const rec = JSON.parse(content);
+        if (rec.status !== 'published') continue;
+        totalRecords++;
+
+        const cemId = rec.cemeteryId || 'unknown';
+        if (!cemeteryRecordCounts[cemId]) cemeteryRecordCounts[cemId] = 0;
+        cemeteryRecordCounts[cemId]++;
+
+        if (!rec.sourceRefs || rec.sourceRefs.length === 0) totalMissingSources++;
+        if (!rec.photoRefs || rec.photoRefs.length === 0) totalMissingPhotos++;
+        if (!rec.birthDate && !rec.deathDate) totalMissingDates++;
+
+        // Quick anomaly check
+        if (!rec.name && !rec.graveIdentifier) totalCriticalAnomalies++;
+        if (rec.birthDate && rec.deathDate) {
+          const by = parseInt(String(rec.birthDate).substring(0, 4));
+          const dy = parseInt(String(rec.deathDate).substring(0, 4));
+          if (!isNaN(by) && !isNaN(dy) && by > dy) totalCriticalAnomalies++;
+        }
+
+        // Duplicate check (global)
+        if (rec.name && rec.deathDate) {
+          const key = (rec.name || '').toLowerCase().trim() + '|' + rec.deathDate;
+          if (nameDateMap[key]) totalDuplicates++;
+          else nameDateMap[key] = true;
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    const recommendations = [];
+
+    if (totalCriticalAnomalies > 0) {
+      recommendations.push({
+        category: 'anomalies',
+        priority: 'critical',
+        title: `${totalCriticalAnomalies} critical anomalies across all cemeteries`,
+        description: 'Critical anomalies detected globally (missing names, birth after death, invalid coordinates). These indicate data corruption requiring immediate attention.',
+        affectedRecords: totalCriticalAnomalies,
+        estimatedEffort: 'high',
+        actionEndpoint: '/api/health/overview'
+      });
+    }
+
+    if (totalDuplicates > 0) {
+      recommendations.push({
+        category: 'duplicates',
+        priority: 'high',
+        title: `${totalDuplicates} potential duplicates across all cemeteries`,
+        description: 'Records sharing the same name and death date were found. These may be duplicates from overlapping imports or cross-cemetery burials that need review.',
+        affectedRecords: totalDuplicates,
+        estimatedEffort: 'medium',
+        actionEndpoint: null
+      });
+    }
+
+    const sourcePct = totalRecords > 0 ? Math.round((totalMissingSources / totalRecords) * 100) : 0;
+    if (sourcePct > 50) {
+      recommendations.push({
+        category: 'content',
+        priority: 'high',
+        title: `${totalMissingSources} records globally lack source attribution (${sourcePct}%)`,
+        description: 'More than half of all records have no source references. Source citations are essential for data trustworthiness and verifiability.',
+        affectedRecords: totalMissingSources,
+        estimatedEffort: 'high',
+        actionEndpoint: null
+      });
+    }
+
+    const photoPct = totalRecords > 0 ? Math.round((totalMissingPhotos / totalRecords) * 100) : 0;
+    if (photoPct > 60) {
+      recommendations.push({
+        category: 'content',
+        priority: 'medium',
+        title: `${totalMissingPhotos} records have no photos (${photoPct}%)`,
+        description: 'Photos improve record verification and user engagement. Consider organizing photo surveys for cemeteries with low photo coverage.',
+        affectedRecords: totalMissingPhotos,
+        estimatedEffort: 'high',
+        actionEndpoint: null
+      });
+    }
+
+    if (totalMissingDates > 0) {
+      const pct = totalRecords > 0 ? Math.round((totalMissingDates / totalRecords) * 100) : 0;
+      if (pct > 20) {
+        recommendations.push({
+          category: 'data_quality',
+          priority: 'medium',
+          title: `${totalMissingDates} records have no birth or death date (${pct}%)`,
+          description: 'Records without dates cannot appear in timeline views. Check inscriptions and sources for date information.',
+          affectedRecords: totalMissingDates,
+          estimatedEffort: 'medium',
+          actionEndpoint: null
+        });
+      }
+    }
+
+    // Recommend per-cemetery review for largest cemeteries
+    const sortedCems = Object.entries(cemeteryRecordCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3);
+
+    for (const [cemId, count] of sortedCems) {
+      if (count > 50) {
+        recommendations.push({
+          category: 'data_quality',
+          priority: 'low',
+          title: `Review health for cemetery with ${count} records`,
+          description: `Cemetery ${cemId} has ${count} published records. Run the health dashboard for a detailed quality assessment.`,
+          affectedRecords: count,
+          estimatedEffort: 'low',
+          actionEndpoint: `/api/cemeteries/${cemId}/health`
+        });
+      }
+    }
+
+    const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+    recommendations.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+
+    const summary = {
+      total: recommendations.length,
+      critical: recommendations.filter(r => r.priority === 'critical').length,
+      high: recommendations.filter(r => r.priority === 'high').length,
+      medium: recommendations.filter(r => r.priority === 'medium').length,
+      low: recommendations.filter(r => r.priority === 'low').length,
+      totalCemeteries: cemeteryIds.length,
+      totalRecords: totalRecords
+    };
+
+    return jsonResponse({
+      success: true,
+      recommendations: recommendations,
+      summary: summary
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to generate global recommendations',
+      message: error.message
+    }, 500, cors);
+  }
+}
 
 // ── Phase 16.11: AI Cemetery Health Dashboard Handlers ──
 
