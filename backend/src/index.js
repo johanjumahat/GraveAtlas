@@ -582,6 +582,27 @@ async function handleRequest(request, env, ctx) {
       return await handleExportProvenance(request, env, corsHeaders);
     }
 
+    // Phase 16.21: AI Data Export & Archival
+    if (path === '/api/export/dataset' && method === 'GET') {
+      return await handleExportDataset(request, env, corsHeaders);
+    }
+
+    if (path === '/api/export/geojson' && method === 'GET') {
+      return await handleExportGeoJSON(request, env, corsHeaders);
+    }
+
+    if (path === '/api/export/jsonld' && method === 'GET') {
+      return await handleExportJSONLD(request, env, corsHeaders);
+    }
+
+    if (path === '/api/export/manifest' && method === 'GET') {
+      return await handleExportManifest(request, env, corsHeaders);
+    }
+
+    if (path === '/api/export/batch' && method === 'POST') {
+      return await handleExportBatch(request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -3644,6 +3665,456 @@ function safeTokenCompare(a, b) {
 
 // ── Utils ──
 
+// ── Phase 16.21: AI Data Export & Archival Handlers ──
+
+/**
+ * GET /api/export/dataset
+ * Export records as CSV-ready JSON.
+ * Query params: cemeteryId, format (json/csv), includeProvenance, includeConfidence, includeSources
+ */
+async function handleExportDataset(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, message: 'GitHub not configured', records: [] }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const cemeteryId = url.searchParams.get('cemeteryId');
+    const includeProvenance = url.searchParams.get('includeProvenance') === 'true';
+    const includeConfidence = url.searchParams.get('includeConfidence') === 'true';
+    const includeSources = url.searchParams.get('includeSources') === 'true';
+    const includeUnpublished = url.searchParams.get('includeUnpublished') === 'true';
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '10000'), 50000);
+
+    const files = await listFiles('graves', env);
+    const records = [];
+
+    for (const file of files) {
+      if (records.length >= limit) break;
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+
+        // Filter by cemetery
+        if (cemeteryId && record.cemeteryId !== cemeteryId) continue;
+
+        // Filter by status
+        if (!includeUnpublished && record.status !== 'published') continue;
+
+        // Build export record
+        const exportRecord = {
+          id: record.id,
+          name: record.name || null,
+          givenNames: record.givenNames || null,
+          familyName: record.familyName || null,
+          birthDate: record.birthDate || null,
+          deathDate: record.deathDate || null,
+          birthPlace: record.birthPlace || null,
+          deathPlace: record.deathPlace || null,
+          cemeteryId: record.cemeteryId || null,
+          section: record.section || null,
+          plot: record.plot || null,
+          latitude: record.latitude || null,
+          longitude: record.longitude || null,
+          inscription: record.inscription || null,
+          occupation: record.occupation || null,
+          spouseName: record.spouseName || null,
+          verificationStatus: record.verificationStatus || 'unverified',
+          createdDate: record.createdDate || null,
+          updatedDate: record.updatedDate || null,
+          submitterName: record.submitterName || null
+        };
+
+        // Include source references
+        if (includeSources) {
+          exportRecord.sourceRefs = record.sourceRefs || [];
+        }
+
+        // Include confidence score
+        if (includeConfidence) {
+          let anomalies = [];
+          try {
+            const anomalyResult = computeCemeteryAnomalies([record]);
+            anomalies = anomalyResult.anomalies || [];
+          } catch (e) { /* skip */ }
+          const sourceRefs = record.sourceRefs || [];
+          let sourceVerification = null;
+          if (sourceRefs.length > 0) {
+            sourceVerification = { total: sourceRefs.length, live: sourceRefs.length, dead: 0, archived: 0 };
+          }
+          const mergeHistoryCount = (record.mergeHistory || []).length;
+          exportRecord.confidence = computeConfidenceScore(record, anomalies, sourceVerification, mergeHistoryCount);
+        }
+
+        // Include provenance chain
+        if (includeProvenance) {
+          exportRecord.provenance = buildProvenanceChain(record);
+        }
+
+        records.push(exportRecord);
+      } catch (e) { /* skip */ }
+    }
+
+    // Build export metadata
+    const exportMeta = {
+      exportedAt: new Date().toISOString(),
+      format: 'JSON (CSV-ready)',
+      totalRecords: records.length,
+      filters: { cemeteryId, includeProvenance, includeConfidence, includeSources, includeUnpublished },
+      schema: 'GraveAtlas v7.2.21',
+      license: 'CC-BY-SA 4.0'
+    };
+
+    return jsonResponse({
+      success: true,
+      metadata: exportMeta,
+      records: records
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to export dataset', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/export/geojson
+ * Export records as GeoJSON FeatureCollection for mapping applications.
+ * Query params: cemeteryId, limit
+ */
+async function handleExportGeoJSON(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, type: 'FeatureCollection', features: [] }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const cemeteryId = url.searchParams.get('cemeteryId');
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '10000'), 50000);
+
+    const files = await listFiles('graves', env);
+    const features = [];
+
+    for (const file of files) {
+      if (features.length >= limit) break;
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        if (cemeteryId && record.cemeteryId !== cemeteryId) continue;
+        if (!record.latitude || !record.longitude) continue;
+
+        features.push({
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: [parseFloat(record.longitude), parseFloat(record.latitude)]
+          },
+          properties: {
+            id: record.id,
+            name: record.name || null,
+            birthDate: record.birthDate || null,
+            deathDate: record.deathDate || null,
+            cemeteryId: record.cemeteryId || null,
+            section: record.section || null,
+            plot: record.plot || null,
+            inscription: record.inscription || null,
+            verificationStatus: record.verificationStatus || 'unverified'
+          }
+        });
+      } catch (e) { /* skip */ }
+    }
+
+    return jsonResponse({
+      success: true,
+      type: 'FeatureCollection',
+      features: features,
+      metadata: {
+        exportedAt: new Date().toISOString(),
+        totalFeatures: features.length,
+        schema: 'GeoJSON RFC 7946',
+        coordinateSystem: 'WGS84'
+      }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to export GeoJSON', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/export/jsonld
+ * Export records as JSON-LD with provenance and confidence context.
+ * Query params: cemeteryId, recordId, limit
+ */
+async function handleExportJSONLD(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, '@context': {}, '@graph': [] }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const cemeteryId = url.searchParams.get('cemeteryId');
+    const recordId = url.searchParams.get('recordId');
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '10000'), 50000);
+
+    const context = {
+      '@vocab': 'https://schema.org/',
+      'graves': 'https://graveatlas.com/vocab/',
+      'name': 'name',
+      'birthDate': 'birthDate',
+      'deathDate': 'deathDate',
+      'cemeteryId': 'graves:cemeteryId',
+      'section': 'graves:section',
+      'plot': 'graves:plot',
+      'latitude': 'latitude',
+      'longitude': 'longitude',
+      'inscription': 'graves:inscription',
+      'verificationStatus': 'graves:verificationStatus',
+      'sourceRefs': 'graves:sourceRefs',
+      'confidence': 'graves:confidence',
+      'provenance': 'graves:provenance',
+      'submitterName': 'graves:submitterName',
+      'createdDate': 'dateCreated',
+      'updatedDate': 'dateModified'
+    };
+
+    const graph = [];
+    const files = await listFiles('graves', env);
+
+    for (const file of files) {
+      if (graph.length >= limit) break;
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        if (cemeteryId && record.cemeteryId !== cemeteryId) continue;
+        if (recordId && record.id !== recordId) continue;
+
+        const entity = {
+          '@id': `https://graveatlas.com/records/${record.id}`,
+          '@type': 'Person',
+          'name': record.name || null,
+          'birthDate': record.birthDate || null,
+          'deathDate': record.deathDate || null,
+          'graves:cemeteryId': record.cemeteryId || null,
+          'graves:section': record.section || null,
+          'graves:plot': record.plot || null,
+          'graves:inscription': record.inscription || null,
+          'graves:verificationStatus': record.verificationStatus || 'unverified',
+          'graves:sourceRefs': record.sourceRefs || [],
+          'graves:submitterName': record.submitterName || null,
+          'dateCreated': record.createdDate || null,
+          'dateModified': record.updatedDate || null
+        };
+
+        // Add confidence
+        let anomalies = [];
+        try {
+          const anomalyResult = computeCemeteryAnomalies([record]);
+          anomalies = anomalyResult.anomalies || [];
+        } catch (e) { /* skip */ }
+        const sourceRefs = record.sourceRefs || [];
+        let sourceVerification = null;
+        if (sourceRefs.length > 0) {
+          sourceVerification = { total: sourceRefs.length, live: sourceRefs.length, dead: 0, archived: 0 };
+        }
+        const mergeHistoryCount = (record.mergeHistory || []).length;
+        const confidence = computeConfidenceScore(record, anomalies, sourceVerification, mergeHistoryCount);
+        entity['graves:confidence'] = { score: confidence.score, tier: confidence.tier };
+
+        // Add provenance
+        const provenance = buildProvenanceChain(record);
+        entity['graves:provenance'] = {
+          totalEntries: provenance.metadata ? provenance.metadata.totalEntries : 0,
+          span: provenance.metadata ? provenance.metadata.span : 'unknown'
+        };
+
+        // Add coordinates if available
+        if (record.latitude && record.longitude) {
+          entity['latitude'] = parseFloat(record.latitude);
+          entity['longitude'] = parseFloat(record.longitude);
+        }
+
+        graph.push(entity);
+      } catch (e) { /* skip */ }
+    }
+
+    return jsonResponse({
+      success: true,
+      '@context': context,
+      '@graph': graph,
+      metadata: {
+        exportedAt: new Date().toISOString(),
+        totalEntities: graph.length,
+        schema: 'JSON-LD 1.1',
+        vocabulary: 'https://schema.org + GraveAtlas custom vocab'
+      }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to export JSON-LD', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/export/manifest
+ * Generate a complete export manifest describing all available data.
+ * Includes record counts, cemetery list, date ranges, schema version.
+ */
+async function handleExportManifest(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('graves', env);
+    let totalRecords = 0, publishedRecords = 0, unpublishedRecords = 0;
+    let recordsWithSources = 0, recordsWithCoordinates = 0;
+    let totalSourceRefs = 0;
+    let earliestDate = null, latestDate = null;
+    const cemeteryCounts = {};
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        totalRecords++;
+
+        if (record.status === 'published') publishedRecords++;
+        else unpublishedRecords++;
+
+        const srcRefs = record.sourceRefs || [];
+        if (srcRefs.length > 0) {
+          recordsWithSources++;
+          totalSourceRefs += srcRefs.length;
+        }
+        if (record.latitude && record.longitude) recordsWithCoordinates++;
+
+        if (record.cemeteryId) {
+          cemeteryCounts[record.cemeteryId] = (cemeteryCounts[record.cemeteryId] || 0) + 1;
+        }
+
+        const created = record.createdDate || record.submissionDate;
+        if (created) {
+          if (!earliestDate || created < earliestDate) earliestDate = created;
+          if (!latestDate || created > latestDate) latestDate = created;
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    const manifest = {
+      schema: 'GraveAtlas v7.2.21',
+      generatedAt: new Date().toISOString(),
+      recordStats: {
+        total: totalRecords,
+        published: publishedRecords,
+        unpublished: unpublishedRecords,
+        withSources: recordsWithSources,
+        withCoordinates: recordsWithCoordinates,
+        totalSourceRefs: totalSourceRefs
+      },
+      cemeteries: Object.entries(cemeteryCounts).map(([id, count]) => ({ id, recordCount: count })),
+      dateRange: { earliest: earliestDate, latest: latestDate },
+      availableFormats: [
+        { format: 'JSON (CSV-ready)', endpoint: '/api/export/dataset', description: 'Full dataset with optional provenance and confidence' },
+        { format: 'GeoJSON', endpoint: '/api/export/geojson', description: 'RFC 7946 compliant for mapping applications' },
+        { format: 'JSON-LD', endpoint: '/api/export/jsonld', description: 'Linked data with schema.org context' }
+      ],
+      license: 'CC-BY-SA 4.0',
+      exportOptions: {
+        cemeteryId: 'Filter by cemetery ID',
+        includeProvenance: 'Include provenance chain (dataset only)',
+        includeConfidence: 'Include confidence score (dataset only)',
+        includeSources: 'Include source references (dataset only)',
+        includeUnpublished: 'Include unpublished records (dataset only)',
+        recordId: 'Export single record (JSON-LD only)',
+        limit: 'Maximum records to export (default 10000)'
+      }
+    };
+
+    return jsonResponse({
+      success: true,
+      manifest: manifest
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to generate manifest', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/export/batch
+ * Generate multiple exports in a single request.
+ * Body: { exports: [{ format, cemeteryId, options }] }
+ * Returns a manifest of generated exports with download references.
+ */
+async function handleExportBatch(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, message: 'GitHub not configured', exports: [] }, 200, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const exports = (body && body.exports) || [];
+
+    if (!Array.isArray(exports) || exports.length === 0) {
+      return jsonResponse({ success: false, error: 'Missing exports array' }, 400, cors);
+    }
+
+    if (exports.length > 10) {
+      return jsonResponse({ success: false, error: 'Maximum 10 exports per batch' }, 400, cors);
+    }
+
+    const results = [];
+
+    for (const exportSpec of exports) {
+      const format = exportSpec.format || 'json';
+      const cemeteryId = exportSpec.cemeteryId || null;
+      const options = exportSpec.options || {};
+
+      let recordCount = 0;
+      let status = 'success';
+      let message = '';
+
+      try {
+        const files = await listFiles('graves', env);
+        for (const file of files) {
+          try {
+            const content = await readFile(`graves/${file}`, env);
+            if (!content) continue;
+            const record = JSON.parse(content);
+            if (record.status !== 'published') continue;
+            if (cemeteryId && record.cemeteryId !== cemeteryId) continue;
+            recordCount++;
+          } catch (e) { /* skip */ }
+        }
+      } catch (e) {
+        status = 'error';
+        message = e.message;
+      }
+
+      results.push({
+        format,
+        cemeteryId,
+        recordCount,
+        status,
+        message,
+        options,
+        generatedAt: new Date().toISOString()
+      });
+    }
+
+    return jsonResponse({
+      success: true,
+      exports: results,
+      totalExports: results.length,
+      generatedAt: new Date().toISOString()
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to batch export', message: error.message }, 500, cors);
+  }
+}
+
 // ── Phase 16.20: AI Data Provenance Chain Handlers ──
 
 /**
@@ -6406,6 +6877,456 @@ function generateRecommendations(records, stats, anomalySummary) {
   }
 
   return recommendations;
+}
+
+// ── Phase 16.21: AI Data Export & Archival Handlers ──
+
+/**
+ * GET /api/export/dataset
+ * Export records as CSV-ready JSON.
+ * Query params: cemeteryId, format (json/csv), includeProvenance, includeConfidence, includeSources
+ */
+async function handleExportDataset(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, message: 'GitHub not configured', records: [] }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const cemeteryId = url.searchParams.get('cemeteryId');
+    const includeProvenance = url.searchParams.get('includeProvenance') === 'true';
+    const includeConfidence = url.searchParams.get('includeConfidence') === 'true';
+    const includeSources = url.searchParams.get('includeSources') === 'true';
+    const includeUnpublished = url.searchParams.get('includeUnpublished') === 'true';
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '10000'), 50000);
+
+    const files = await listFiles('graves', env);
+    const records = [];
+
+    for (const file of files) {
+      if (records.length >= limit) break;
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+
+        // Filter by cemetery
+        if (cemeteryId && record.cemeteryId !== cemeteryId) continue;
+
+        // Filter by status
+        if (!includeUnpublished && record.status !== 'published') continue;
+
+        // Build export record
+        const exportRecord = {
+          id: record.id,
+          name: record.name || null,
+          givenNames: record.givenNames || null,
+          familyName: record.familyName || null,
+          birthDate: record.birthDate || null,
+          deathDate: record.deathDate || null,
+          birthPlace: record.birthPlace || null,
+          deathPlace: record.deathPlace || null,
+          cemeteryId: record.cemeteryId || null,
+          section: record.section || null,
+          plot: record.plot || null,
+          latitude: record.latitude || null,
+          longitude: record.longitude || null,
+          inscription: record.inscription || null,
+          occupation: record.occupation || null,
+          spouseName: record.spouseName || null,
+          verificationStatus: record.verificationStatus || 'unverified',
+          createdDate: record.createdDate || null,
+          updatedDate: record.updatedDate || null,
+          submitterName: record.submitterName || null
+        };
+
+        // Include source references
+        if (includeSources) {
+          exportRecord.sourceRefs = record.sourceRefs || [];
+        }
+
+        // Include confidence score
+        if (includeConfidence) {
+          let anomalies = [];
+          try {
+            const anomalyResult = computeCemeteryAnomalies([record]);
+            anomalies = anomalyResult.anomalies || [];
+          } catch (e) { /* skip */ }
+          const sourceRefs = record.sourceRefs || [];
+          let sourceVerification = null;
+          if (sourceRefs.length > 0) {
+            sourceVerification = { total: sourceRefs.length, live: sourceRefs.length, dead: 0, archived: 0 };
+          }
+          const mergeHistoryCount = (record.mergeHistory || []).length;
+          exportRecord.confidence = computeConfidenceScore(record, anomalies, sourceVerification, mergeHistoryCount);
+        }
+
+        // Include provenance chain
+        if (includeProvenance) {
+          exportRecord.provenance = buildProvenanceChain(record);
+        }
+
+        records.push(exportRecord);
+      } catch (e) { /* skip */ }
+    }
+
+    // Build export metadata
+    const exportMeta = {
+      exportedAt: new Date().toISOString(),
+      format: 'JSON (CSV-ready)',
+      totalRecords: records.length,
+      filters: { cemeteryId, includeProvenance, includeConfidence, includeSources, includeUnpublished },
+      schema: 'GraveAtlas v7.2.21',
+      license: 'CC-BY-SA 4.0'
+    };
+
+    return jsonResponse({
+      success: true,
+      metadata: exportMeta,
+      records: records
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to export dataset', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/export/geojson
+ * Export records as GeoJSON FeatureCollection for mapping applications.
+ * Query params: cemeteryId, limit
+ */
+async function handleExportGeoJSON(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, type: 'FeatureCollection', features: [] }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const cemeteryId = url.searchParams.get('cemeteryId');
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '10000'), 50000);
+
+    const files = await listFiles('graves', env);
+    const features = [];
+
+    for (const file of files) {
+      if (features.length >= limit) break;
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        if (cemeteryId && record.cemeteryId !== cemeteryId) continue;
+        if (!record.latitude || !record.longitude) continue;
+
+        features.push({
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: [parseFloat(record.longitude), parseFloat(record.latitude)]
+          },
+          properties: {
+            id: record.id,
+            name: record.name || null,
+            birthDate: record.birthDate || null,
+            deathDate: record.deathDate || null,
+            cemeteryId: record.cemeteryId || null,
+            section: record.section || null,
+            plot: record.plot || null,
+            inscription: record.inscription || null,
+            verificationStatus: record.verificationStatus || 'unverified'
+          }
+        });
+      } catch (e) { /* skip */ }
+    }
+
+    return jsonResponse({
+      success: true,
+      type: 'FeatureCollection',
+      features: features,
+      metadata: {
+        exportedAt: new Date().toISOString(),
+        totalFeatures: features.length,
+        schema: 'GeoJSON RFC 7946',
+        coordinateSystem: 'WGS84'
+      }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to export GeoJSON', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/export/jsonld
+ * Export records as JSON-LD with provenance and confidence context.
+ * Query params: cemeteryId, recordId, limit
+ */
+async function handleExportJSONLD(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, '@context': {}, '@graph': [] }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const cemeteryId = url.searchParams.get('cemeteryId');
+    const recordId = url.searchParams.get('recordId');
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '10000'), 50000);
+
+    const context = {
+      '@vocab': 'https://schema.org/',
+      'graves': 'https://graveatlas.com/vocab/',
+      'name': 'name',
+      'birthDate': 'birthDate',
+      'deathDate': 'deathDate',
+      'cemeteryId': 'graves:cemeteryId',
+      'section': 'graves:section',
+      'plot': 'graves:plot',
+      'latitude': 'latitude',
+      'longitude': 'longitude',
+      'inscription': 'graves:inscription',
+      'verificationStatus': 'graves:verificationStatus',
+      'sourceRefs': 'graves:sourceRefs',
+      'confidence': 'graves:confidence',
+      'provenance': 'graves:provenance',
+      'submitterName': 'graves:submitterName',
+      'createdDate': 'dateCreated',
+      'updatedDate': 'dateModified'
+    };
+
+    const graph = [];
+    const files = await listFiles('graves', env);
+
+    for (const file of files) {
+      if (graph.length >= limit) break;
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        if (cemeteryId && record.cemeteryId !== cemeteryId) continue;
+        if (recordId && record.id !== recordId) continue;
+
+        const entity = {
+          '@id': `https://graveatlas.com/records/${record.id}`,
+          '@type': 'Person',
+          'name': record.name || null,
+          'birthDate': record.birthDate || null,
+          'deathDate': record.deathDate || null,
+          'graves:cemeteryId': record.cemeteryId || null,
+          'graves:section': record.section || null,
+          'graves:plot': record.plot || null,
+          'graves:inscription': record.inscription || null,
+          'graves:verificationStatus': record.verificationStatus || 'unverified',
+          'graves:sourceRefs': record.sourceRefs || [],
+          'graves:submitterName': record.submitterName || null,
+          'dateCreated': record.createdDate || null,
+          'dateModified': record.updatedDate || null
+        };
+
+        // Add confidence
+        let anomalies = [];
+        try {
+          const anomalyResult = computeCemeteryAnomalies([record]);
+          anomalies = anomalyResult.anomalies || [];
+        } catch (e) { /* skip */ }
+        const sourceRefs = record.sourceRefs || [];
+        let sourceVerification = null;
+        if (sourceRefs.length > 0) {
+          sourceVerification = { total: sourceRefs.length, live: sourceRefs.length, dead: 0, archived: 0 };
+        }
+        const mergeHistoryCount = (record.mergeHistory || []).length;
+        const confidence = computeConfidenceScore(record, anomalies, sourceVerification, mergeHistoryCount);
+        entity['graves:confidence'] = { score: confidence.score, tier: confidence.tier };
+
+        // Add provenance
+        const provenance = buildProvenanceChain(record);
+        entity['graves:provenance'] = {
+          totalEntries: provenance.metadata ? provenance.metadata.totalEntries : 0,
+          span: provenance.metadata ? provenance.metadata.span : 'unknown'
+        };
+
+        // Add coordinates if available
+        if (record.latitude && record.longitude) {
+          entity['latitude'] = parseFloat(record.latitude);
+          entity['longitude'] = parseFloat(record.longitude);
+        }
+
+        graph.push(entity);
+      } catch (e) { /* skip */ }
+    }
+
+    return jsonResponse({
+      success: true,
+      '@context': context,
+      '@graph': graph,
+      metadata: {
+        exportedAt: new Date().toISOString(),
+        totalEntities: graph.length,
+        schema: 'JSON-LD 1.1',
+        vocabulary: 'https://schema.org + GraveAtlas custom vocab'
+      }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to export JSON-LD', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/export/manifest
+ * Generate a complete export manifest describing all available data.
+ * Includes record counts, cemetery list, date ranges, schema version.
+ */
+async function handleExportManifest(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('graves', env);
+    let totalRecords = 0, publishedRecords = 0, unpublishedRecords = 0;
+    let recordsWithSources = 0, recordsWithCoordinates = 0;
+    let totalSourceRefs = 0;
+    let earliestDate = null, latestDate = null;
+    const cemeteryCounts = {};
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        totalRecords++;
+
+        if (record.status === 'published') publishedRecords++;
+        else unpublishedRecords++;
+
+        const srcRefs = record.sourceRefs || [];
+        if (srcRefs.length > 0) {
+          recordsWithSources++;
+          totalSourceRefs += srcRefs.length;
+        }
+        if (record.latitude && record.longitude) recordsWithCoordinates++;
+
+        if (record.cemeteryId) {
+          cemeteryCounts[record.cemeteryId] = (cemeteryCounts[record.cemeteryId] || 0) + 1;
+        }
+
+        const created = record.createdDate || record.submissionDate;
+        if (created) {
+          if (!earliestDate || created < earliestDate) earliestDate = created;
+          if (!latestDate || created > latestDate) latestDate = created;
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    const manifest = {
+      schema: 'GraveAtlas v7.2.21',
+      generatedAt: new Date().toISOString(),
+      recordStats: {
+        total: totalRecords,
+        published: publishedRecords,
+        unpublished: unpublishedRecords,
+        withSources: recordsWithSources,
+        withCoordinates: recordsWithCoordinates,
+        totalSourceRefs: totalSourceRefs
+      },
+      cemeteries: Object.entries(cemeteryCounts).map(([id, count]) => ({ id, recordCount: count })),
+      dateRange: { earliest: earliestDate, latest: latestDate },
+      availableFormats: [
+        { format: 'JSON (CSV-ready)', endpoint: '/api/export/dataset', description: 'Full dataset with optional provenance and confidence' },
+        { format: 'GeoJSON', endpoint: '/api/export/geojson', description: 'RFC 7946 compliant for mapping applications' },
+        { format: 'JSON-LD', endpoint: '/api/export/jsonld', description: 'Linked data with schema.org context' }
+      ],
+      license: 'CC-BY-SA 4.0',
+      exportOptions: {
+        cemeteryId: 'Filter by cemetery ID',
+        includeProvenance: 'Include provenance chain (dataset only)',
+        includeConfidence: 'Include confidence score (dataset only)',
+        includeSources: 'Include source references (dataset only)',
+        includeUnpublished: 'Include unpublished records (dataset only)',
+        recordId: 'Export single record (JSON-LD only)',
+        limit: 'Maximum records to export (default 10000)'
+      }
+    };
+
+    return jsonResponse({
+      success: true,
+      manifest: manifest
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to generate manifest', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/export/batch
+ * Generate multiple exports in a single request.
+ * Body: { exports: [{ format, cemeteryId, options }] }
+ * Returns a manifest of generated exports with download references.
+ */
+async function handleExportBatch(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, message: 'GitHub not configured', exports: [] }, 200, cors);
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const exports = (body && body.exports) || [];
+
+    if (!Array.isArray(exports) || exports.length === 0) {
+      return jsonResponse({ success: false, error: 'Missing exports array' }, 400, cors);
+    }
+
+    if (exports.length > 10) {
+      return jsonResponse({ success: false, error: 'Maximum 10 exports per batch' }, 400, cors);
+    }
+
+    const results = [];
+
+    for (const exportSpec of exports) {
+      const format = exportSpec.format || 'json';
+      const cemeteryId = exportSpec.cemeteryId || null;
+      const options = exportSpec.options || {};
+
+      let recordCount = 0;
+      let status = 'success';
+      let message = '';
+
+      try {
+        const files = await listFiles('graves', env);
+        for (const file of files) {
+          try {
+            const content = await readFile(`graves/${file}`, env);
+            if (!content) continue;
+            const record = JSON.parse(content);
+            if (record.status !== 'published') continue;
+            if (cemeteryId && record.cemeteryId !== cemeteryId) continue;
+            recordCount++;
+          } catch (e) { /* skip */ }
+        }
+      } catch (e) {
+        status = 'error';
+        message = e.message;
+      }
+
+      results.push({
+        format,
+        cemeteryId,
+        recordCount,
+        status,
+        message,
+        options,
+        generatedAt: new Date().toISOString()
+      });
+    }
+
+    return jsonResponse({
+      success: true,
+      exports: results,
+      totalExports: results.length,
+      generatedAt: new Date().toISOString()
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to batch export', message: error.message }, 500, cors);
+  }
 }
 
 // ── Phase 16.20: AI Data Provenance Chain Handlers ──

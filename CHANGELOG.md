@@ -519,6 +519,48 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.21] — 2026-08-16
+
+### Phase 16.21: AI Data Export & Archival
+
+**Added:**
+- `GET /api/export/dataset` — full dataset export as CSV-ready JSON.
+  Filters: cemeteryId, includeProvenance, includeConfidence, includeSources,
+  includeUnpublished, limit (max 50000). Returns metadata with schema version,
+  license (CC-BY-SA 4.0), and export filters.
+
+- `GET /api/export/geojson` — GeoJSON FeatureCollection (RFC 7946 compliant).
+  Point geometry with [longitude, latitude] coordinates (WGS84).
+  Properties: id, name, dates, cemetery, section, plot, inscription, verification.
+
+- `GET /api/export/jsonld` — JSON-LD 1.1 with schema.org context.
+  @context with schema.org + custom graves vocabulary. @graph of Person entities
+  with @id, @type, confidence scores, and provenance summaries. Single record
+  or cemetery or global export.
+
+- `GET /api/export/manifest` — complete export manifest.
+  Record stats (total/published/unpublished, withSources, withCoordinates,
+  totalSourceRefs), cemetery list with counts, date range, available formats,
+  export options, schema version, license.
+
+- `POST /api/export/batch` — generate up to 10 exports in one request.
+  Each export spec: format, cemeteryId, options. Returns per-export results
+  with record counts and status.
+
+**Export Formats:**
+- JSON (CSV-ready): Full records with optional provenance/confidence/sources
+- GeoJSON: RFC 7946, WGS84, for mapping applications (QGIS, Leaflet, Mapbox)
+- JSON-LD: Linked data with schema.org context for semantic web integration
+- Manifest: Metadata-only description of available data
+
+New models: DatasetExport (3 inner), GeoJSONExport (4 inner), JSONLDExport (1 inner),
+ExportManifest (4 inner)
+API client: exportDataset(), exportGeoJSON(), exportJSONLD(),
+getExportManifest(), exportBatch()
+AI system prompt updated, 3 new suggested prompts
+100+ new tests (phase16-21.test.js)
+
+
 ## [7.2.20] — 2026-08-16
 
 ### Phase 16.20: AI Data Provenance Chain

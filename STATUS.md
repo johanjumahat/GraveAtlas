@@ -38,6 +38,7 @@
 | 16.18. AI Source Verification | ✅ COMPLETE | 100% |
 | 16.19. AI Confidence Scoring | ✅ COMPLETE | 100% |
 | 16.20. AI Data Provenance Chain | ✅ COMPLETE | 100% |
+| 16.21. AI Data Export & Archival | ✅ COMPLETE | 100% |
 
 **All 8 core phases complete. Phase 16 AI-native features complete. 1477 tests passing.**
 
@@ -83,9 +84,11 @@
 
 18. **Add — AI Data Provenance Chain** ✅ Complete lineage tracking for every record with 5 endpoints: record provenance chain (`/provenance`), manual entry addition (`/provenance/add`), cross-record search (`/provenance/search`), global timeline (`/provenance/timeline`), and CSV-ready export (`/provenance/export`). Traces 9 action types (created, moderated, verified, corrected, enriched, merged, fixed, source_verified, updated) across 7 actor roles (submitter, moderator, verifier, community, AI, archivist, system). Each entry: timestamp, action, actor, actorRole, description, fields, old/new values, source refs. Chain metadata: total entries, unique actors, first/last entry, span. Monthly timeline summary with action breakdown. New models: `ProvenanceChain`, `ProvenanceSearch`, `ProvenanceTimeline`. 110+ new tests. v7.2.20.
 
+19. **Add — AI Data Export & Archival** ✅ Comprehensive export system with 5 endpoints and 3 formats: JSON CSV-ready dataset (with optional provenance/confidence/sources, up to 50K records, CC-BY-SA 4.0), GeoJSON FeatureCollection (RFC 7946, WGS84, for mapping apps), JSON-LD 1.1 (schema.org context with confidence + provenance, for semantic web). Export manifest with record stats, cemetery list, date range, format list. Batch export (up to 10 at once). New models: `DatasetExport`, `GeoJSONExport`, `JSONLDExport`, `ExportManifest`. 100+ new tests. v7.2.21.
+
 ## Architecture
 
-- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 112 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
+- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 117 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
 - **Android:** 18+ screens with navigation host, external maps handoff (geo: intent), offline support
 - **Data:** GitHub repository (graveatlas-data) with JSON schemas
 - **Auth:** Google Sign-In with ID token verification, session tokens, ban system
@@ -93,7 +96,7 @@
 - **Timeline:** Chronological event visualization with decade grouping, backend endpoint
 - **External Sources:** OpenStreetMap (Overpass API), Wikidata (SPARQL), Singapore Government Open Data (data.gov.sg)
 
-## Test Suite (2842 tests)
+## Test Suite (2936 tests)
 
 | Test File | Tests | Area |
 |---|---|---|

@@ -38,6 +38,10 @@ import com.putraworks.graveatlas.data.model.ConfidenceLeaderboard;
 import com.putraworks.graveatlas.data.model.ProvenanceChain;
 import com.putraworks.graveatlas.data.model.ProvenanceSearch;
 import com.putraworks.graveatlas.data.model.ProvenanceTimeline;
+import com.putraworks.graveatlas.data.model.DatasetExport;
+import com.putraworks.graveatlas.data.model.GeoJSONExport;
+import com.putraworks.graveatlas.data.model.JSONLDExport;
+import com.putraworks.graveatlas.data.model.ExportManifest;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -909,6 +913,189 @@ public class ApiClient {
         } catch (java.io.UnsupportedEncodingException e) {
             return value; // UTF-8 is always available on Android
         }
+    }
+
+    // ── Phase 16.21: AI Data Export & Archival ──
+
+    /**
+     * Export records as CSV-ready JSON dataset.
+     * GET /api/export/dataset?cemeteryId=&includeProvenance=&includeConfidence=&includeSources=&limit=
+     */
+    public void exportDataset(String cemeteryId, boolean includeProvenance,
+                                  boolean includeConfidence, boolean includeSources, int limit,
+                                  final ApiCallback<DatasetExport> callback) {
+        String url = baseUrl + "/api/export/dataset?limit=" + limit;
+        if (cemeteryId != null) url += "&cemeteryId=" + cemeteryId;
+        if (includeProvenance) url += "&includeProvenance=true";
+        if (includeConfidence) url += "&includeConfidence=true";
+        if (includeSources) url += "&includeSources=true";
+
+        Request request = new Request.Builder()
+                .url(url)
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(DatasetExport.fromJson(new JSONObject(body)));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse dataset export.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Export records as GeoJSON FeatureCollection.
+     * GET /api/export/geojson?cemeteryId=&limit=
+     */
+    public void exportGeoJSON(String cemeteryId, int limit,
+                                 final ApiCallback<GeoJSONExport> callback) {
+        String url = baseUrl + "/api/export/geojson?limit=" + limit;
+        if (cemeteryId != null) url += "&cemeteryId=" + cemeteryId;
+
+        Request request = new Request.Builder()
+                .url(url)
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(GeoJSONExport.fromJson(new JSONObject(body)));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse GeoJSON export.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Export records as JSON-LD with provenance and confidence context.
+     * GET /api/export/jsonld?cemeteryId=&recordId=&limit=
+     */
+    public void exportJSONLD(String cemeteryId, String recordId, int limit,
+                                final ApiCallback<JSONLDExport> callback) {
+        String url = baseUrl + "/api/export/jsonld?limit=" + limit;
+        if (cemeteryId != null) url += "&cemeteryId=" + cemeteryId;
+        if (recordId != null) url += "&recordId=" + recordId;
+
+        Request request = new Request.Builder()
+                .url(url)
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(JSONLDExport.fromJson(new JSONObject(body)));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse JSON-LD export.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get export manifest describing all available data and formats.
+     * GET /api/export/manifest
+     */
+    public void getExportManifest(final ApiCallback<ExportManifest> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/export/manifest")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(ExportManifest.fromJson(new JSONObject(body)));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse export manifest.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Batch generate multiple exports.
+     * POST /api/export/batch
+     */
+    public void exportBatch(JSONArray exports, final ApiCallback<JSONObject> callback) {
+        JSONObject body = new JSONObject();
+        try { body.put("exports", exports); } catch (Exception e) { /* ignore */ }
+
+        RequestBody rb = RequestBody.create(body.toString(), MediaType.parse("application/json"));
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/export/batch")
+                .post(rb)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse batch export.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
     }
 
     // ── Phase 16.20: AI Data Provenance Chain ──
