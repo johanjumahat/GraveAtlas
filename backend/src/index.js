@@ -460,6 +460,21 @@ async function handleRequest(request, env, ctx) {
       return await handleGlobalCleanup(request, env, corsHeaders);
     }
 
+    // Phase 16.15: AI Export & Reporting
+    if (path.startsWith('/api/cemeteries/') && path.endsWith('/report') && method === 'GET') {
+      const id = path.split('/')[3];
+      return await handleCemeteryReport(id, request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/cemeteries/') && path.endsWith('/report/summary') && method === 'GET') {
+      const id = path.split('/')[3];
+      return await handleCemeteryReportSummary(id, request, env, corsHeaders);
+    }
+
+    if (path === '/api/reports/global' && method === 'GET') {
+      return await handleGlobalReport(request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -3521,6 +3536,613 @@ function safeTokenCompare(a, b) {
 }
 
 // ── Utils ──
+
+// ── Phase 16.15: AI Export & Reporting Handlers ──
+
+/**
+ * Compute cemetery statistics from an in-memory record array.
+ * Used by reporting endpoints.
+ */
+function computeCemeteryStats(records) {
+  const total = records.length;
+  let verified = 0, unverified = 0, communitySubmitted = 0;
+  let withPhotos = 0, withInscriptions = 0, withSources = 0, withCoords = 0;
+  let withBirthDate = 0, withDeathDate = 0, withGivenNames = 0, withFamilyName = 0;
+  let withSection = 0, withPlot = 0;
+  const deathYears = [];
+
+  for (const rec of records) {
+    if (rec.verificationStatus === 'verified') verified++;
+    else unverified++;
+    if (rec.submitterName) communitySubmitted++;
+    if (rec.photoRefs && rec.photoRefs.length > 0) withPhotos++;
+    if (rec.inscription && rec.inscription.trim()) withInscriptions++;
+    if (rec.sourceRefs && rec.sourceRefs.length > 0) withSources++;
+    if (rec.latitude && rec.longitude) withCoords++;
+    if (rec.birthDate) withBirthDate++;
+    if (rec.deathDate) {
+      withDeathDate++;
+      const y = parseInt(String(rec.deathDate).substring(0, 4));
+      if (!isNaN(y)) deathYears.push(y);
+    }
+    if (rec.givenNames) withGivenNames++;
+    if (rec.familyName) withFamilyName++;
+    if (rec.section) withSection++;
+    if (rec.plot) withPlot++;
+  }
+
+  return {
+    totalRecords: total,
+    verifiedRecords: verified,
+    unverified: unverified,
+    communitySubmitted: communitySubmitted,
+    withPhotos: withPhotos,
+    withInscriptions: withInscriptions,
+    withSources: withSources,
+    withCoordinates: withCoords,
+    withBirthDate: withBirthDate,
+    withDeathDate: withDeathDate,
+    withGivenNames: withGivenNames,
+    withFamilyName: withFamilyName,
+    withSection: withSection,
+    withPlot: withPlot,
+    photoCoverage: total > 0 ? Math.round((withPhotos / total) * 100) : 0,
+    inscriptionCoverage: total > 0 ? Math.round((withInscriptions / total) * 100) : 0,
+    sourceCoverage: total > 0 ? Math.round((withSources / total) * 100) : 0,
+    coordinateCoverage: total > 0 ? Math.round((withCoords / total) * 100) : 0,
+    dateCoverage: total > 0 ? Math.round((withDeathDate / total) * 100) : 0,
+    nameCoverage: total > 0 ? Math.round((withGivenNames / total) * 100) : 0,
+    deathYearRange: deathYears.length > 0 ? {
+      earliest: Math.min(...deathYears),
+      latest: Math.max(...deathYears)
+    } : null
+  };
+}
+
+/**
+ * Compute anomaly summary from an in-memory record array.
+ */
+function computeCemeteryAnomalies(records) {
+  let critical = 0, warning = 0, info = 0;
+  const byType = {};
+  const currentYear = new Date().getFullYear();
+
+  for (const rec of records) {
+    // Date anomalies
+    if (rec.birthDate && rec.deathDate) {
+      const by = parseInt(String(rec.birthDate).substring(0, 4));
+      const dy = parseInt(String(rec.deathDate).substring(0, 4));
+      if (!isNaN(by) && !isNaN(dy)) {
+        if (by > dy) { critical++; byType.date_birth_after_death = (byType.date_birth_after_death || 0) + 1; }
+        if (dy - by > 120) { warning++; byType.date_age_over_120 = (byType.date_age_over_120 || 0) + 1; }
+      }
+    }
+    if (rec.birthDate) {
+      const by = parseInt(String(rec.birthDate).substring(0, 4));
+      if (!isNaN(by) && by > currentYear) { critical++; byType.date_birth_future = (byType.date_birth_future || 0) + 1; }
+    }
+    if (rec.deathDate) {
+      const dy = parseInt(String(rec.deathDate).substring(0, 4));
+      if (!isNaN(dy) && dy > currentYear) { critical++; byType.date_death_future = (byType.date_death_future || 0) + 1; }
+    }
+
+    // Name anomalies
+    if (!rec.name && !rec.graveIdentifier) { critical++; byType.name_missing = (byType.name_missing || 0) + 1; }
+
+    // Coordinate anomalies
+    if (rec.latitude !== undefined && rec.latitude !== null) {
+      if (Math.abs(rec.latitude) > 90) { critical++; byType.coord_lat_invalid = (byType.coord_lat_invalid || 0) + 1; }
+    }
+    if (rec.longitude !== undefined && rec.longitude !== null) {
+      if (Math.abs(rec.longitude) > 180) { critical++; byType.coord_lng_invalid = (byType.coord_lng_invalid || 0) + 1; }
+    }
+  }
+
+  return {
+    critical, warning, info,
+    total: critical + warning + info,
+    byType
+  };
+}
+
+/**
+ * Generate recommendations from in-memory records, stats, and anomalies.
+ * Lightweight version of the full recommendation generator.
+ */
+function generateRecommendations(records, stats, anomalySummary) {
+  const recommendations = [];
+  const total = records.length;
+  if (total === 0) return recommendations;
+
+  // Critical: missing names
+  const missingNames = records.filter(r => !r.name && !r.graveIdentifier).length;
+  if (missingNames > 0) {
+    recommendations.push({
+      category: 'data_quality', priority: 'critical',
+      title: 'Records missing name or identifier',
+      description: `${missingNames} record(s) have no name or grave identifier`,
+      affectedRecords: missingNames,
+      estimatedEffort: 'high',
+      actionEndpoint: null
+    });
+  }
+
+  // Critical: birth after death anomalies
+  if (anomalySummary.critical > 0) {
+    recommendations.push({
+      category: 'anomalies', priority: 'critical',
+      title: `${anomalySummary.critical} critical anomalies detected`,
+      description: 'Critical anomalies require immediate attention',
+      affectedRecords: anomalySummary.critical,
+      estimatedEffort: 'medium',
+      actionEndpoint: null
+    });
+  }
+
+  // High: missing sources
+  const missingSources = total - (stats.withSources || 0);
+  if (missingSources / total > 0.5) {
+    recommendations.push({
+      category: 'content', priority: 'high',
+      title: 'Majority of records lack source attribution',
+      description: `${missingSources} of ${total} records have no source references`,
+      affectedRecords: missingSources,
+      estimatedEffort: 'high',
+      actionEndpoint: null
+    });
+  }
+
+  // High: missing photos
+  const missingPhotos = total - (stats.withPhotos || 0);
+  if (missingPhotos / total > 0.6) {
+    recommendations.push({
+      category: 'content', priority: 'high',
+      title: 'Most records have no photos',
+      description: `${missingPhotos} of ${total} records have no photo references`,
+      affectedRecords: missingPhotos,
+      estimatedEffort: 'medium',
+      actionEndpoint: null
+    });
+  }
+
+  // Medium: missing inscriptions
+  const missingInscriptions = total - (stats.withInscriptions || 0);
+  if (missingInscriptions / total > 0.4) {
+    recommendations.push({
+      category: 'content', priority: 'medium',
+      title: 'Many records lack transcribed inscriptions',
+      description: `${missingInscriptions} of ${total} records have no inscription`,
+      affectedRecords: missingInscriptions,
+      estimatedEffort: 'medium',
+      actionEndpoint: null
+    });
+  }
+
+  // Medium: missing dates
+  const missingDates = total - (stats.withDeathDate || 0);
+  if (missingDates / total > 0.3) {
+    recommendations.push({
+      category: 'data_quality', priority: 'medium',
+      title: 'Records missing death dates',
+      description: `${missingDates} of ${total} records have no death date`,
+      affectedRecords: missingDates,
+      estimatedEffort: 'low',
+      actionEndpoint: null
+    });
+  }
+
+  // Low: duplicates
+  const nameDateMap = {};
+  let duplicates = 0;
+  for (const rec of records) {
+    if (rec.name && rec.deathDate) {
+      const key = (rec.name || '').toLowerCase().trim() + '|' + rec.deathDate;
+      if (nameDateMap[key]) duplicates++;
+      else nameDateMap[key] = true;
+    }
+  }
+  if (duplicates > 0) {
+    recommendations.push({
+      category: 'duplicates', priority: 'high',
+      title: 'Potential duplicate records detected',
+      description: `${duplicates} potential duplicate record(s) found`,
+      affectedRecords: duplicates,
+      estimatedEffort: 'medium',
+      actionEndpoint: null
+    });
+  }
+
+  // Low: warning anomalies
+  if (anomalySummary.warning > 0) {
+    recommendations.push({
+      category: 'anomalies', priority: 'low',
+      title: 'Minor anomalies to review',
+      description: `${anomalySummary.warning} minor anomaly(ies) detected`,
+      affectedRecords: anomalySummary.warning,
+      estimatedEffort: 'low',
+      actionEndpoint: null
+    });
+  }
+
+  return recommendations;
+}
+
+// ── Phase 16.15: AI Export & Reporting Handlers ──
+
+/**
+ * GET /api/cemeteries/:id/report
+ * Generates a comprehensive quality report for a cemetery.
+ * Aggregates: metadata, health score, anomaly summary, recommendations,
+ * cleanup history, record statistics, and content coverage.
+ */
+async function handleCemeteryReport(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid cemetery ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      cemeteryId: safeId,
+      message: 'GitHub not configured — no report available'
+    }, 200, cors);
+  }
+
+  try {
+    // Load cemetery metadata
+    let cemeteryName = 'Unknown Cemetery';
+    let cemeteryMetadata = {};
+    try {
+      const cContent = await readFile(`cemeteries/${safeId}.json`, env);
+      if (cContent) {
+        cemeteryMetadata = JSON.parse(cContent);
+        cemeteryName = cemeteryMetadata.name || cemeteryMetadata.title || 'Unknown Cemetery';
+      }
+    } catch (e) { /* cemetery file may not exist */ }
+
+    // Load all records for this cemetery
+    const files = await listFiles('graves', env);
+    const records = [];
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        if (record.cemeteryId !== safeId && record.cemeteryId !== id) continue;
+        records.push(record);
+      } catch (e) { /* skip */ }
+    }
+
+    if (records.length === 0) {
+      return jsonResponse({
+        success: true,
+        cemeteryId: safeId,
+        message: 'No published records found'
+      }, 200, cors);
+    }
+
+    // Compute health
+    const health = computeQuickHealth(records);
+
+    // Compute statistics
+    const stats = computeCemeteryStats(records);
+
+    // Generate anomaly summary
+    let anomalySummary = { critical: 0, warning: 0, info: 0, total: 0, byType: {} };
+    try {
+      const anomalies = await computeCemeteryAnomalies(records);
+      anomalySummary = anomalies;
+    } catch (e) { /* anomaly computation may fail */ }
+
+    // Generate recommendations summary
+    let recommendationsSummary = { total: 0, critical: 0, high: 0, medium: 0, low: 0, topItems: [] };
+    try {
+      const recs = generateRecommendations(records, stats, anomalySummary);
+      const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+      recs.sort((a, b) => (priorityOrder[a.priority] || 99) - (priorityOrder[b.priority] || 99));
+      recommendationsSummary.total = recs.length;
+      recommendationsSummary.critical = recs.filter(r => r.priority === 'critical').length;
+      recommendationsSummary.high = recs.filter(r => r.priority === 'high').length;
+      recommendationsSummary.medium = recs.filter(r => r.priority === 'medium').length;
+      recommendationsSummary.low = recs.filter(r => r.priority === 'low').length;
+      recommendationsSummary.topItems = recs.slice(0, 10).map(r => ({
+        category: r.category,
+        priority: r.priority,
+        title: r.title,
+        affectedRecords: r.affectedRecords
+      }));
+    } catch (e) { /* recommendation generation may fail */ }
+
+    // Compute cleanup preview (before/after)
+    let cleanupPreview = null;
+    try {
+      let totalProposed = 0, safeFixes = 0, riskyFixes = 0;
+      const simulatedRecords = records.map(rec => {
+        const fixes = generateAutoFixes(rec);
+        for (const fix of fixes) {
+          totalProposed++;
+          if (fix.confidence === 'high') safeFixes++;
+          else riskyFixes++;
+        }
+        const simulated = { ...rec };
+        for (const fix of fixes) {
+          if (fix.confidence === 'high') simulated[fix.field] = fix.proposedValue;
+        }
+        return simulated;
+      });
+      const afterHealth = computeQuickHealth(simulatedRecords);
+      cleanupPreview = {
+        currentGrade: health.grade,
+        currentScore: health.overallScore,
+        projectedGrade: afterHealth.grade,
+        projectedScore: afterHealth.overallScore,
+        scoreDelta: afterHealth.overallScore - health.overallScore,
+        totalProposedFixes: totalProposed,
+        safeFixes: safeFixes,
+        riskyFixes: riskyFixes
+      };
+    } catch (e) { /* cleanup preview may fail */ }
+
+    // Content coverage breakdown
+    const contentCoverage = {
+      withPhotos: records.filter(r => r.photoRefs && r.photoRefs.length > 0).length,
+      withInscriptions: records.filter(r => r.inscription && r.inscription.trim()).length,
+      withSources: records.filter(r => r.sourceRefs && r.sourceRefs.length > 0).length,
+      withCoordinates: records.filter(r => r.latitude && r.longitude).length,
+      withSection: records.filter(r => r.section).length,
+      withPlot: records.filter(r => r.plot).length,
+      withBirthDate: records.filter(r => r.birthDate).length,
+      withDeathDate: records.filter(r => r.deathDate).length,
+      withGivenNames: records.filter(r => r.givenNames).length,
+      withFamilyName: records.filter(r => r.familyName).length
+    };
+
+    // Date range
+    const deathYears = records
+      .map(r => r.deathDate ? parseInt(String(r.deathDate).substring(0, 4)) : null)
+      .filter(y => y !== null && !isNaN(y));
+    const dateRange = deathYears.length > 0 ? {
+      earliest: Math.min(...deathYears),
+      latest: Math.max(...deathYears)
+    } : null;
+
+    // Build report
+    const report = {
+      reportId: `report_${safeId}_${Date.now()}`,
+      generatedAt: new Date().toISOString(),
+      cemeteryId: safeId,
+      cemeteryName: cemeteryName,
+      cemeteryMetadata: {
+        country: cemeteryMetadata.country || null,
+        region: cemeteryMetadata.region || null,
+        city: cemeteryMetadata.city || null,
+        establishedDate: cemeteryMetadata.establishedDate || null
+      },
+      recordCount: records.length,
+      health: health,
+      contentCoverage: contentCoverage,
+      dateRange: dateRange,
+      statistics: stats,
+      anomalySummary: anomalySummary,
+      recommendations: recommendationsSummary,
+      cleanupPreview: cleanupPreview,
+      // Report metadata for citation/export
+      reportMetadata: {
+        version: '1.0',
+        schema: 'GraveAtlas Quality Report',
+        generator: 'GraveAtlas AI Intelligence Engine',
+        license: 'CC-BY-SA 4.0'
+      }
+    };
+
+    return jsonResponse({
+      success: true,
+      report: report
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to generate cemetery report',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/cemeteries/:id/report/summary
+ * Lightweight summary — just health grade, record count, and top recommendations.
+ */
+async function handleCemeteryReportSummary(id, request, env, cors) {
+  const safeId = sanitizePathSegment(id);
+  if (!safeId || safeId !== id) {
+    return jsonResponse({ success: false, error: 'Invalid cemetery ID' }, 400, cors);
+  }
+
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      cemeteryId: safeId,
+      message: 'GitHub not configured — no report available'
+    }, 200, cors);
+  }
+
+  try {
+    let cemeteryName = 'Unknown Cemetery';
+    try {
+      const cContent = await readFile(`cemeteries/${safeId}.json`, env);
+      if (cContent) {
+        const c = JSON.parse(cContent);
+        cemeteryName = c.name || c.title || 'Unknown Cemetery';
+      }
+    } catch (e) { /* skip */ }
+
+    const files = await listFiles('graves', env);
+    const records = [];
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        if (record.cemeteryId !== safeId && record.cemeteryId !== id) continue;
+        records.push(record);
+      } catch (e) { /* skip */ }
+    }
+
+    if (records.length === 0) {
+      return jsonResponse({
+        success: true,
+        cemeteryId: safeId,
+        message: 'No published records found'
+      }, 200, cors);
+    }
+
+    const health = computeQuickHealth(records);
+    const stats = computeCemeteryStats(records);
+
+    // Quick anomaly count
+    let criticalCount = 0, warningCount = 0;
+    for (const rec of records) {
+      if (rec.birthDate && rec.deathDate) {
+        const by = parseInt(String(rec.birthDate).substring(0, 4));
+        const dy = parseInt(String(rec.deathDate).substring(0, 4));
+        if (!isNaN(by) && !isNaN(dy) && by > dy) criticalCount++;
+      }
+      if (!rec.name && !rec.graveIdentifier) criticalCount++;
+    }
+
+    return jsonResponse({
+      success: true,
+      cemeteryId: safeId,
+      cemeteryName: cemeteryName,
+      recordCount: records.length,
+      healthGrade: health.grade,
+      healthScore: health.overallScore,
+      completeness: health.completeness,
+      contentCoverage: health.contentCoverage,
+      anomalies: { critical: criticalCount, warning: warningCount },
+      duplicates: health.duplicates,
+      photoCoverage: health.content ? health.content.photoCoverage : 0,
+      sourceCoverage: health.content ? health.content.sourceCoverage : 0,
+      inscriptionCoverage: health.content ? health.content.inscriptionCoverage : 0,
+      generatedAt: new Date().toISOString()
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to generate report summary',
+      message: error.message
+    }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/reports/global
+ * Global quality report across all cemeteries.
+ */
+async function handleGlobalReport(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({
+      success: true,
+      message: 'GitHub not configured — no report available'
+    }, 200, cors);
+  }
+
+  try {
+    const files = await listFiles('graves', env);
+    const records = [];
+    const cemeteryIds = new Set();
+
+    for (const file of files) {
+      try {
+        const content = await readFile(`graves/${file}`, env);
+        if (!content) continue;
+        const record = JSON.parse(content);
+        if (record.status !== 'published') continue;
+        records.push(record);
+        if (record.cemeteryId) cemeteryIds.add(record.cemeteryId);
+      } catch (e) { /* skip */ }
+    }
+
+    if (records.length === 0) {
+      return jsonResponse({
+        success: true,
+        message: 'No published records found'
+      }, 200, cors);
+    }
+
+    const health = computeQuickHealth(records);
+
+    // Per-cemetery breakdown
+    const cemeteryBreakdown = {};
+    for (const rec of records) {
+      const cemId = rec.cemeteryId || 'unknown';
+      if (!cemeteryBreakdown[cemId]) {
+        cemeteryBreakdown[cemId] = {
+          cemeteryId: cemId,
+          recordCount: 0,
+          withPhotos: 0,
+          withSources: 0,
+          withInscriptions: 0,
+          criticalAnomalies: 0
+        };
+      }
+      const entry = cemeteryBreakdown[cemId];
+      entry.recordCount++;
+      if (rec.photoRefs && rec.photoRefs.length > 0) entry.withPhotos++;
+      if (rec.sourceRefs && rec.sourceRefs.length > 0) entry.withSources++;
+      if (rec.inscription && rec.inscription.trim()) entry.withInscriptions++;
+      if (rec.birthDate && rec.deathDate) {
+        const by = parseInt(String(rec.birthDate).substring(0, 4));
+        const dy = parseInt(String(rec.deathDate).substring(0, 4));
+        if (!isNaN(by) && !isNaN(dy) && by > dy) entry.criticalAnomalies++;
+      }
+    }
+
+    // Sort by record count descending
+    const sortedBreakdown = Object.values(cemeteryBreakdown)
+      .sort((a, b) => b.recordCount - a.recordCount);
+
+    // Global content coverage
+    const globalContent = {
+      totalWithPhotos: records.filter(r => r.photoRefs && r.photoRefs.length > 0).length,
+      totalWithSources: records.filter(r => r.sourceRefs && r.sourceRefs.length > 0).length,
+      totalWithInscriptions: records.filter(r => r.inscription && r.inscription.trim()).length,
+      totalWithCoordinates: records.filter(r => r.latitude && r.longitude).length,
+      totalWithBirthDate: records.filter(r => r.birthDate).length,
+      totalWithDeathDate: records.filter(r => r.deathDate).length
+    };
+
+    const report = {
+      reportId: `report_global_${Date.now()}`,
+      generatedAt: new Date().toISOString(),
+      totalCemeteries: cemeteryIds.size,
+      totalRecords: records.length,
+      globalHealth: health,
+      globalContentCoverage: globalContent,
+      cemeteryBreakdown: sortedBreakdown,
+      reportMetadata: {
+        version: '1.0',
+        schema: 'GraveAtlas Global Quality Report',
+        generator: 'GraveAtlas AI Intelligence Engine',
+        license: 'CC-BY-SA 4.0'
+      }
+    };
+
+    return jsonResponse({
+      success: true,
+      report: report
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Failed to generate global report',
+      message: error.message
+    }, 500, cors);
+  }
+}
 
 // ── Phase 16.14: AI Batch Operations Handlers ──
 

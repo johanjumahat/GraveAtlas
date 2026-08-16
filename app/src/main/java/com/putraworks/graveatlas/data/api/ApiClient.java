@@ -18,6 +18,9 @@ import com.putraworks.graveatlas.data.model.CemeteryAutoFixResult;
 import com.putraworks.graveatlas.data.model.RecordAutoFixResult;
 import com.putraworks.graveatlas.data.model.CleanupResult;
 import com.putraworks.graveatlas.data.model.GlobalCleanupResult;
+import com.putraworks.graveatlas.data.model.CemeteryReport;
+import com.putraworks.graveatlas.data.model.CemeteryReportSummary;
+import com.putraworks.graveatlas.data.model.GlobalReport;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -889,6 +892,119 @@ public class ApiClient {
         } catch (java.io.UnsupportedEncodingException e) {
             return value; // UTF-8 is always available on Android
         }
+    }
+
+    // ── Phase 16.15: AI Export & Reporting ──
+
+    /**
+     * Get comprehensive quality report for a cemetery.
+     * GET /api/cemeteries/{id}/report
+     */
+    public void getCemeteryReport(String cemeteryId,
+                                    final ApiCallback<CemeteryReport> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/cemeteries/" + cemeteryId + "/report")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        JSONObject reportObj = obj.optJSONObject("report");
+                        if (reportObj != null) {
+                            callback.onSuccess(CemeteryReport.fromJson(reportObj));
+                        } else {
+                            callback.onError("Report not found in response.");
+                        }
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse cemetery report.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get lightweight report summary for a cemetery.
+     * GET /api/cemeteries/{id}/report/summary
+     */
+    public void getCemeteryReportSummary(String cemeteryId,
+                                          final ApiCallback<CemeteryReportSummary> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/cemeteries/" + cemeteryId + "/report/summary")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        callback.onSuccess(CemeteryReportSummary.fromJson(obj));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse report summary.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get global quality report across all cemeteries.
+     * GET /api/reports/global
+     */
+    public void getGlobalReport(final ApiCallback<GlobalReport> callback) {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/api/reports/global")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject obj = new JSONObject(body);
+                        JSONObject reportObj = obj.optJSONObject("report");
+                        if (reportObj != null) {
+                            callback.onSuccess(GlobalReport.fromJson(reportObj));
+                        } else {
+                            callback.onError("Report not found in response.");
+                        }
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse global report.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
     }
 
     // ── Phase 16.14: AI Batch Operations ──

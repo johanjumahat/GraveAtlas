@@ -32,6 +32,7 @@
 | 16.12. AI Smart Recommendations | ✅ COMPLETE | 100% |
 | 16.13. AI Data Quality Auto-Fix | ✅ COMPLETE | 100% |
 | 16.14. AI Batch Operations | ✅ COMPLETE | 100% |
+| 16.15. AI Export & Reporting | ✅ COMPLETE | 100% |
 
 **All 8 core phases complete. Phase 16 AI-native features complete. 1477 tests passing.**
 
@@ -65,9 +66,11 @@
 
 12. **Add — AI Batch Operations** ✅ Full cleanup pass pipeline (scan → score → fix → re-score) with 3 endpoints: cemetery preview (`/cleanup/preview`), cemetery apply (`/cleanup`), and global preview (`/cleanup/global`). Before/after health comparison with improvement metrics (score delta, grade change, anomaly reduction, content gain). `computeQuickHealth()` helper for in-memory scoring. Top 10 cemeteries by fix count in global view. New models: `HealthSnapshot`, `CleanupResult`, `GlobalCleanupResult`. 90+ new tests. v7.2.14.
 
+13. **Add — AI Export & Reporting** ✅ Comprehensive quality reports with 3 endpoints: full cemetery report (`/report`), lightweight summary (`/report/summary`), and global report (`/reports/global`). Each report includes health grade, content coverage, anomaly summary, recommendations, cleanup preview, and CC-BY-SA 4.0 licensed metadata. New helper functions for in-memory stats/anomaly/recommendation computation. New models: `CemeteryReport` (9 inner classes), `CemeteryReportSummary`, `GlobalReport` (3 inner classes). 90+ new tests. v7.2.15.
+
 ## Architecture
 
-- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 87 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
+- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 90 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
 - **Android:** 18+ screens with navigation host, external maps handoff (geo: intent), offline support
 - **Data:** GitHub repository (graveatlas-data) with JSON schemas
 - **Auth:** Google Sign-In with ID token verification, session tokens, ban system
@@ -75,7 +78,7 @@
 - **Timeline:** Chronological event visualization with decade grouping, backend endpoint
 - **External Sources:** OpenStreetMap (Overpass API), Wikidata (SPARQL), Singapore Government Open Data (data.gov.sg)
 
-## Test Suite (2303 tests)
+## Test Suite (2380 tests)
 
 | Test File | Tests | Area |
 |---|---|---|

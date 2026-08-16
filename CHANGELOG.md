@@ -519,6 +519,42 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.15] — 2026-08-16
+
+### Phase 16.15: AI Export & Reporting
+
+**Added:**
+- `GET /api/cemeteries/:id/report` — comprehensive quality report including:
+  - Cemetery metadata (country, region, city, established date)
+  - Health score with letter grade
+  - Content coverage (photos, inscriptions, sources, coords, section, plot,
+    birth/death dates, given/family names)
+  - Date range (earliest/latest death years)
+  - Full statistics (verified/unverified, community-submitted counts)
+  - Anomaly summary with by-type breakdown
+  - Recommendations summary (top 10 by priority, counts per priority level)
+  - Cleanup preview (current vs projected grade/score, fix counts)
+  - Report metadata (version 1.0, schema, generator, CC-BY-SA 4.0 license)
+
+- `GET /api/cemeteries/:id/report/summary` — lightweight summary:
+  Health grade, record count, coverage metrics, anomaly counts.
+
+- `GET /api/reports/global` — global quality report:
+  Global health, per-cemetery breakdown sorted by record count,
+  global content coverage, report metadata.
+
+**Helper Functions:**
+- `computeCemeteryStats()` — in-memory statistics computation
+- `computeCemeteryAnomalies()` — in-memory anomaly detection with by-type counts
+- `generateRecommendations()` — lightweight recommendation generation
+
+New models: CemeteryReport (9 inner classes), CemeteryReportSummary,
+GlobalReport (3 inner classes)
+API client: getCemeteryReport(), getCemeteryReportSummary(), getGlobalReport()
+AI system prompt updated, 3 new suggested prompts
+90+ new tests (phase16-15.test.js)
+
+
 ## [7.2.14] — 2026-08-16
 
 ### Phase 16.14: AI Batch Operations
