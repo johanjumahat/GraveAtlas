@@ -72,6 +72,18 @@ export class DataGovSgConnector extends BaseConnector {
   }
 
   /**
+   * Normalize known Singapore place-name spelling variants so queries match
+   * regardless of which spelling the user (or AI) used.
+   * e.g. "Choa Chu Kang" (common/MRT spelling) vs "Chua Chu Kang" (some gov datasets).
+   */
+  normalizePlaceSpelling(text) {
+    if (!text) return text;
+    return text
+      .replace(/choa chu kang/g, 'chua chu kang')
+      .replace(/\bchoa\b/g, 'chua');
+  }
+
+  /**
    * Fetch a dataset from data.gov.sg using poll-download API.
    * @param {string} datasetKey — key in SG_DATASETS
    * @returns {Promise<Object>} — { dataset, data }
@@ -204,15 +216,30 @@ export class DataGovSgConnector extends BaseConnector {
         const fetched = await this.fetchDataset(key);
         const features = fetched.data.features || [];
 
-        const queryLower = query.toLowerCase();
-        const matched = features.filter(function(f) {
+        const queryLower = this.normalizePlaceSpelling(query.toLowerCase());
+        let matched = features.filter(function(f) {
           const props = f.properties || {};
-          const searchText = [
+          const searchText = this.normalizePlaceSpelling([
             props.NAME, props.DESCRIPTION, props.ADDRESSSTREETNAME,
             props.ADDRESSBUILDINGNAME
-          ].filter(Boolean).join(' ').toLowerCase();
+          ].filter(Boolean).join(' ').toLowerCase());
           return searchText.includes(queryLower);
-        });
+        }.bind(this));
+
+        // Fallback: word-level match (handles partial/loose queries e.g. just "cemetery")
+        if (matched.length === 0) {
+          const queryWords = queryLower.split(/\s+/).filter(function(w) { return w.length >= 3; });
+          if (queryWords.length > 0) {
+            matched = features.filter(function(f) {
+              const props = f.properties || {};
+              const searchText = this.normalizePlaceSpelling([
+                props.NAME, props.DESCRIPTION, props.ADDRESSSTREETNAME,
+                props.ADDRESSBUILDINGNAME
+              ].filter(Boolean).join(' ').toLowerCase());
+              return queryWords.every(function(word) { return searchText.includes(word); });
+            }.bind(this));
+          }
+        }
 
         const normalized = matched
           .map(f => this.normalizeFeature(f, key))

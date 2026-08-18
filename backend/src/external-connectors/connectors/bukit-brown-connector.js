@@ -156,9 +156,28 @@ export class BukitBrownConnector extends BaseConnector {
       }
     }
 
+    // Detect cemetery-wide questions ("who is buried in Bukit Brown", "stats for
+    // Bukit Brown Cemetery") that reference this cemetery itself rather than a
+    // person's name. Every record here IS a Bukit Brown record, so a person-name
+    // substring/word match against words like "bukit", "brown", "cemetery" would
+    // never match a name and would incorrectly report zero records.
+    const CEMETERY_SELF_REFERENCE_WORDS = new Set(['bukit', 'brown', 'cemetery', 'who', 'buried', 'the', 'show', 'stats', 'for', 'is', 'in', 'at']);
+    const rawWords = queryText.replace(/[?!.,]/g, '').split(/\s+/).filter(function(w) { return w.length >= 2; });
+    const isCemeteryWideQuery = rawWords.length > 0 &&
+      rawWords.every(function(w) { return CEMETERY_SELF_REFERENCE_WORDS.has(w); });
+
     // Filter by name if query provided
     let matched = allRecords;
-    if (queryText && queryText.length >= 2) {
+    let note = null;
+    if (isCemeteryWideQuery) {
+      // No specific person named — return a representative sample instead of
+      // an empty/false "not found" result, with a note explaining the limit.
+      matched = allRecords.slice(0, 25);
+      note = 'This query referenced Bukit Brown Cemetery generally rather than ' +
+        'a specific person. Showing a sample of ' + matched.length + ' of ' +
+        allRecords.length + ' loaded records (67,000+ total across the full ' +
+        'transcription project); search by a person\'s name for exact matches.';
+    } else if (queryText && queryText.length >= 2) {
       // Exact substring match first
       matched = allRecords.filter(function(r) {
         return (r.n || '').toLowerCase().includes(queryText);
@@ -179,6 +198,7 @@ export class BukitBrownConnector extends BaseConnector {
       records: matched,
       totalRecords: allRecords.length,
       matchedCount: matched.length,
+      note: note,
       timestamp: new Date().toISOString()
     };
   }
