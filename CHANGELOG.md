@@ -519,6 +519,55 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.26] — 2026-08-18
+
+### Phase 16.26: AI Analytics & Insights Dashboard
+
+**Added:**
+- `GET /api/analytics/dashboard` — comprehensive analytics dashboard with summary
+  metrics (total/recent/verified records, verification rate, source/coordinate
+  coverage, anomaly rate), confidence distribution (high/medium/low), source
+  statistics, cemetery breakdown (top 10), and health score.
+
+- `GET /api/analytics/trends` — time-series trends for records, anomalies, and
+  confidence. Groups by day/week/month intervals. Returns avg confidence per bucket.
+
+- `GET /api/analytics/cemetery-health` — per-cemetery health scores with letter
+  grades (A-F). Weighted scoring: confidence 30%, verification 25%, sources 20%,
+  coordinates 15%, anomaly rate 10%. Returns avg health score across all cemeteries.
+
+- `GET /api/analytics/anomaly-distribution` — anomaly breakdown by type, severity
+  (critical/warning/info), and cemetery. Returns top 10 anomaly types with percentages.
+
+- `GET /api/analytics/confidence-distribution` — confidence score histogram with
+  5 buckets (0-20, 21-40, 41-60, 61-80, 81-100). Returns bucket percentages.
+
+- `GET /api/analytics/source-reliability` — source metrics: coverage rate, average
+  per record, reference count distribution (1, 2-3, 4-5, 6+), top source domains.
+
+- `GET /api/analytics/curation-velocity` — curation activity: daily update counts,
+  records by status, average daily updates, curation task counts (pending/
+  in-progress/completed/rejected).
+
+- `GET /api/analytics/search-analytics` — search usage: total searches, average
+  results, top queries by frequency, intent distribution, recent searches.
+
+- `GET /api/analytics/compliance-trends` — governance audit activity over time.
+  Daily activity breakdown, audit by action, RTBF request count, consent stats.
+
+- `GET /api/analytics/stakeholder-report` — comprehensive report combining all
+  analytics: executive summary (with health grade), data quality metrics, anomaly
+  summary, prioritized recommendations (high/medium/low priority), cemetery
+  breakdown. Auto-generates recommendations for low verification, missing sources,
+  missing coordinates, anomaly resolution, and low confidence.
+
+New models: AnalyticsDashboard (5 inner classes), StakeholderReport (5 inner),
+  CemeteryHealth
+API client: 10 new methods
+AI system prompt updated, 3 new suggested prompts
+130+ new tests (phase16-26.test.js)
+
+
 ## [7.2.25] — 2026-08-16
 
 ### Phase 16.25: AI Data Governance & Compliance

@@ -9,7 +9,7 @@ import com.putraworks.graveatlas.data.model.ImportQualityScore;
 import com.putraworks.graveatlas.data.model.ImportBatchReport;
 import com.putraworks.graveatlas.data.model.AnomalyReport;
 import com.putraworks.graveatlas.data.model.RecordAnomalyCheck;
-import com.putraworks.graveatlas.data.model.CemeteryHealth;
+import com.putraworks.graveatlas.data.model.CemeteryHealthAnalytics;
 import com.putraworks.graveatlas.data.model.GlobalHealthOverview;
 import com.putraworks.graveatlas.data.model.CemeteryRecommendations;
 import com.putraworks.graveatlas.data.model.GlobalRecommendations;
@@ -55,6 +55,9 @@ import com.putraworks.graveatlas.data.model.RelatedRecord;
 import com.putraworks.graveatlas.data.model.GovernancePolicy;
 import com.putraworks.graveatlas.data.model.DataClassification;
 import com.putraworks.graveatlas.data.model.ComplianceReport;
+import com.putraworks.graveatlas.data.model.AnalyticsDashboard;
+import com.putraworks.graveatlas.data.model.StakeholderReport;
+import com.putraworks.graveatlas.data.model.CemeteryHealthAnalytics;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -926,6 +929,315 @@ public class ApiClient {
         } catch (java.io.UnsupportedEncodingException e) {
             return value; // UTF-8 is always available on Android
         }
+    }
+
+    // ── Phase 16.26: AI Analytics & Insights Dashboard ──
+
+    /**
+     * Get analytics dashboard.
+     * GET /api/analytics/dashboard?cemeteryId=&timeRange=
+     */
+    public void getAnalyticsDashboard(String cemeteryId, String timeRange,
+            final ApiCallback<AnalyticsDashboard> callback) {
+        java.util.List<String> params = new java.util.ArrayList<>();
+        if (cemeteryId != null) params.add("cemeteryId=" + cemeteryId);
+        if (timeRange != null) params.add("timeRange=" + timeRange);
+        String url = baseUrl + "/api/analytics/dashboard";
+        if (!params.isEmpty()) url += "?" + String.join("&", params);
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(AnalyticsDashboard.fromJson(new JSONObject(body)));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse dashboard.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get analytics trends.
+     * GET /api/analytics/trends?cemeteryId=&timeRange=&interval=
+     */
+    public void getAnalyticsTrends(String cemeteryId, String timeRange, String interval,
+            final ApiCallback<JSONObject> callback) {
+        java.util.List<String> params = new java.util.ArrayList<>();
+        if (cemeteryId != null) params.add("cemeteryId=" + cemeteryId);
+        if (timeRange != null) params.add("timeRange=" + timeRange);
+        if (interval != null) params.add("interval=" + interval);
+        String url = baseUrl + "/api/analytics/trends";
+        if (!params.isEmpty()) url += "?" + String.join("&", params);
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse trends.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get cemetery health scores.
+     * GET /api/analytics/cemetery-health?limit=
+     */
+    public void getCemeteryHealth(int limit, final ApiCallback<java.util.List<CemeteryHealthAnalytics>> callback) {
+        String url = baseUrl + "/api/analytics/cemetery-health?limit=" + limit;
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(CemeteryHealthAnalytics.fromJson(new JSONObject(body)));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse cemetery health.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get anomaly distribution.
+     * GET /api/analytics/anomaly-distribution?cemeteryId=
+     */
+    public void getAnomalyDistribution(String cemeteryId, final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/analytics/anomaly-distribution";
+        if (cemeteryId != null) url += "?cemeteryId=" + cemeteryId;
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse anomaly distribution.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get confidence distribution.
+     * GET /api/analytics/confidence-distribution?cemeteryId=
+     */
+    public void getConfidenceDistribution(String cemeteryId, final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/analytics/confidence-distribution";
+        if (cemeteryId != null) url += "?cemeteryId=" + cemeteryId;
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse confidence distribution.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get source reliability metrics.
+     * GET /api/analytics/source-reliability?cemeteryId=
+     */
+    public void getSourceReliability(String cemeteryId, final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/analytics/source-reliability";
+        if (cemeteryId != null) url += "?cemeteryId=" + cemeteryId;
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse source reliability.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get curation velocity metrics.
+     * GET /api/analytics/curation-velocity?cemeteryId=&timeRange=
+     */
+    public void getCurationVelocity(String cemeteryId, String timeRange,
+            final ApiCallback<JSONObject> callback) {
+        java.util.List<String> params = new java.util.ArrayList<>();
+        if (cemeteryId != null) params.add("cemeteryId=" + cemeteryId);
+        if (timeRange != null) params.add("timeRange=" + timeRange);
+        String url = baseUrl + "/api/analytics/curation-velocity";
+        if (!params.isEmpty()) url += "?" + String.join("&", params);
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse curation velocity.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get search analytics.
+     * GET /api/analytics/search-analytics?timeRange=&limit=
+     */
+    public void getSearchAnalytics(String timeRange, int limit, final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/analytics/search-analytics?timeRange=" + timeRange + "&limit=" + limit;
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse search analytics.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get compliance trends.
+     * GET /api/analytics/compliance-trends?timeRange=
+     */
+    public void getComplianceTrends(String timeRange, final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/analytics/compliance-trends?timeRange=" + timeRange;
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse compliance trends.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get stakeholder report.
+     * GET /api/analytics/stakeholder-report?cemeteryId=&timeRange=
+     */
+    public void getStakeholderReport(String cemeteryId, String timeRange,
+            final ApiCallback<StakeholderReport> callback) {
+        java.util.List<String> params = new java.util.ArrayList<>();
+        if (cemeteryId != null) params.add("cemeteryId=" + cemeteryId);
+        if (timeRange != null) params.add("timeRange=" + timeRange);
+        String url = baseUrl + "/api/analytics/stakeholder-report";
+        if (!params.isEmpty()) url += "?" + String.join("&", params);
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(StakeholderReport.fromJson(new JSONObject(body)));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse stakeholder report.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
     }
 
     // ── Phase 16.25: AI Data Governance & Compliance ──
