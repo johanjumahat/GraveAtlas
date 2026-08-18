@@ -15,6 +15,9 @@ import com.putraworks.graveatlas.data.model.AnomalyForecast;
 import com.putraworks.graveatlas.data.model.CurationForecast;
 import com.putraworks.graveatlas.data.model.DataGrowthForecast;
 import com.putraworks.graveatlas.data.model.RiskAssessment;
+import com.putraworks.graveatlas.data.model.NaturalLanguageQueryResult;
+import com.putraworks.graveatlas.data.model.QueryExplanation;
+import com.putraworks.graveatlas.data.model.QuerySuggestions;
 import com.putraworks.graveatlas.data.model.GlobalHealthOverview;
 import com.putraworks.graveatlas.data.model.CemeteryRecommendations;
 import com.putraworks.graveatlas.data.model.GlobalRecommendations;
@@ -68,6 +71,9 @@ import com.putraworks.graveatlas.data.model.AnomalyForecast;
 import com.putraworks.graveatlas.data.model.CurationForecast;
 import com.putraworks.graveatlas.data.model.DataGrowthForecast;
 import com.putraworks.graveatlas.data.model.RiskAssessment;
+import com.putraworks.graveatlas.data.model.NaturalLanguageQueryResult;
+import com.putraworks.graveatlas.data.model.QueryExplanation;
+import com.putraworks.graveatlas.data.model.QuerySuggestions;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -1410,6 +1416,163 @@ public class ApiClient {
                     } catch (Exception e) {
                         callback.onError("Failed to parse risk assessment.");
                     }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    // ── Phase 16.28: AI Natural Language Query Engine ──
+
+    /**
+     * Execute a natural language query.
+     * POST /api/query/natural
+     */
+    public void executeNaturalLanguageQuery(String query,
+            final ApiCallback<NaturalLanguageQueryResult> callback) {
+        String url = baseUrl + "/api/query/natural";
+        JSONObject body = new JSONObject();
+        try { body.put("query", query); } catch (Exception e) { }
+
+        RequestBody rb = RequestBody.create(body.toString(), JSON);
+        Request request = new Request.Builder().url(url).post(rb).build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String respBody = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(NaturalLanguageQueryResult.fromJson(new JSONObject(respBody)));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse query result.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get suggested natural language queries.
+     * GET /api/query/suggestions
+     */
+    public void getQuerySuggestions(final ApiCallback<QuerySuggestions> callback) {
+        String url = baseUrl + "/api/query/suggestions";
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String respBody = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(QuerySuggestions.fromJson(new JSONObject(respBody)));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse suggestions.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Explain how a query was parsed.
+     * POST /api/query/explain
+     */
+    public void explainQuery(String query, final ApiCallback<QueryExplanation> callback) {
+        String url = baseUrl + "/api/query/explain";
+        JSONObject body = new JSONObject();
+        try { body.put("query", query); } catch (Exception e) { }
+
+        RequestBody rb = RequestBody.create(body.toString(), JSON);
+        Request request = new Request.Builder().url(url).post(rb).build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String respBody = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(QueryExplanation.fromJson(new JSONObject(respBody)));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse explanation.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get query history.
+     * GET /api/query/history
+     */
+    public void getQueryHistory(int limit, final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/query/history?limit=" + limit;
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String respBody = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(respBody));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse query history.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Submit query feedback.
+     * POST /api/query/feedback
+     */
+    public void submitQueryFeedback(String query, boolean helpful, String comment,
+            final ApiCallback<Void> callback) {
+        String url = baseUrl + "/api/query/feedback";
+        JSONObject body = new JSONObject();
+        try {
+            body.put("query", query);
+            body.put("helpful", helpful);
+            if (comment != null) body.put("comment", comment);
+        } catch (Exception e) { }
+
+        RequestBody rb = RequestBody.create(body.toString(), JSON);
+        Request request = new Request.Builder().url(url).post(rb).build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    callback.onSuccess(null);
                 } else {
                     callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
                 }

@@ -58,6 +58,7 @@
 | 16.25. AI Data Governance & Compliance | ✅ COMPLETE | 100% |
 | 16.26. AI Analytics & Insights Dashboard | ✅ COMPLETE | 100% |
 | 16.27. AI Predictive Insights & Trend Forecasting | ✅ COMPLETE | 100% |
+| 16.28. AI Natural Language Query Engine | ✅ COMPLETE | 100% |
 
 ### All Dependabot PRs Cleared 🎉
 
@@ -133,9 +134,11 @@
 
 25. **Add — AI Predictive Insights & Trend Forecasting** ✅ Five predictive endpoints: health score forecast (linear regression on historical health buckets, trend direction with confidence levels, time-to-threshold prediction), anomaly emergence forecast (per-type frequency analysis, trend detection, severity breakdowns, risk scoring), curation workload forecast (backlog metrics, estimated days to clear, workload level classification, per-field trends for new records/updates/reviews/enrichments/anomalies), data growth forecast (record/cemetery/storage projections, growth rate per day, growth trend detection, milestone predictions with estimated dates), and comprehensive risk assessment (6 risk types: low_verification, high_anomaly_rate, missing_sources, low_confidence, missing_coordinates, stale_data, with per-cemetery severity, impact, and mitigation strategies, priority actions with cemetery lists). New models: `HealthForecast`, `AnomalyForecast`, `CurationForecast`, `DataGrowthForecast`, `RiskAssessment`. 100+ new tests. v7.2.31.
 
+26. **Add — AI Natural Language Query Engine** ✅ Five endpoints for plain-English querying: natural language query (8 intents: search/count/analyze/health/predict/risk/export/fix, extracts cemetery names/relative dates/year ranges/name filters/confidence thresholds/verification status/anomaly+source+coordinate flags/sort order/limits/aggregations, returns NL answer + structured results), query suggestions (cemetery-specific, time-based, quality, analysis suggestions based on available data), query explain (human-readable breakdown of parsed parameters without execution), query history (KV-backed recent query log), and query feedback (helpful/not helpful rating with comments, last 100 entries). New models: `NaturalLanguageQueryResult` (5 inner classes), `QueryExplanation`, `QuerySuggestions`. 100+ new tests. v7.2.32.
+
 ## Architecture
 
-- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 174 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
+- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 179 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
 - **Android:** 18+ screens with navigation host, external maps handoff (geo: intent), offline support
 - **Data:** GitHub repository (graveatlas-data) with JSON schemas
 - **Auth:** Google Sign-In with ID token verification, session tokens, ban system
@@ -143,7 +146,7 @@
 - **Timeline:** Chronological event visualization with decade grouping, backend endpoint
 - **External Sources:** OpenStreetMap (Overpass API), Wikidata (SPARQL), Singapore Government Open Data (data.gov.sg)
 
-## Test Suite (3610 tests)
+## Test Suite (3301 tests)
 
 | Test File | Tests | Area |
 |---|---|---|

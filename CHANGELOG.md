@@ -519,6 +519,41 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.32] — 2026-08-18
+
+### Phase 16.28: AI Natural Language Query Engine
+
+**Added:**
+- `POST /api/query/natural` — natural language query engine that parses
+  plain-English questions into structured searches. Detects 8 intents
+  (search, count, export, fix, analyze, health, predict, risk), extracts
+  cemetery names, relative dates, year ranges, name filters, confidence
+  thresholds, verification status, anomaly/source/coordinate flags, sort
+  order, limits, and aggregations. Returns a natural language answer
+  + structured results.
+
+- `GET /api/query/suggestions` — returns suggested natural language
+  queries based on available cemetery data. Includes cemetery-specific,
+  time-based, quality, and analysis suggestions.
+
+- `POST /api/query/explain` — explains how a query was parsed without
+  executing it. Returns the structured parsed query and a human-readable
+  explanation of each detected parameter.
+
+- `GET /api/query/history` — returns recent natural language query
+  history (stored in KV).
+
+- `POST /api/query/feedback` — submit feedback on query results
+  (helpful/not helpful with optional comment, stored in KV, last 100).
+
+New models: NaturalLanguageQueryResult (5 inner), QueryExplanation,
+  QuerySuggestions
+API client: 5 new methods
+AI system prompt updated with NLQ endpoint descriptions
+3 new suggested prompts
+100+ new tests (phase16-28.test.js)
+
+
 ## [7.2.31] — 2026-08-18
 
 ### Phase 16.27: AI Predictive Insights & Trend Forecasting

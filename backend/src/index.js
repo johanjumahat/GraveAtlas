@@ -843,6 +843,27 @@ async function handleRequest(request, env, ctx) {
       return await handleRiskAssessment(request, env, corsHeaders);
     }
 
+    // Phase 16.28: AI Natural Language Query Engine
+    if (path === '/api/query/natural' && method === 'POST') {
+      return await handleNaturalLanguageQuery(request, env, corsHeaders);
+    }
+
+    if (path === '/api/query/suggestions' && method === 'GET') {
+      return await handleQuerySuggestions(request, env, corsHeaders);
+    }
+
+    if (path === '/api/query/explain' && method === 'POST') {
+      return await handleQueryExplain(request, env, corsHeaders);
+    }
+
+    if (path === '/api/query/history' && method === 'GET') {
+      return await handleQueryHistory(request, env, corsHeaders);
+    }
+
+    if (path === '/api/query/feedback' && method === 'POST') {
+      return await handleQueryFeedback(request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -23978,5 +23999,568 @@ async function handleRiskAssessment(request, env, cors) {
     }, 200, cors);
   } catch (error) {
     return jsonResponse({ success: false, error: 'Failed to generate risk assessment', message: error.message }, 500, cors);
+  }
+}
+
+// ── Phase 16.28: AI Natural Language Query Engine Handlers ──
+
+/**
+ * Natural language intent parser — extracts structured query parameters
+ * from a plain-English question about cemetery/grave data.
+ */
+function parseNLQuery(query) {
+  const q = query.toLowerCase().trim();
+  const result = {
+    intent: 'search',
+    cemeteryId: null,
+    cemeteryName: null,
+    nameFilter: null,
+    dateRange: { start: null, end: null },
+    yearRange: { start: null, end: null },
+    confidenceThreshold: null,
+    verificationStatus: null,
+    hasAnomalies: null,
+    hasSources: null,
+    hasCoordinates: null,
+    sortBy: null,
+    sortOrder: 'desc',
+    limit: null,
+    aggregation: null,
+    groupBy: null,
+    filters: [],
+    rawQuery: query
+  };
+
+  // Intent detection
+  if (/\b(how many|count|total|number of)\b/.test(q)) {
+    result.intent = 'count';
+  } else if (/\b(show|list|find|get|display|give me)\b/.test(q)) {
+    result.intent = 'search';
+  } else if (/\b(export|download|csv|geojson)\b/.test(q)) {
+    result.intent = 'export';
+  } else if (/\b(fix|repair|correct|clean up)\b/.test(q)) {
+    result.intent = 'fix';
+  } else if (/\b(analyze|summarize|report|stats|statistics)\b/.test(q)) {
+    result.intent = 'analyze';
+  } else if (/\b(health|score|grade|quality)\b/.test(q)) {
+    result.intent = 'health';
+  } else if (/\b(predict|forecast|future|trend|growth)\b/.test(q)) {
+    result.intent = 'predict';
+  } else if (/\b(risk|threat|danger|problem|issue)\b/.test(q)) {
+    result.intent = 'risk';
+  }
+
+  // Cemetery name extraction
+  const cemeteryPatterns = [
+    /\b(?:in|at|from|for)\s+(bukit brown)\b/i,
+    /\b(?:in|at|from|for)\s+(choa chu kang|chua chu kang|cck)\b/i,
+    /\b(?:in|at|from|for)\s+(kranji war)\b/i,
+    /\b(?:in|at|from|for)\s+(macritchie)\b/i,
+    /\b(?:in|at|from|for)\s+(all cemeteries|every cemetery|all)\b/i,
+    /\b(?:in|at|from|for)\s+([a-z][a-z\s]+cemetery)\b/i,
+    /\b(bukit brown)\b/i,
+    /\b(kranji war)\b/i,
+    /\b(macritchie)\b/i
+  ];
+  for (const pattern of cemeteryPatterns) {
+    const match = q.match(pattern);
+    if (match) {
+      const name = match[1];
+      if (name === 'all cemeteries' || name === 'every cemetery' || name === 'all') {
+        result.cemeteryName = null; // global
+      } else {
+        result.cemeteryName = name;
+      }
+      break;
+    }
+  }
+
+  // Date range extraction
+  const relativeDates = [
+    { pattern: /\b(today)\b/, days: 0 },
+    { pattern: /\b(yesterday)\b/, days: -1 },
+    { pattern: /\b(this week)\b/, days: -7 },
+    { pattern: /\b(last week)\b/, days: -14, startOffset: -7 },
+    { pattern: /\b(this month)\b/, days: -30 },
+    { pattern: /\b(last month)\b/, days: -60, startOffset: -30 },
+    { pattern: /\b(last 3 months|past 3 months|3 months ago)\b/, days: -90 },
+    { pattern: /\b(last 6 months|past 6 months|6 months ago)\b/, days: -180 },
+    { pattern: /\b(this year)\b/, days: -365 },
+    { pattern: /\b(last year)\b/, days: -730, startOffset: -365 },
+  ];
+  const now = Date.now();
+  const dayMs = 86400000;
+  for (const rd of relativeDates) {
+    if (rd.pattern.test(q)) {
+      if (rd.startOffset) {
+        result.dateRange.start = new Date(now + rd.startOffset * dayMs).toISOString().split('T')[0];
+        result.dateRange.end = new Date(now + rd.days * dayMs).toISOString().split('T')[0];
+      } else {
+        result.dateRange.start = new Date(now + rd.days * dayMs).toISOString().split('T')[0];
+        result.dateRange.end = new Date(now).toISOString().split('T')[0];
+      }
+      break;
+    }
+  }
+
+  // Year extraction (e.g. "born in 1920", "died 1945", "between 1900 and 1950")
+  const yearBetween = q.match(/\bbetween\s+(\d{4})\s+and\s+(\d{4})\b/);
+  if (yearBetween) {
+    result.yearRange.start = parseInt(yearBetween[1]);
+    result.yearRange.end = parseInt(yearBetween[2]);
+  } else {
+    const bornYear = q.match(/\b(?:born|birth)\s+(?:in\s+)?(\d{4})\b/);
+    if (bornYear) result.yearRange.start = parseInt(bornYear[1]);
+    const diedYear = q.match(/\b(?:died|death)\s+(?:in\s+)?(\d{4})\b/);
+    if (diedYear) result.yearRange.end = parseInt(diedYear[1]);
+    const inYear = q.match(/\bin\s+(\d{4})\b/);
+    if (inYear && !bornYear && !diedYear) {
+      result.yearRange.start = parseInt(inYear[1]);
+      result.yearRange.end = parseInt(inYear[1]);
+    }
+    const beforeYear = q.match(/\bbefore\s+(\d{4})\b/);
+    if (beforeYear) result.yearRange.end = parseInt(beforeYear[1]);
+    const afterYear = q.match(/\bafter\s+(\d{4})\b/);
+    if (afterYear) result.yearRange.start = parseInt(afterYear[1]);
+  }
+
+  // Name extraction (proper nouns after "named" or "called")
+  const namedMatch = q.match(/\b(?:named|called)\s+([a-z][a-z\s]+?)(?:\s+(?:in|at|from|who|born|died|with|that|that's|$))/i);
+  if (namedMatch) {
+    result.nameFilter = namedMatch[1].trim();
+  }
+
+  // Confidence threshold
+  if (/\bhigh confidence\b/i.test(q)) result.confidenceThreshold = 75;
+  else if (/\bmedium confidence\b/i.test(q)) result.confidenceThreshold = 50;
+  else if (/\blow confidence\b/i.test(q)) result.confidenceThreshold = 25;
+  else {
+    const confMatch = q.match(/\bconfidence\s*(?:>=?|at least|above|over)\s*(\d+)/i);
+    if (confMatch) result.confidenceThreshold = parseInt(confMatch[1]);
+  }
+
+  // Verification status
+  if (/\bverified\b/i.test(q) && !/\bunverified\b/i.test(q)) result.verificationStatus = 'verified';
+  if (/\bunverified\b/i.test(q)) result.verificationStatus = 'unverified';
+
+  // Anomaly flags
+  if (/\bwith anomalies?\b/i.test(q) || /\bhaving anomalies?\b/i.test(q)) result.hasAnomalies = true;
+  if (/\bwithout anomalies?\b/i.test(q) || /\bno anomalies?\b/i.test(q)) result.hasAnomalies = false;
+
+  // Source flags
+  if (/\bwith sources?\b/i.test(q)) result.hasSources = true;
+  if (/\bwithout sources?\b/i.test(q) || /\bno sources?\b/i.test(q)) result.hasSources = false;
+
+  // Coordinate flags
+  if (/\bwith coordinates?\b/i.test(q) || /\bgeocoded\b/i.test(q)) result.hasCoordinates = true;
+  if (/\bwithout coordinates?\b/i.test(q) || /\bno coordinates?\b/i.test(q) || /\bmissing coordinates?\b/i.test(q)) result.hasCoordinates = false;
+
+  // Sort detection
+  if (/\b(sort by|order by|sorted by|ordered by)\s+(date|newest|oldest|confidence|name|recent)\b/i.test(q)) {
+    const sortMatch = q.match(/\b(?:sort|order)(?:ed)?\s+by\s+(\w+)/i);
+    if (sortMatch) {
+      const field = sortMatch[1].toLowerCase();
+      if (field === 'date' || field === 'newest' || field === 'recent') { result.sortBy = 'date'; result.sortOrder = 'desc'; }
+      else if (field === 'oldest') { result.sortBy = 'date'; result.sortOrder = 'asc'; }
+      else if (field === 'confidence') { result.sortBy = 'confidence'; result.sortOrder = 'desc'; }
+      else if (field === 'name') { result.sortBy = 'name'; result.sortOrder = 'asc'; }
+    }
+  } else if (/\bnewest\b/i.test(q)) { result.sortBy = 'date'; result.sortOrder = 'desc'; }
+  else if (/\boldest\b/i.test(q)) { result.sortBy = 'date'; result.sortOrder = 'asc'; }
+
+  // Limit extraction
+  const limitMatch = q.match(/\b(?:top|first|limit)\s+(\d+)\b/i);
+  if (limitMatch) result.limit = parseInt(limitMatch[1]);
+  else if (/\btop 10\b/i.test(q)) result.limit = 10;
+  else if (/\btop 50\b/i.test(q)) result.limit = 50;
+
+  // Aggregation
+  if (/\bby cemetery\b/i.test(q)) { result.aggregation = 'count'; result.groupBy = 'cemetery'; }
+  else if (/\bby year\b/i.test(q)) { result.aggregation = 'count'; result.groupBy = 'year'; }
+  else if (/\bby country\b/i.test(q)) { result.aggregation = 'count'; result.groupBy = 'country'; }
+  else if (/\bby type\b/i.test(q)) { result.aggregation = 'count'; result.groupBy = 'type'; }
+
+  return result;
+}
+
+/**
+ * POST /api/query/natural
+ * Natural language query engine — parses a plain-English question,
+ * executes it against the dataset, and returns structured results.
+ */
+async function handleNaturalLanguageQuery(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, results: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const body = await request.json();
+    const query = body.query || body.question || body.q;
+    if (!query || typeof query !== 'string' || query.trim().length === 0) {
+      return jsonResponse({ success: false, error: 'Query is required' }, 400, cors);
+    }
+
+    // Parse the query
+    const parsed = parseNLQuery(query);
+
+    // Load records
+    const allRecords = await loadAllRecords(env);
+    let records = allRecords.filter(r => r.status === 'published');
+
+    // Apply cemetery filter
+    if (parsed.cemeteryName) {
+      const cnLower = parsed.cemeteryName.toLowerCase();
+      records = records.filter(r => {
+        const rCemetery = (r.cemeteryName || r.cemeteryId || '').toLowerCase();
+        return rCemetery.includes(cnLower) || cnLower.includes(rCemetery);
+      });
+    }
+
+    // Apply name filter
+    if (parsed.nameFilter) {
+      const nfLower = parsed.nameFilter.toLowerCase();
+      records = records.filter(r => {
+        const fullName = (r.name || r.fullName || '').toLowerCase();
+        return fullName.includes(nfLower);
+      });
+    }
+
+    // Apply date range
+    if (parsed.dateRange.start) {
+      const startTime = new Date(parsed.dateRange.start).getTime();
+      records = records.filter(r => getRecordTimestamp(r) >= startTime);
+    }
+    if (parsed.dateRange.end) {
+      const endTime = new Date(parsed.dateRange.end).getTime() + dayMs;
+      records = records.filter(r => getRecordTimestamp(r) <= endTime);
+    }
+
+    // Apply year range (birth/death years)
+    if (parsed.yearRange.start || parsed.yearRange.end) {
+      records = records.filter(r => {
+        const birthYear = r.birthYear || (r.birthDate ? new Date(r.birthDate).getFullYear() : null);
+        const deathYear = r.deathYear || (r.deathDate ? new Date(r.deathDate).getFullYear() : null);
+        if (parsed.yearRange.start && parsed.yearRange.end) {
+          if (parsed.yearRange.start === parsed.yearRange.end) {
+            return birthYear === parsed.yearRange.start || deathYear === parsed.yearRange.start;
+          }
+          return (birthYear && birthYear >= parsed.yearRange.start && birthYear <= parsed.yearRange.end) ||
+                 (deathYear && deathYear >= parsed.yearRange.start && deathYear <= parsed.yearRange.end);
+        }
+        if (parsed.yearRange.start) {
+          return (birthYear && birthYear >= parsed.yearRange.start) || (deathYear && deathYear >= parsed.yearRange.start);
+        }
+        if (parsed.yearRange.end) {
+          return (birthYear && birthYear <= parsed.yearRange.end) || (deathYear && deathYear <= parsed.yearRange.end);
+        }
+        return true;
+      });
+    }
+
+    // Apply confidence threshold
+    if (parsed.confidenceThreshold !== null) {
+      records = records.filter(r => (r.confidenceScore || 0) >= parsed.confidenceThreshold);
+    }
+
+    // Apply verification filter
+    if (parsed.verificationStatus === 'verified') {
+      records = records.filter(r => r.verificationStatus === 'verified');
+    } else if (parsed.verificationStatus === 'unverified') {
+      records = records.filter(r => r.verificationStatus !== 'verified');
+    }
+
+    // Apply anomaly filter
+    if (parsed.hasAnomalies === true) {
+      records = records.filter(r => r.anomalies && r.anomalies.length > 0);
+    } else if (parsed.hasAnomalies === false) {
+      records = records.filter(r => !r.anomalies || r.anomalies.length === 0);
+    }
+
+    // Apply source filter
+    if (parsed.hasSources === true) {
+      records = records.filter(r => r.sourceRefs && r.sourceRefs.length > 0);
+    } else if (parsed.hasSources === false) {
+      records = records.filter(r => !r.sourceRefs || r.sourceRefs.length === 0);
+    }
+
+    // Apply coordinate filter
+    if (parsed.hasCoordinates === true) {
+      records = records.filter(r => r.latitude && r.longitude);
+    } else if (parsed.hasCoordinates === false) {
+      records = records.filter(r => !r.latitude || !r.longitude);
+    }
+
+    // Sorting
+    if (parsed.sortBy === 'date') {
+      records.sort((a, b) => {
+        const cmp = getRecordTimestamp(a) - getRecordTimestamp(b);
+        return parsed.sortOrder === 'asc' ? cmp : -cmp;
+      });
+    } else if (parsed.sortBy === 'confidence') {
+      records.sort((a, b) => {
+        const cmp = (a.confidenceScore || 0) - (b.confidenceScore || 0);
+        return parsed.sortOrder === 'asc' ? cmp : -cmp;
+      });
+    } else if (parsed.sortBy === 'name') {
+      records.sort((a, b) => {
+        const cmp = (a.name || '').localeCompare(b.name || '');
+        return parsed.sortOrder === 'asc' ? cmp : -cmp;
+      });
+    }
+
+    // Aggregation
+    let aggregated = null;
+    if (parsed.aggregation === 'count' && parsed.groupBy) {
+      const groups = {};
+      for (const r of records) {
+        let key;
+        if (parsed.groupBy === 'cemetery') key = r.cemeteryName || r.cemeteryId || 'Unknown';
+        else if (parsed.groupBy === 'year') {
+          const y = r.deathYear || r.birthYear || (r.deathDate ? new Date(r.deathDate).getFullYear() : null);
+          key = y ? String(y) : 'Unknown';
+        }
+        else if (parsed.groupBy === 'country') key = r.country || 'Unknown';
+        else if (parsed.groupBy === 'type') key = r.recordType || r.type || 'grave';
+        else key = 'Unknown';
+        groups[key] = (groups[key] || 0) + 1;
+      }
+      aggregated = Object.entries(groups)
+        .map(([key, count]) => ({ key, count }))
+        .sort((a, b) => b.count - a.count);
+    }
+
+    // Apply limit
+    const totalMatched = records.length;
+    if (parsed.limit && parsed.limit > 0 && parsed.intent !== 'count') {
+      records = records.slice(0, parsed.limit);
+    }
+
+    // Format results
+    const formattedResults = records.map(r => ({
+      id: r.id,
+      name: r.name || r.fullName || 'Unknown',
+      cemetery: r.cemeteryName || r.cemeteryId || 'Unknown',
+      birthYear: r.birthYear || (r.birthDate ? new Date(r.birthDate).getFullYear() : null),
+      deathYear: r.deathYear || (r.deathDate ? new Date(r.deathDate).getFullYear() : null),
+      confidence: r.confidenceScore || 0,
+      verificationStatus: r.verificationStatus || 'unverified',
+      hasAnomalies: r.anomalies && r.anomalies.length > 0,
+      hasCoordinates: !!(r.latitude && r.longitude),
+      hasSources: r.sourceRefs && r.sourceRefs.length > 0
+    }));
+
+    // Generate natural language answer
+    let answer = '';
+    if (parsed.intent === 'count') {
+      if (aggregated) {
+        answer = `Found ${totalMatched} records. Breakdown by ${parsed.groupBy}:\n` +
+          aggregated.slice(0, 10).map(g => `  ${g.key}: ${g.count}`).join('\n');
+      } else {
+        const cemeteryStr = parsed.cemeteryName ? ` in ${parsed.cemeteryName}` : '';
+        const dateStr = parsed.dateRange.start ? ` from ${parsed.dateRange.start} to ${parsed.dateRange.end}` : '';
+        const yearStr = parsed.yearRange.start ? ` between ${parsed.yearRange.start}${parsed.yearRange.end !== parsed.yearRange.start ? ' and ' + parsed.yearRange.end : ''}` : '';
+        answer = `Found ${totalMatched} records${cemeteryStr}${dateStr}${yearStr}.`;
+      }
+    } else if (parsed.intent === 'search') {
+      answer = `Found ${totalMatched} matching records${parsed.limit ? ` (showing ${formattedResults.length})` : ''}.`;
+    } else if (parsed.intent === 'analyze') {
+      const verified = records.filter(r => r.verificationStatus === 'verified').length;
+      const withAnomalies = records.filter(r => r.anomalies && r.anomalies.length > 0).length;
+      const avgConfidence = records.length > 0 ? Math.round(records.reduce((s, r) => s + (r.confidenceScore || 0), 0) / records.length) : 0;
+      answer = `Analysis of ${totalMatched} records: ${verified} verified (${Math.round(verified/Math.max(totalMatched,1)*100)}%), ${withAnomalies} with anomalies, average confidence ${avgConfidence}/100.`;
+    } else if (parsed.intent === 'health') {
+      const avgConfidence = records.length > 0 ? Math.round(records.reduce((s, r) => s + (r.confidenceScore || 0), 0) / records.length) : 0;
+      const verifiedRate = records.length > 0 ? Math.round(records.filter(r => r.verificationStatus === 'verified').length / records.length * 100) : 0;
+      const anomalyRate = records.length > 0 ? Math.round(records.filter(r => r.anomalies && r.anomalies.length > 0).length / records.length * 100) : 0;
+      const healthScore = Math.round(avgConfidence * 0.4 + verifiedRate * 0.3 + (100 - anomalyRate) * 0.3);
+      answer = `Health score: ${healthScore}/100 (confidence ${avgConfidence}, verification ${verifiedRate}%, anomaly rate ${anomalyRate}%).`;
+    } else {
+      answer = `Found ${totalMatched} records matching your query.`;
+    }
+
+    return jsonResponse({
+      success: true,
+      query: query,
+      parsed: parsed,
+      answer: answer,
+      results: formattedResults,
+      totalCount: totalMatched,
+      shownCount: formattedResults.length,
+      aggregation: aggregated
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to process query', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/query/suggestions
+ * Returns suggested natural language queries based on available data.
+ */
+async function handleQuerySuggestions(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, suggestions: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const allRecords = await loadAllRecords(env, 1000);
+    const records = allRecords.filter(r => r.status === 'published');
+
+    // Collect cemetery names
+    const cemeteryNames = [...new Set(records.map(r => r.cemeteryName).filter(Boolean))].slice(0, 10);
+
+    // Build suggestions
+    const suggestions = [];
+
+    // Basic queries
+    suggestions.push('How many records are in the database?');
+    suggestions.push('Show me all verified records');
+    suggestions.push('Find records with high confidence');
+    suggestions.push('Show me records with anomalies');
+
+    // Cemetery-specific
+    for (const name of cemeteryNames.slice(0, 5)) {
+      suggestions.push(`How many records are in ${name}?`);
+      suggestions.push(`Show me verified records in ${name}`);
+      suggestions.push(`Find records with low confidence in ${name}`);
+    }
+
+    // Time-based
+    suggestions.push('How many records were added this month?');
+    suggestions.push('Show me records added this week');
+    suggestions.push('Find records from last year');
+
+    // Year-based
+    suggestions.push('Find records of people born between 1900 and 1950');
+    suggestions.push('Show me records of people who died before 1920');
+
+    // Quality queries
+    suggestions.push('Show me records without sources');
+    suggestions.push('Find records without coordinates');
+    suggestions.push('Show me records with anomalies by cemetery');
+    suggestions.push('What is the health score for all cemeteries?');
+
+    // Analysis
+    suggestions.push('Analyze records in Bukit Brown');
+    suggestions.push('Show me the risk assessment');
+
+    return jsonResponse({
+      success: true,
+      suggestions: suggestions.slice(0, 25),
+      cemeteryNames: cemeteryNames
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to generate suggestions', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/query/explain
+ * Explains how a natural language query was parsed without executing it.
+ */
+async function handleQueryExplain(request, env, cors) {
+  try {
+    const body = await request.json();
+    const query = body.query || body.question || body.q;
+    if (!query || typeof query !== 'string' || query.trim().length === 0) {
+      return jsonResponse({ success: false, error: 'Query is required' }, 400, cors);
+    }
+
+    const parsed = parseNLQuery(query);
+
+    // Build human-readable explanation
+    const parts = [];
+    parts.push(`Intent: ${parsed.intent}`);
+    if (parsed.cemeteryName) parts.push(`Cemetery: ${parsed.cemeteryName}`);
+    if (parsed.nameFilter) parts.push(`Name contains: "${parsed.nameFilter}"`);
+    if (parsed.dateRange.start) parts.push(`Date range: ${parsed.dateRange.start} to ${parsed.dateRange.end || 'now'}`);
+    if (parsed.yearRange.start) parts.push(`Year range: ${parsed.yearRange.start}${parsed.yearRange.end ? ' to ' + parsed.yearRange.end : ''}`);
+    if (parsed.confidenceThreshold !== null) parts.push(`Confidence >= ${parsed.confidenceThreshold}`);
+    if (parsed.verificationStatus) parts.push(`Verification: ${parsed.verificationStatus}`);
+    if (parsed.hasAnomalies !== null) parts.push(`Anomalies: ${parsed.hasAnomalies ? 'yes' : 'no'}`);
+    if (parsed.hasSources !== null) parts.push(`Sources: ${parsed.hasSources ? 'yes' : 'no'}`);
+    if (parsed.hasCoordinates !== null) parts.push(`Coordinates: ${parsed.hasCoordinates ? 'yes' : 'no'}`);
+    if (parsed.sortBy) parts.push(`Sort by: ${parsed.sortBy} (${parsed.sortOrder})`);
+    if (parsed.limit) parts.push(`Limit: ${parsed.limit}`);
+    if (parsed.aggregation) parts.push(`Aggregation: ${parsed.aggregation} by ${parsed.groupBy}`);
+
+    return jsonResponse({
+      success: true,
+      query: query,
+      parsed: parsed,
+      explanation: parts.join('\n')
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to explain query', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/query/history
+ * Returns recent natural language query history (stored in KV if available,
+ * otherwise returns empty).
+ */
+async function handleQueryHistory(request, env, cors) {
+  try {
+    const url = new URL(request.url);
+    const limit = parseInt(url.searchParams.get('limit') || '20', 10);
+
+    // Query history stored in KV under 'nlq_history' key
+    let history = [];
+    if (env.GITHUB_KV) {
+      try {
+        const raw = await env.GITHUB_KV.get('nlq_history');
+        if (raw) history = JSON.parse(raw);
+      } catch (e) { /* empty */ }
+    }
+
+    return jsonResponse({
+      success: true,
+      history: history.slice(0, limit)
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get query history', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/query/feedback
+ * Submit feedback on a query result (helpful / not helpful).
+ */
+async function handleQueryFeedback(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { query, helpful, comment } = body;
+
+    if (!query) {
+      return jsonResponse({ success: false, error: 'Query is required' }, 400, cors);
+    }
+
+    // Store feedback in KV
+    let feedback = [];
+    if (env.GITHUB_KV) {
+      try {
+        const raw = await env.GITHUB_KV.get('nlq_feedback');
+        if (raw) feedback = JSON.parse(raw);
+      } catch (e) { /* empty */ }
+
+      feedback.unshift({
+        query,
+        helpful: !!helpful,
+        comment: comment || null,
+        timestamp: new Date().toISOString()
+      });
+
+      // Keep last 100 entries
+      feedback = feedback.slice(0, 100);
+      await env.GITHUB_KV.put('nlq_feedback', JSON.stringify(feedback));
+    }
+
+    return jsonResponse({
+      success: true,
+      message: 'Feedback recorded'
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to record feedback', message: error.message }, 500, cors);
   }
 }
