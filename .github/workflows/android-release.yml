@@ -46,7 +46,7 @@ jobs:
 
       # ── 3. Set up Android SDK ──
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       # ── 4. Read version ──
       - name: Read version
