@@ -60,6 +60,7 @@
 | 16.27. AI Predictive Insights & Trend Forecasting | ✅ COMPLETE | 100% |
 | 16.28. AI Natural Language Query Engine | ✅ COMPLETE | 100% |
 | 16.29. AI Smart Summaries & Auto-Documentation | ✅ COMPLETE | 100% |
+| 16.30. AI Cross-Reference & Linkage Engine | ✅ COMPLETE | 100% |
 
 ### All Dependabot PRs Cleared 🎉
 
@@ -139,9 +140,11 @@
 
 27. **Add — AI Smart Summaries & Auto-Documentation** ✅ Five endpoints for auto-generated documentation: cemetery summary (overview paragraph, statistics, confidence tier distribution, notable records, quality issues, recommendations), record summary (overview, provenance summary, related records, metadata), dataset summary (overview, date range, cemetery breakdown, top cemeteries, quality assessment, recommendations), health report (weighted health score, letter grade A-F, metric breakdown, assessment, recommended actions), and custom summary (type: cemetery/dataset/record, format: paragraph/bullets/json). New models: `CemeterySummary` (3 inner), `DatasetSummary` (2 inner), `HealthReportSummary`. API client: 4 new methods. v7.2.33.
 
+28. **Add — AI Cross-Reference & Linkage Engine** ✅ Five endpoints for detecting connections between records: family linkage (surname matching, date/plot/GPS proximity, given name similarity, relationship classification), cross-cemetery linkage (name similarity >=80%, same birth/death year, possible same person or family), proximity search (haversine distance, configurable radius), event clustering (death-year grouping, spike detection, epidemic/war/disaster identification), and linkage graph (5 edge types: family/same_cemetery/same_year/proximity/shared_source with strength scores, graph stats for visualization). New models: `FamilyLinkageResult` (3 inner), `LinkageGraph` (4 inner), `EventClusteringResult` (2 inner). v7.2.34.
+
 ## Architecture
 
-- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 184 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
+- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 189 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
 - **Android:** 18+ screens with navigation host, external maps handoff (geo: intent), offline support
 - **Data:** GitHub repository (graveatlas-data) with JSON schemas
 - **Auth:** Google Sign-In with ID token verification, session tokens, ban system
@@ -149,7 +152,7 @@
 - **Timeline:** Chronological event visualization with decade grouping, backend endpoint
 - **External Sources:** OpenStreetMap (Overpass API), Wikidata (SPARQL), Singapore Government Open Data (data.gov.sg)
 
-## Test Suite (3371 tests)
+## Test Suite (3453 tests)
 
 | Test File | Tests | Area |
 |---|---|---|

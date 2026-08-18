@@ -21,6 +21,9 @@ import com.putraworks.graveatlas.data.model.QuerySuggestions;
 import com.putraworks.graveatlas.data.model.CemeterySummary;
 import com.putraworks.graveatlas.data.model.DatasetSummary;
 import com.putraworks.graveatlas.data.model.HealthReportSummary;
+import com.putraworks.graveatlas.data.model.FamilyLinkageResult;
+import com.putraworks.graveatlas.data.model.LinkageGraph;
+import com.putraworks.graveatlas.data.model.EventClusteringResult;
 import com.putraworks.graveatlas.data.model.GlobalHealthOverview;
 import com.putraworks.graveatlas.data.model.CemeteryRecommendations;
 import com.putraworks.graveatlas.data.model.GlobalRecommendations;
@@ -80,6 +83,9 @@ import com.putraworks.graveatlas.data.model.QuerySuggestions;
 import com.putraworks.graveatlas.data.model.CemeterySummary;
 import com.putraworks.graveatlas.data.model.DatasetSummary;
 import com.putraworks.graveatlas.data.model.HealthReportSummary;
+import com.putraworks.graveatlas.data.model.FamilyLinkageResult;
+import com.putraworks.graveatlas.data.model.LinkageGraph;
+import com.putraworks.graveatlas.data.model.EventClusteringResult;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -1709,6 +1715,158 @@ public class ApiClient {
                         callback.onSuccess(new JSONObject(respBody));
                     } catch (Exception e) {
                         callback.onError("Failed to parse custom summary.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    // ── Phase 16.30: AI Cross-Reference & Linkage Engine ──
+
+    /**
+     * Detect family links within a cemetery.
+     * GET /api/linkage/family/:cemeteryId
+     */
+    public void getFamilyLinkage(String cemeteryId,
+            final ApiCallback<FamilyLinkageResult> callback) {
+        String url = baseUrl + "/api/linkage/family/" + cemeteryId;
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(FamilyLinkageResult.fromJson(new JSONObject(body)));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse family linkage.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Detect cross-cemetery links (same person or family).
+     * GET /api/linkage/cross-cemetery
+     */
+    public void getCrossCemeteryLinkage(final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/linkage/cross-cemetery";
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse cross-cemetery linkage.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Find records near a given record.
+     * GET /api/linkage/proximity
+     */
+    public void getProximityLinkage(String recordId, int radius,
+            final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/linkage/proximity?recordId=" + recordId + "&radius=" + radius;
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse proximity linkage.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Cluster records by historical events.
+     * GET /api/linkage/events
+     */
+    public void getEventClustering(String cemeteryId, int threshold,
+            final ApiCallback<EventClusteringResult> callback) {
+        String url = baseUrl + "/api/linkage/events?threshold=" + threshold;
+        if (cemeteryId != null) url += "&cemeteryId=" + cemeteryId;
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(EventClusteringResult.fromJson(new JSONObject(body)));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse event clustering.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Build a linkage graph for a record.
+     * GET /api/linkage/graph
+     */
+    public void getLinkageGraph(String recordId, int depth,
+            final ApiCallback<LinkageGraph> callback) {
+        String url = baseUrl + "/api/linkage/graph?recordId=" + recordId + "&depth=" + depth;
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(LinkageGraph.fromJson(new JSONObject(body)));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse linkage graph.");
                     }
                 } else {
                     callback.onError(ApiErrorHandler.getHttpMessage(response.code()));

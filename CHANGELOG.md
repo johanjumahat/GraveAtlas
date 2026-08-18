@@ -519,6 +519,45 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.34] — 2026-08-18
+
+### Phase 16.30: AI Cross-Reference & Linkage Engine
+
+**Added:**
+- `GET /api/linkage/family/:cemeteryId` — detects potential family links
+  within a cemetery using surname matching (40 pts), date proximity
+  (death within 5 years +20, birth within 10 years +15), plot/section
+  proximity (same plot +25, same section +10), given name similarity
+  (+10), and GPS proximity < 50m (+15). Classifies as likely family
+  (>=70), possible family (>=50), or same surname (>=40). Returns
+  surname groups with counts.
+
+- `GET /api/linkage/cross-cemetery` — detects potential same-person or
+  same-family links across different cemeteries using name similarity
+  (>=80%), same birth year (+25), same death year (+25). Classifies as
+  possible same person (>=80) or possible family member (>=50).
+
+- `GET /api/linkage/proximity` — geographic proximity search using
+  haversine distance. Configurable radius (default 1000m), returns nearby
+  records sorted by distance with cemetery, birth/death year.
+
+- `GET /api/linkage/events` — historical event clustering by death year.
+  Groups deaths by year, detects spikes (2x above neighbor average),
+  identifies potential epidemics/wars/disasters. Returns notable names,
+  affected cemeteries, spike ratios, and year range.
+
+- `GET /api/linkage/graph` — builds a relationship graph for a record
+  with 5 edge types (family, same_cemetery, same_year, proximity,
+  shared_source) with strength scores. Returns nodes, edges, and edge
+  type statistics for visualization.
+
+New models: FamilyLinkageResult (3 inner), LinkageGraph (4 inner),
+  EventClusteringResult (2 inner)
+API client: 5 new methods
+AI system prompt updated with linkage endpoint descriptions
+3 new suggested prompts
+
+
 ## [7.2.33] — 2026-08-18
 
 ### Phase 16.29: AI Smart Summaries & Auto-Documentation

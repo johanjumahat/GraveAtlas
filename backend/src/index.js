@@ -887,6 +887,28 @@ async function handleRequest(request, env, ctx) {
       return await handleCustomSummary(request, env, corsHeaders);
     }
 
+    // Phase 16.30: AI Cross-Reference & Linkage Engine
+    if (path.startsWith('/api/linkage/family/') && method === 'GET') {
+      const id = path.split('/').pop();
+      return await handleFamilyLinkage(id, request, env, corsHeaders);
+    }
+
+    if (path === '/api/linkage/cross-cemetery' && method === 'GET') {
+      return await handleCrossCemeteryLinkage(request, env, corsHeaders);
+    }
+
+    if (path === '/api/linkage/proximity' && method === 'GET') {
+      return await handleProximityLinkage(request, env, corsHeaders);
+    }
+
+    if (path === '/api/linkage/events' && method === 'GET') {
+      return await handleEventClustering(request, env, corsHeaders);
+    }
+
+    if (path === '/api/linkage/graph' && method === 'GET') {
+      return await handleLinkageGraph(request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -25118,5 +25140,538 @@ async function handleCustomSummary(request, env, cors) {
     }, 200, cors);
   } catch (error) {
     return jsonResponse({ success: false, error: 'Failed to generate custom summary', message: error.message }, 500, cors);
+  }
+}
+
+// ── Phase 16.30: AI Cross-Reference & Linkage Engine Handlers ──
+
+/**
+ * Helper: Calculate string similarity (Levenshtein-based, 0-1)
+ */
+function stringSimilarity(a, b) {
+  if (!a || !b) return 0;
+  a = a.toLowerCase().trim();
+  b = b.toLowerCase().trim();
+  if (a === b) return 1;
+  const maxLen = Math.max(a.length, b.length);
+  if (maxLen === 0) return 1;
+  const dist = levenshtein(a, b);
+  return 1 - (dist / maxLen);
+}
+
+/**
+ * Helper: Extract surname (last word of name)
+ */
+function getSurname(name) {
+  if (!name) return '';
+  const parts = name.trim().split(/\s+/);
+  return parts.length > 0 ? parts[parts.length - 1] : '';
+}
+
+/**
+ * Helper: Extract given name (everything except last word)
+ */
+function getGivenName(name) {
+  if (!name) return '';
+  const parts = name.trim().split(/\s+/);
+  return parts.length > 1 ? parts.slice(0, -1).join(' ') : parts[0];
+}
+
+/**
+ * GET /api/linkage/family/:cemeteryId
+ * Detects potential family links within a cemetery based on surname
+ * matching, date proximity, and plot proximity.
+ */
+async function handleFamilyLinkage(cemeteryId, request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, links: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const allRecords = await loadAllRecords(env);
+    const records = allRecords.filter(r => r.status === 'published' && (
+      r.cemeteryId === cemeteryId || r.cemeteryName === cemeteryId
+    ));
+
+    if (records.length < 2) {
+      return jsonResponse({ success: true, links: [], message: 'Not enough records for linkage analysis' }, 200, cors);
+    }
+
+    // Group by surname
+    const surnameGroups = {};
+    for (const r of records) {
+      const surname = getSurname(r.name || r.fullName);
+      if (!surname || surname.length < 2) continue;
+      if (!surnameGroups[surname]) surnameGroups[surname] = [];
+      surnameGroups[surname].push(r);
+    }
+
+    const links = [];
+    for (const [surname, group] of Object.entries(surnameGroups)) {
+      if (group.length < 2) continue;
+
+      // Compare all pairs within surname group
+      for (let i = 0; i < group.length; i++) {
+        for (let j = i + 1; j < group.length; j++) {
+          const a = group[i];
+          const b = group[j];
+          const reasons = [];
+          let score = 0;
+
+          // Same surname (strong signal)
+          reasons.push('same surname');
+          score += 40;
+
+          // Date proximity (birth/death years within 5 years)
+          const aDeath = a.deathYear || (a.deathDate ? new Date(a.deathDate).getFullYear() : null);
+          const bDeath = b.deathYear || (b.deathDate ? new Date(b.deathDate).getFullYear() : null);
+          const aBirth = a.birthYear || (a.birthDate ? new Date(a.birthDate).getFullYear() : null);
+          const bBirth = b.birthYear || (b.birthDate ? new Date(a.birthDate).getFullYear() : null);
+
+          if (aDeath && bDeath && Math.abs(aDeath - bDeath) <= 5) {
+            reasons.push('death dates within 5 years');
+            score += 20;
+          }
+          if (aBirth && bBirth && Math.abs(aBirth - bBirth) <= 10) {
+            reasons.push('birth dates within 10 years');
+            score += 15;
+          }
+
+          // Plot proximity
+          if (a.plot && b.plot && a.plot === b.plot) {
+            reasons.push('same plot');
+            score += 25;
+          } else if (a.section && b.section && a.section === b.section) {
+            reasons.push('same section');
+            score += 10;
+          }
+
+          // Given name similarity (parent-child detection)
+          const aGiven = getGivenName(a.name || a.fullName);
+          const bGiven = getGivenName(b.name || b.fullName);
+          if (aGiven && bGiven) {
+            const sim = stringSimilarity(aGiven, bGiven);
+            if (sim > 0.8) {
+              reasons.push('similar given names');
+              score += 10;
+            }
+          }
+
+          // GPS proximity (< 50m)
+          if (a.latitude && a.longitude && b.latitude && b.longitude) {
+            const dist = haversine(a.latitude, a.longitude, b.latitude, b.longitude);
+            if (dist < 50) {
+              reasons.push(`GPS proximity (${Math.round(dist)}m apart)`);
+              score += 15;
+            }
+          }
+
+          if (score >= 40) {
+            links.push({
+              recordA: { id: a.id, name: a.name || a.fullName, birthYear: aBirth, deathYear: aDeath },
+              recordB: { id: b.id, name: b.name || b.fullName, birthYear: bBirth, deathYear: bDeath },
+              surname,
+              matchScore: Math.min(score, 100),
+              matchReasons: reasons,
+              relationship: score >= 70 ? 'likely family' : score >= 50 ? 'possible family' : 'same surname'
+            });
+          }
+        }
+      }
+    }
+
+    links.sort((a, b) => b.matchScore - a.matchScore);
+
+    return jsonResponse({
+      success: true,
+      cemeteryId,
+      totalLinks: links.length,
+      links: links.slice(0, 100),
+      surnameGroups: Object.entries(surnameGroups)
+        .filter(([, g]) => g.length >= 2)
+        .map(([name, g]) => ({ surname: name, count: g.length }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 20)
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to detect family links', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * Helper: Haversine distance in meters
+ */
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371000; // Earth radius in meters
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
+/**
+ * GET /api/linkage/cross-cemetery
+ * Detects potential same-person or same-family links across different
+ * cemeteries (useful for re-interments, family plots in multiple locations).
+ */
+async function handleCrossCemeteryLinkage(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, links: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const allRecords = await loadAllRecords(env);
+    const records = allRecords.filter(r => r.status === 'published');
+
+    if (records.length < 2) {
+      return jsonResponse({ success: true, links: [], message: 'Not enough records' }, 200, cors);
+    }
+
+    // Group by name similarity across cemeteries
+    const links = [];
+    const seen = new Set();
+
+    for (let i = 0; i < records.length; i++) {
+      for (let j = i + 1; j < records.length; j++) {
+        const a = records[i];
+        const b = records[j];
+
+        // Must be in different cemeteries
+        const aCem = a.cemeteryId || a.cemeteryName;
+        const bCem = b.cemeteryId || b.cemeteryName;
+        if (!aCem || !bCem || aCem === bCem) continue;
+
+        const key = a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`;
+        if (seen.has(key)) continue;
+
+        const nameSim = stringSimilarity(a.name || a.fullName, b.name || b.fullName);
+        if (nameSim < 0.8) continue;
+
+        const reasons = [];
+        let score = Math.round(nameSim * 40);
+        reasons.push(`name similarity ${(Math.round(nameSim * 100))}%`);
+
+        // Same birth year
+        const aBirth = a.birthYear || (a.birthDate ? new Date(a.birthDate).getFullYear() : null);
+        const bBirth = b.birthYear || (b.birthDate ? new Date(b.birthDate).getFullYear() : null);
+        if (aBirth && bBirth && aBirth === bBirth) {
+          reasons.push('same birth year');
+          score += 25;
+        }
+
+        // Same death year
+        const aDeath = a.deathYear || (a.deathDate ? new Date(a.deathDate).getFullYear() : null);
+        const bDeath = b.deathYear || (b.deathDate ? new Date(b.deathDate).getFullYear() : null);
+        if (aDeath && bDeath && aDeath === bDeath) {
+          reasons.push('same death year');
+          score += 25;
+        }
+
+        if (score >= 50) {
+          seen.add(key);
+          links.push({
+            recordA: {
+              id: a.id, name: a.name || a.fullName,
+              cemetery: a.cemeteryName || a.cemeteryId,
+              birthYear: aBirth, deathYear: aDeath
+            },
+            recordB: {
+              id: b.id, name: b.name || b.fullName,
+              cemetery: b.cemeteryName || b.cemeteryId,
+              birthYear: bBirth, deathYear: bDeath
+            },
+            matchScore: Math.min(score, 100),
+            matchReasons: reasons,
+            linkageType: score >= 80 ? 'possible same person' : 'possible family member'
+          });
+        }
+      }
+    }
+
+    links.sort((a, b) => b.matchScore - a.matchScore);
+
+    return jsonResponse({
+      success: true,
+      totalLinks: links.length,
+      links: links.slice(0, 50)
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to detect cross-cemetery links', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/linkage/proximity
+ * Finds records geographically near a given record, across all cemeteries.
+ * Query params: recordId, radius (meters, default 1000), limit (default 50)
+ */
+async function handleProximityLinkage(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, nearby: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const recordId = url.searchParams.get('recordId');
+    const radius = parseInt(url.searchParams.get('radius') || '1000', 10);
+    const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+
+    if (!recordId) {
+      return jsonResponse({ success: false, error: 'recordId is required' }, 400, cors);
+    }
+
+    const allRecords = await loadAllRecords(env);
+    const target = allRecords.find(r => r.id === recordId && r.status === 'published');
+
+    if (!target) {
+      return jsonResponse({ success: false, error: 'Record not found' }, 404, cors);
+    }
+
+    if (!target.latitude || !target.longitude) {
+      return jsonResponse({ success: false, error: 'Target record has no GPS coordinates' }, 400, cors);
+    }
+
+    const nearby = [];
+    for (const r of allRecords) {
+      if (r.id === recordId || r.status !== 'published') continue;
+      if (!r.latitude || !r.longitude) continue;
+
+      const dist = haversine(target.latitude, target.longitude, r.latitude, r.longitude);
+      if (dist <= radius) {
+        nearby.push({
+          id: r.id,
+          name: r.name || r.fullName || 'Unknown',
+          cemetery: r.cemeteryName || r.cemeteryId || 'Unknown',
+          distance: Math.round(dist),
+          birthYear: r.birthYear || (r.birthDate ? new Date(r.birthDate).getFullYear() : null),
+          deathYear: r.deathYear || (r.deathDate ? new Date(r.deathDate).getFullYear() : null)
+        });
+      }
+    }
+
+    nearby.sort((a, b) => a.distance - b.distance);
+
+    return jsonResponse({
+      success: true,
+      recordId,
+      targetName: target.name || target.fullName,
+      targetCemetery: target.cemeteryName || target.cemeteryId,
+      radius,
+      totalFound: nearby.length,
+      nearby: nearby.slice(0, limit)
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to find nearby records', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/linkage/events
+ * Clusters records by death year to identify potential historical events
+ * (epidemics, wars, disasters) that caused multiple burials in the same period.
+ */
+async function handleEventClustering(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, events: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const cemeteryId = url.searchParams.get('cemeteryId');
+    const threshold = parseInt(url.searchParams.get('threshold') || '5', 10);
+
+    const allRecords = await loadAllRecords(env);
+    let records = allRecords.filter(r => r.status === 'published');
+    if (cemeteryId) {
+      records = records.filter(r => r.cemeteryId === cemeteryId || r.cemeteryName === cemeteryId);
+    }
+
+    // Group by death year
+    const yearGroups = {};
+    for (const r of records) {
+      const year = r.deathYear || (r.deathDate ? new Date(r.deathDate).getFullYear() : null);
+      if (!year) continue;
+      if (!yearGroups[year]) yearGroups[year] = [];
+      yearGroups[year].push(r);
+    }
+
+    // Find years with above-threshold deaths
+    const events = [];
+    for (const [yearStr, group] of Object.entries(yearGroups)) {
+      if (group.length >= threshold) {
+        const cemeteries = [...new Set(group.map(r => r.cemeteryName || r.cemeteryId))];
+
+        // Check for spike (significantly more than average)
+        const prevYear = yearGroups[parseInt(yearStr) - 1] || [];
+        const nextYear = yearGroups[parseInt(yearStr) + 1] || [];
+        const neighbors = [...prevYear, ...nextYear];
+        const avgNeighbors = neighbors.length / 2;
+        const isSpike = avgNeighbors > 0 && group.length > avgNeighbors * 2;
+
+        events.push({
+          year: parseInt(yearStr),
+          deathCount: group.length,
+          cemeteries,
+          cemeteryCount: cemeteries.length,
+          isSpike,
+          spikeRatio: avgNeighbors > 0 ? (group.length / avgNeighbors).toFixed(2) : null,
+          notableNames: group.slice(0, 5).map(r => r.name || r.fullName || 'Unknown'),
+          possibleEvent: isSpike ? 'Potential historical event (epidemic, war, disaster)' : 'Elevated mortality'
+        });
+      }
+    }
+
+    events.sort((a, b) => b.deathCount - a.deathCount);
+
+    return jsonResponse({
+      success: true,
+      threshold,
+      totalEvents: events.length,
+      events: events.slice(0, 50),
+      yearRange: {
+        earliest: Math.min(...Object.keys(yearGroups).map(Number)),
+        latest: Math.max(...Object.keys(yearGroups).map(Number))
+      }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to cluster events', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/linkage/graph
+ * Builds a relationship graph of a record's connections (family, proximity,
+ * same-year, shared sources). Returns nodes and edges for visualization.
+ */
+async function handleLinkageGraph(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, graph: { nodes: [], edges: [] }, message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const recordId = url.searchParams.get('recordId');
+    const depth = Math.min(parseInt(url.searchParams.get('depth') || '1', 10), 3);
+
+    if (!recordId) {
+      return jsonResponse({ success: false, error: 'recordId is required' }, 400, cors);
+    }
+
+    const allRecords = await loadAllRecords(env);
+    const target = allRecords.find(r => r.id === recordId && r.status === 'published');
+
+    if (!target) {
+      return jsonResponse({ success: false, error: 'Record not found' }, 404, cors);
+    }
+
+    const nodes = new Map();
+    const edges = [];
+    const visited = new Set();
+
+    function addNode(r) {
+      if (!nodes.has(r.id)) {
+        nodes.set(r.id, {
+          id: r.id,
+          name: r.name || r.fullName || 'Unknown',
+          cemetery: r.cemeteryName || r.cemeteryId || 'Unknown',
+          birthYear: r.birthYear || (r.birthDate ? new Date(r.birthDate).getFullYear() : null),
+          deathYear: r.deathYear || (r.deathDate ? new Date(r.deathDate).getFullYear() : null)
+        });
+      }
+    }
+
+    function addEdge(aId, bId, type, strength) {
+      const key = aId < bId ? `${aId}|${bId}|${type}` : `${bId}|${aId}|${type}`;
+      if (!edges.find(e => e.key === key)) {
+        edges.push({ key, source: aId, target: bId, type, strength });
+      }
+    }
+
+    addNode(target);
+
+    // Find connections
+    const targetSurname = getSurname(target.name || target.fullName);
+    const targetDeathYear = target.deathYear || (target.deathDate ? new Date(target.deathDate).getFullYear() : null);
+
+    for (const r of allRecords) {
+      if (r.id === recordId || r.status !== 'published') continue;
+
+      let connected = false;
+      const reasons = [];
+
+      // Family link (same surname)
+      if (targetSurname && getSurname(r.name || r.fullName) === targetSurname) {
+        addEdge(recordId, r.id, 'family', 0.7);
+        connected = true;
+        reasons.push('family');
+      }
+
+      // Same cemetery
+      const tCem = target.cemeteryId || target.cemeteryName;
+      const rCem = r.cemeteryId || r.cemeteryName;
+      if (tCem && rCem && tCem === rCem) {
+        addEdge(recordId, r.id, 'same_cemetery', 0.3);
+        connected = true;
+        reasons.push('same cemetery');
+      }
+
+      // Same death year
+      const rDeathYear = r.deathYear || (r.deathDate ? new Date(r.deathDate).getFullYear() : null);
+      if (targetDeathYear && rDeathYear && targetDeathYear === rDeathYear) {
+        addEdge(recordId, r.id, 'same_year', 0.4);
+        connected = true;
+        reasons.push('same death year');
+      }
+
+      // GPS proximity
+      if (target.latitude && target.longitude && r.latitude && r.longitude) {
+        const dist = haversine(target.latitude, target.longitude, r.latitude, r.longitude);
+        if (dist < 500) {
+          addEdge(recordId, r.id, 'proximity', 0.5);
+          connected = true;
+          reasons.push('geographic proximity');
+        }
+      }
+
+      // Shared source
+      if (target.sourceRefs && r.sourceRefs) {
+        const shared = target.sourceRefs.some(s => r.sourceRefs.includes(s));
+        if (shared) {
+          addEdge(recordId, r.id, 'shared_source', 0.6);
+          connected = true;
+          reasons.push('shared source');
+        }
+      }
+
+      if (connected) {
+        addNode(r);
+      }
+    }
+
+    return jsonResponse({
+      success: true,
+      recordId,
+      depth,
+      graph: {
+        nodes: Array.from(nodes.values()),
+        edges: edges.map(e => ({ ...e, key: undefined })),
+        stats: {
+          nodeCount: nodes.size,
+          edgeCount: edges.length,
+          edgeTypes: {
+            family: edges.filter(e => e.type === 'family').length,
+            same_cemetery: edges.filter(e => e.type === 'same_cemetery').length,
+            same_year: edges.filter(e => e.type === 'same_year').length,
+            proximity: edges.filter(e => e.type === 'proximity').length,
+            shared_source: edges.filter(e => e.type === 'shared_source').length
+          }
+        }
+      }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to build linkage graph', message: error.message }, 500, cors);
   }
 }
