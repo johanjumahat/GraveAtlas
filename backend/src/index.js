@@ -864,6 +864,29 @@ async function handleRequest(request, env, ctx) {
       return await handleQueryFeedback(request, env, corsHeaders);
     }
 
+    // Phase 16.29: AI Smart Summaries & Auto-Documentation
+    if (path.startsWith('/api/summaries/cemetery/') && method === 'GET') {
+      const id = path.split('/').pop();
+      return await handleCemeterySummary(id, request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/summaries/record/') && method === 'GET') {
+      const id = path.split('/').pop();
+      return await handleRecordSummary(id, request, env, corsHeaders);
+    }
+
+    if (path === '/api/summaries/dataset' && method === 'GET') {
+      return await handleDatasetSummary(request, env, corsHeaders);
+    }
+
+    if (path === '/api/summaries/health-report' && method === 'GET') {
+      return await handleHealthReportSummary(request, env, corsHeaders);
+    }
+
+    if (path === '/api/summaries/custom' && method === 'POST') {
+      return await handleCustomSummary(request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -24562,5 +24585,538 @@ async function handleQueryFeedback(request, env, cors) {
     }, 200, cors);
   } catch (error) {
     return jsonResponse({ success: false, error: 'Failed to record feedback', message: error.message }, 500, cors);
+  }
+}
+
+// ── Phase 16.29: AI Smart Summaries & Auto-Documentation Handlers ──
+
+/**
+ * Helper: Generate a cemetery summary paragraph
+ */
+function generateCemeterySummary(cemeteryName, records) {
+  if (!records || records.length === 0) {
+    return `${cemeteryName || 'This cemetery'} has no published records.`;
+  }
+
+  const verified = records.filter(r => r.verificationStatus === 'verified').length;
+  const withAnomalies = records.filter(r => r.anomalies && r.anomalies.length > 0).length;
+  const withSources = records.filter(r => r.sourceRefs && r.sourceRefs.length > 0).length;
+  const withCoords = records.filter(r => r.latitude && r.longitude).length;
+  const avgConfidence = Math.round(records.reduce((s, r) => s + (r.confidenceScore || 0), 0) / records.length);
+
+  // Date range
+  const years = records.map(r => r.deathYear || (r.deathDate ? new Date(r.deathDate).getFullYear() : null)).filter(Boolean).sort();
+  const earliestYear = years.length > 0 ? years[0] : null;
+  const latestYear = years.length > 0 ? years[years.length - 1] : null;
+
+  const parts = [];
+  parts.push(`${cemeteryName || 'This cemetery'} contains ${records.length} published records.`);
+
+  if (verified > 0) {
+    parts.push(`${verified} (${Math.round(verified / records.length * 100)}%) are verified.`);
+  } else {
+    parts.push(`No records have been verified yet.`);
+  }
+
+  if (withSources > 0) {
+    parts.push(`${withSources} records have source references.`);
+  }
+
+  if (withCoords > 0) {
+    parts.push(`${withCoords} records have GPS coordinates.`);
+  }
+
+  if (withAnomalies > 0) {
+    parts.push(`${withAnomalies} records have flagged anomalies requiring attention.`);
+  }
+
+  parts.push(`The average confidence score is ${avgConfidence}/100.`);
+
+  if (earliestYear && latestYear) {
+    if (earliestYear === latestYear) {
+      parts.push(`All records date from ${earliestYear}.`);
+    } else {
+      parts.push(`Records span from ${earliestYear} to ${latestYear}.`);
+    }
+  }
+
+  return parts.join(' ');
+}
+
+/**
+ * Helper: Generate a record summary
+ */
+function generateRecordSummary(record) {
+  if (!record) return 'No record data available.';
+
+  const name = record.name || record.fullName || 'Unknown person';
+  const parts = [name];
+
+  if (record.birthYear || record.birthDate) {
+    const by = record.birthYear || (record.birthDate ? new Date(record.birthDate).getFullYear() : null);
+    if (by) parts.push(`(born ${by}`);
+  }
+  if (record.deathYear || record.deathDate) {
+    const dy = record.deathYear || (record.deathDate ? new Date(record.deathDate).getFullYear() : null);
+    if (dy) {
+      if (parts.length > 1) parts[parts.length - 1] += `, died ${dy})`;
+      else parts.push(`(died ${dy})`);
+    }
+  } else if (parts.length > 1 && parts[parts.length - 1].includes('(')) {
+    parts[parts.length - 1] += ')';
+  }
+
+  let summary = parts.join(' ');
+
+  if (record.cemeteryName) summary += ` is interred at ${record.cemeteryName}.`;
+  else if (record.cemeteryId) summary += ` is interred at cemetery ${record.cemeteryId}.`;
+
+  if (record.verificationStatus === 'verified') {
+    summary += ' This record has been verified.';
+  } else {
+    summary += ' This record has not been verified.';
+  }
+
+  if (record.confidenceScore) {
+    let tier = 'bronze';
+    if (record.confidenceScore >= 90) tier = 'platinum';
+    else if (record.confidenceScore >= 75) tier = 'gold';
+    else if (record.confidenceScore >= 60) tier = 'silver';
+    summary += ` Confidence: ${record.confidenceScore}/100 (${tier} tier).`;
+  }
+
+  if (record.sourceRefs && record.sourceRefs.length > 0) {
+    summary += ` Has ${record.sourceRefs.length} source reference${record.sourceRefs.length > 1 ? 's' : ''}.`;
+  } else {
+    summary += ' No source references.';
+  }
+
+  if (record.anomalies && record.anomalies.length > 0) {
+    summary += ` ${record.anomalies.length} anomal${record.anomalies.length > 1 ? 'ies' : 'y'} flagged.`;
+  }
+
+  if (record.latitude && record.longitude) {
+    summary += ' GPS coordinates available.';
+  } else {
+    summary += ' No GPS coordinates.';
+  }
+
+  return summary;
+}
+
+/**
+ * GET /api/summaries/cemetery/:cemeteryId
+ * Generates a comprehensive auto-documentation summary for a cemetery.
+ */
+async function handleCemeterySummary(cemeteryId, request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, summary: '', message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const allRecords = await loadAllRecords(env);
+    const records = allRecords.filter(r => r.status === 'published' && (
+      r.cemeteryId === cemeteryId || r.cemeteryName === cemeteryId
+    ));
+
+    if (records.length === 0) {
+      return jsonResponse({ success: false, error: 'Cemetery not found or no published records' }, 404, cors);
+    }
+
+    const cemeteryName = records[0].cemeteryName || cemeteryId;
+    const overview = generateCemeterySummary(cemeteryName, records);
+
+    // Statistics section
+    const stats = {
+      totalRecords: records.length,
+      verified: records.filter(r => r.verificationStatus === 'verified').length,
+      unverified: records.filter(r => r.verificationStatus !== 'verified').length,
+      withAnomalies: records.filter(r => r.anomalies && r.anomalies.length > 0).length,
+      withSources: records.filter(r => r.sourceRefs && r.sourceRefs.length > 0).length,
+      withCoordinates: records.filter(r => r.latitude && r.longitude).length,
+      avgConfidence: Math.round(records.reduce((s, r) => s + (r.confidenceScore || 0), 0) / records.length),
+      confidenceTiers: {
+        platinum: records.filter(r => (r.confidenceScore || 0) >= 90).length,
+        gold: records.filter(r => (r.confidenceScore || 0) >= 75 && (r.confidenceScore || 0) < 90).length,
+        silver: records.filter(r => (r.confidenceScore || 0) >= 60 && (r.confidenceScore || 0) < 75).length,
+        bronze: records.filter(r => (r.confidenceScore || 0) >= 40 && (r.confidenceScore || 0) < 60).length,
+        unranked: records.filter(r => (r.confidenceScore || 0) < 40).length
+      }
+    };
+
+    // Notable records
+    const notableRecords = records
+      .filter(r => r.confidenceScore && r.confidenceScore >= 75)
+      .sort((a, b) => (b.confidenceScore || 0) - (a.confidenceScore || 0))
+      .slice(0, 5)
+      .map(r => ({
+        id: r.id,
+        name: r.name || r.fullName || 'Unknown',
+        summary: generateRecordSummary(r),
+        confidence: r.confidenceScore || 0
+      }));
+
+    // Data quality assessment
+    const qualityIssues = [];
+    if (stats.unverified / stats.totalRecords > 0.5) {
+      qualityIssues.push(`More than half (${stats.unverified}) of records are unverified.`);
+    }
+    if (stats.withSources / stats.totalRecords < 0.3) {
+      qualityIssues.push(`Only ${stats.withSources} records have source references.`);
+    }
+    if (stats.withCoordinates / stats.totalRecords < 0.5) {
+      qualityIssues.push(`${stats.totalRecords - stats.withCoordinates} records lack GPS coordinates.`);
+    }
+    if (stats.withAnomalies > 0) {
+      qualityIssues.push(`${stats.withAnomalies} records have flagged anomalies.`);
+    }
+
+    // Recommendations
+    const recommendations = [];
+    if (stats.unverified > stats.verified) {
+      recommendations.push('Prioritize verification of unverified records.');
+    }
+    if (stats.withSources / stats.totalRecords < 0.5) {
+      recommendations.push('Add source references from available archives.');
+    }
+    if (stats.withCoordinates / stats.totalRecords < 0.7) {
+      recommendations.push('Geocode records missing GPS coordinates.');
+    }
+    if (stats.withAnomalies > 0) {
+      recommendations.push('Run anomaly resolution to address flagged issues.');
+    }
+    if (stats.avgConfidence < 60) {
+      recommendations.push('Run enrichment pipeline to improve confidence scores.');
+    }
+
+    return jsonResponse({
+      success: true,
+      summary: {
+        cemeteryId,
+        cemeteryName,
+        overview,
+        stats,
+        notableRecords,
+        qualityIssues,
+        recommendations,
+        generatedAt: new Date().toISOString()
+      }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to generate cemetery summary', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/summaries/record/:recordId
+ * Generates a comprehensive auto-documentation summary for a single record.
+ */
+async function handleRecordSummary(recordId, request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, summary: '', message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const allRecords = await loadAllRecords(env);
+    const record = allRecords.find(r => r.id === recordId && r.status === 'published');
+
+    if (!record) {
+      return jsonResponse({ success: false, error: 'Record not found' }, 404, cors);
+    }
+
+    const overview = generateRecordSummary(record);
+
+    // Provenance summary
+    const provenance = record.provenance || [];
+    const provenanceSummary = provenance.length > 0
+      ? `This record has ${provenance.length} provenance entries tracking its history.`
+      : 'No provenance entries recorded.';
+
+    // Related records
+    const related = allRecords.filter(r =>
+      r.status === 'published' &&
+      r.id !== recordId &&
+      r.cemeteryId === record.cemeteryId &&
+      (r.name || '').split(' ').pop() === (record.name || '').split(' ').pop()
+    ).slice(0, 5).map(r => ({
+      id: r.id,
+      name: r.name || 'Unknown',
+      relationship: 'possible family (same surname)'
+    }));
+
+    return jsonResponse({
+      success: true,
+      summary: {
+        recordId,
+        overview,
+        provenanceSummary,
+        relatedRecords: related,
+        metadata: {
+          name: record.name || record.fullName,
+          birthYear: record.birthYear,
+          deathYear: record.deathYear,
+          cemetery: record.cemeteryName || record.cemeteryId,
+          confidence: record.confidenceScore || 0,
+          verification: record.verificationStatus || 'unverified',
+          anomalies: (record.anomalies || []).length,
+          sources: (record.sourceRefs || []).length,
+          hasCoordinates: !!(record.latitude && record.longitude)
+        },
+        generatedAt: new Date().toISOString()
+      }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to generate record summary', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/summaries/dataset
+ * Generates a comprehensive auto-documentation summary for the entire dataset.
+ */
+async function handleDatasetSummary(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, summary: '', message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const allRecords = await loadAllRecords(env);
+    const records = allRecords.filter(r => r.status === 'published');
+
+    if (records.length === 0) {
+      return jsonResponse({ success: true, summary: { overview: 'No published records in the dataset.' } }, 200, cors);
+    }
+
+    // Cemetery breakdown
+    const cemeteryStats = {};
+    for (const r of records) {
+      const cn = r.cemeteryName || r.cemeteryId || 'Unknown';
+      if (!cemeteryStats[cn]) cemeteryStats[cn] = { count: 0, verified: 0, withAnomalies: 0 };
+      cemeteryStats[cn].count++;
+      if (r.verificationStatus === 'verified') cemeteryStats[cn].verified++;
+      if (r.anomalies && r.anomalies.length > 0) cemeteryStats[cn].withAnomalies++;
+    }
+
+    const cemeteryList = Object.entries(cemeteryStats)
+      .map(([name, stats]) => ({ name, ...stats }))
+      .sort((a, b) => b.count - a.count);
+
+    // Overall stats
+    const totalVerified = records.filter(r => r.verificationStatus === 'verified').length;
+    const totalWithAnomalies = records.filter(r => r.anomalies && r.anomalies.length > 0).length;
+    const totalWithSources = records.filter(r => r.sourceRefs && r.sourceRefs.length > 0).length;
+    const totalWithCoords = records.filter(r => r.latitude && r.longitude).length;
+    const avgConfidence = Math.round(records.reduce((s, r) => s + (r.confidenceScore || 0), 0) / records.length);
+
+    // Overview paragraph
+    const overview = `The GraveAtlas dataset contains ${records.length} published records across ${cemeteryList.length} cemeteries. ` +
+      `${totalVerified} records (${Math.round(totalVerified / records.length * 100)}%) are verified. ` +
+      `${totalWithSources} records have source references, and ${totalWithCoords} have GPS coordinates. ` +
+      `The average confidence score is ${avgConfidence}/100. ` +
+      `${totalWithAnomalies} records have flagged anomalies.`;
+
+    // Date range
+    const years = records.map(r => r.deathYear || (r.deathDate ? new Date(r.deathDate).getFullYear() : null)).filter(Boolean).sort();
+    const dateRange = years.length > 0 ? `${years[0]}–${years[years.length - 1]}` : 'Unknown';
+
+    // Top cemeteries summary
+    const topCemeteries = cemeteryList.slice(0, 10).map(c =>
+      `${c.name}: ${c.count} records (${c.verified} verified, ${c.withAnomalies} with anomalies)`
+    );
+
+    // Quality assessment
+    const qualityIssues = [];
+    const verificationRate = totalVerified / records.length;
+    if (verificationRate < 0.3) qualityIssues.push(`Low verification rate (${Math.round(verificationRate * 100)}%).`);
+    if (totalWithSources / records.length < 0.3) qualityIssues.push(`Low source coverage (${Math.round(totalWithSources / records.length * 100)}%).`);
+    if (totalWithCoords / records.length < 0.5) qualityIssues.push(`Many records lack coordinates (${records.length - totalWithCoords}).`);
+    if (avgConfidence < 60) qualityIssues.push(`Below-average confidence score (${avgConfidence}/100).`);
+    if (totalWithAnomalies / records.length > 0.2) qualityIssues.push(`High anomaly rate (${Math.round(totalWithAnomalies / records.length * 100)}%).`);
+
+    // Recommendations
+    const recommendations = [];
+    if (verificationRate < 0.5) recommendations.push('Implement systematic verification campaigns.');
+    if (totalWithSources / records.length < 0.5) recommendations.push('Add source references from archives and public records.');
+    if (totalWithCoords / records.length < 0.7) recommendations.push('Geocode records missing GPS coordinates.');
+    if (totalWithAnomalies > 0) recommendations.push('Run batch anomaly resolution.');
+    if (avgConfidence < 70) recommendations.push('Run enrichment pipeline to boost confidence scores.');
+
+    return jsonResponse({
+      success: true,
+      summary: {
+        overview,
+        dateRange,
+        totalRecords: records.length,
+        totalCemeteries: cemeteryList.length,
+        stats: {
+          verified: totalVerified,
+          unverified: records.length - totalVerified,
+          withAnomalies: totalWithAnomalies,
+          withSources: totalWithSources,
+          withCoordinates: totalWithCoords,
+          avgConfidence
+        },
+        topCemeteries,
+        cemeteryList: cemeteryList.slice(0, 20),
+        qualityIssues,
+        recommendations,
+        generatedAt: new Date().toISOString()
+      }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to generate dataset summary', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/summaries/health-report
+ * Generates a human-readable health report for the entire dataset or a specific cemetery.
+ * Query params: cemeteryId (optional)
+ */
+async function handleHealthReportSummary(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, report: '', message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const cemeteryId = url.searchParams.get('cemeteryId');
+
+    const allRecords = await loadAllRecords(env);
+    let records = allRecords.filter(r => r.status === 'published');
+    if (cemeteryId) {
+      records = records.filter(r => r.cemeteryId === cemeteryId || r.cemeteryName === cemeteryId);
+    }
+
+    if (records.length === 0) {
+      return jsonResponse({ success: true, report: 'No records found for health assessment.' }, 200, cors);
+    }
+
+    // Calculate health metrics
+    const verificationRate = records.filter(r => r.verificationStatus === 'verified').length / records.length;
+    const anomalyRate = records.filter(r => r.anomalies && r.anomalies.length > 0).length / records.length;
+    const sourceRate = records.filter(r => r.sourceRefs && r.sourceRefs.length > 0).length / records.length;
+    const coordRate = records.filter(r => r.latitude && r.longitude).length / records.length;
+    const avgConfidence = records.reduce((s, r) => s + (r.confidenceScore || 0), 0) / records.length;
+
+    // Weighted health score
+    const healthScore = Math.round(
+      (avgConfidence / 100) * 0.3 * 100 +
+      verificationRate * 0.25 * 100 +
+      sourceRate * 0.2 * 100 +
+      coordRate * 0.15 * 100 +
+      (1 - anomalyRate) * 0.1 * 100
+    );
+
+    let grade = 'F';
+    if (healthScore >= 90) grade = 'A';
+    else if (healthScore >= 80) grade = 'B';
+    else if (healthScore >= 70) grade = 'C';
+    else if (healthScore >= 60) grade = 'D';
+
+    // Build report
+    const reportParts = [];
+    const scope = cemeteryId ? `Cemetery: ${cemeteryId}` : 'Entire Dataset';
+    reportParts.push(`HEALTH REPORT — ${scope}`);
+    reportParts.push(`Generated: ${new Date().toISOString()}`);
+    reportParts.push('');
+    reportParts.push(`Overall Health Score: ${healthScore}/100 (Grade: ${grade})`);
+    reportParts.push('');
+    reportParts.push('METRIC BREAKDOWN:');
+    reportParts.push(`  Confidence Score (30% weight): ${Math.round(avgConfidence)}/100`);
+    reportParts.push(`  Verification Rate (25% weight): ${Math.round(verificationRate * 100)}%`);
+    reportParts.push(`  Source Coverage (20% weight): ${Math.round(sourceRate * 100)}%`);
+    reportParts.push(`  Coordinate Coverage (15% weight): ${Math.round(coordRate * 100)}%`);
+    reportParts.push(`  Anomaly-Free Rate (10% weight): ${Math.round((1 - anomalyRate) * 100)}%`);
+    reportParts.push('');
+    reportParts.push(`RECORDS ASSESSED: ${records.length}`);
+
+    if (healthScore >= 80) {
+      reportParts.push('ASSESSMENT: This dataset is in excellent condition.');
+    } else if (healthScore >= 70) {
+      reportParts.push('ASSESSMENT: This dataset is in good condition with some areas for improvement.');
+    } else if (healthScore >= 60) {
+      reportParts.push('ASSESSMENT: This dataset needs attention in several areas.');
+    } else {
+      reportParts.push('ASSESSMENT: This dataset requires significant remediation.');
+    }
+
+    reportParts.push('');
+    reportParts.push('RECOMMENDED ACTIONS:');
+    if (verificationRate < 0.5) reportParts.push('  1. Increase verification coverage (currently below 50%)');
+    if (sourceRate < 0.5) reportParts.push('  2. Add source references to improve traceability');
+    if (coordRate < 0.5) reportParts.push('  3. Geocode records missing coordinates');
+    if (anomalyRate > 0.15) reportParts.push('  4. Resolve flagged anomalies (rate above 15%)');
+    if (avgConfidence < 60) reportParts.push('  5. Run enrichment pipeline to boost confidence');
+
+    if (recommendations_count(reportParts) === 0) {
+      reportParts.push('  No critical actions needed at this time.');
+    }
+
+    return jsonResponse({
+      success: true,
+      report: reportParts.join('\n'),
+      healthScore,
+      grade
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to generate health report', message: error.message }, 500, cors);
+  }
+}
+
+function recommendations_count(parts) {
+  return parts.filter(p => /^\s+\d+\./.test(p)).length;
+}
+
+/**
+ * POST /api/summaries/custom
+ * Generates a custom summary based on user-specified parameters.
+ * Body: { type: 'cemetery'|'dataset'|'record', id?: string, format: 'paragraph'|'bullets'|'json' }
+ */
+async function handleCustomSummary(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, summary: '', message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const body = await request.json();
+    const type = body.type || 'dataset';
+    const id = body.id;
+    const format = body.format || 'paragraph';
+
+    const allRecords = await loadAllRecords(env);
+    let records, summary;
+
+    if (type === 'cemetery' && id) {
+      records = allRecords.filter(r => r.status === 'published' && (r.cemeteryId === id || r.cemeteryName === id));
+      const cemeteryName = records.length > 0 ? records[0].cemeteryName || id : id;
+      summary = generateCemeterySummary(cemeteryName, records);
+    } else if (type === 'record' && id) {
+      const record = allRecords.find(r => r.id === id && r.status === 'published');
+      summary = generateRecordSummary(record);
+    } else {
+      records = allRecords.filter(r => r.status === 'published');
+      summary = `The dataset contains ${records.length} published records across ${new Set(records.map(r => r.cemeteryId).filter(Boolean)).size} cemeteries.`;
+    }
+
+    // Format output
+    let formattedSummary;
+    if (format === 'bullets') {
+      formattedSummary = summary.split('. ').filter(s => s.trim()).map(s => `• ${s.trim()}.`);
+    } else if (format === 'json') {
+      formattedSummary = { text: summary, type, id, format };
+    } else {
+      formattedSummary = summary;
+    }
+
+    return jsonResponse({
+      success: true,
+      type,
+      id: id || null,
+      format,
+      summary: formattedSummary
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to generate custom summary', message: error.message }, 500, cors);
   }
 }

@@ -18,6 +18,9 @@ import com.putraworks.graveatlas.data.model.RiskAssessment;
 import com.putraworks.graveatlas.data.model.NaturalLanguageQueryResult;
 import com.putraworks.graveatlas.data.model.QueryExplanation;
 import com.putraworks.graveatlas.data.model.QuerySuggestions;
+import com.putraworks.graveatlas.data.model.CemeterySummary;
+import com.putraworks.graveatlas.data.model.DatasetSummary;
+import com.putraworks.graveatlas.data.model.HealthReportSummary;
 import com.putraworks.graveatlas.data.model.GlobalHealthOverview;
 import com.putraworks.graveatlas.data.model.CemeteryRecommendations;
 import com.putraworks.graveatlas.data.model.GlobalRecommendations;
@@ -74,6 +77,9 @@ import com.putraworks.graveatlas.data.model.RiskAssessment;
 import com.putraworks.graveatlas.data.model.NaturalLanguageQueryResult;
 import com.putraworks.graveatlas.data.model.QueryExplanation;
 import com.putraworks.graveatlas.data.model.QuerySuggestions;
+import com.putraworks.graveatlas.data.model.CemeterySummary;
+import com.putraworks.graveatlas.data.model.DatasetSummary;
+import com.putraworks.graveatlas.data.model.HealthReportSummary;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -1573,6 +1579,137 @@ public class ApiClient {
             public void onResponse(Call call, Response response) throws IOException {
                 if (response.isSuccessful()) {
                     callback.onSuccess(null);
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    // ── Phase 16.29: AI Smart Summaries & Auto-Documentation ──
+
+    /**
+     * Get cemetery auto-documentation summary.
+     * GET /api/summaries/cemetery/:cemeteryId
+     */
+    public void getCemeterySummary(String cemeteryId,
+            final ApiCallback<CemeterySummary> callback) {
+        String url = baseUrl + "/api/summaries/cemetery/" + cemeteryId;
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject json = new JSONObject(body);
+                        callback.onSuccess(CemeterySummary.fromJson(json.optJSONObject("summary") != null ? json.getJSONObject("summary") : json));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse cemetery summary.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get dataset auto-documentation summary.
+     * GET /api/summaries/dataset
+     */
+    public void getDatasetSummary(final ApiCallback<DatasetSummary> callback) {
+        String url = baseUrl + "/api/summaries/dataset";
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject json = new JSONObject(body);
+                        callback.onSuccess(DatasetSummary.fromJson(json.optJSONObject("summary") != null ? json.getJSONObject("summary") : json));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse dataset summary.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get health report summary.
+     * GET /api/summaries/health-report
+     */
+    public void getHealthReportSummary(String cemeteryId,
+            final ApiCallback<HealthReportSummary> callback) {
+        String url = baseUrl + "/api/summaries/health-report";
+        if (cemeteryId != null) url += "?cemeteryId=" + cemeteryId;
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(HealthReportSummary.fromJson(new JSONObject(body)));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse health report.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Generate custom summary.
+     * POST /api/summaries/custom
+     */
+    public void generateCustomSummary(String type, String id, String format,
+            final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/summaries/custom";
+        JSONObject body = new JSONObject();
+        try {
+            body.put("type", type);
+            if (id != null) body.put("id", id);
+            body.put("format", format);
+        } catch (Exception e) { }
+
+        RequestBody rb = RequestBody.create(body.toString(), JSON);
+        Request request = new Request.Builder().url(url).post(rb).build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String respBody = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(respBody));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse custom summary.");
+                    }
                 } else {
                     callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
                 }

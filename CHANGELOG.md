@@ -519,6 +519,40 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.33] — 2026-08-18
+
+### Phase 16.29: AI Smart Summaries & Auto-Documentation
+
+**Added:**
+- `GET /api/summaries/cemetery/:cemeteryId` — auto-generated cemetery
+  documentation with overview paragraph, statistics (verified/unverified/
+  anomalies/sources/coordinates), confidence tier distribution (platinum/
+  gold/silver/bronze/unranked), notable records, quality issues, and
+  prioritized recommendations.
+
+- `GET /api/summaries/record/:recordId` — auto-generated record
+  documentation with overview, provenance summary, related records
+  (same-surname detection), and metadata.
+
+- `GET /api/summaries/dataset` — comprehensive dataset documentation
+  with overview, date range, cemetery breakdown, top cemeteries, quality
+  assessment, and recommendations.
+
+- `GET /api/summaries/health-report` — human-readable health report with
+  weighted health score (confidence 30% + verification 25% + sources 20% +
+  coordinates 15% + anomaly-free 10%), letter grade A-F, metric breakdown,
+  assessment text, and recommended actions. Optional cemeteryId filter.
+
+- `POST /api/summaries/custom` — custom summary generation with type
+  (cemetery/dataset/record) and format (paragraph/bullets/json) options.
+
+New models: CemeterySummary (3 inner), DatasetSummary (2 inner),
+  HealthReportSummary
+API client: 4 new methods
+AI system prompt updated with summary endpoint descriptions
+3 new suggested prompts
+
+
 ## [7.2.32] — 2026-08-18
 
 ### Phase 16.28: AI Natural Language Query Engine
