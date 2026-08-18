@@ -57,6 +57,7 @@
 | 16.24. AI Search Intelligence | ✅ COMPLETE | 100% |
 | 16.25. AI Data Governance & Compliance | ✅ COMPLETE | 100% |
 | 16.26. AI Analytics & Insights Dashboard | ✅ COMPLETE | 100% |
+| 16.27. AI Predictive Insights & Trend Forecasting | ✅ COMPLETE | 100% |
 
 ### All Dependabot PRs Cleared 🎉
 
@@ -130,9 +131,11 @@
 
 24. **Add — AI Analytics & Insights Dashboard** ✅ Ten analytics endpoints: comprehensive dashboard (record counts, verification rates, confidence distribution, source coverage, cemetery breakdown, health score), time-series trends (day/week/month intervals), per-cemetery health scores with weighted scoring (confidence 30%, verification 25%, sources 20%, coordinates 15%, anomaly rate 10%) and letter grades A-F, anomaly distribution by type/severity/cemetery, confidence histogram (5 buckets), source reliability metrics (coverage, top domains, ref count distribution), curation velocity (daily activity, task counts), search analytics (top queries, intent distribution), compliance trends (audit activity, RTBF, consent stats), and stakeholder report (executive summary, data quality, anomaly summary, prioritized recommendations, cemetery breakdown). New models: `AnalyticsDashboard`, `StakeholderReport`, `CemeteryHealth`. 130+ new tests. v7.2.26.
 
+25. **Add — AI Predictive Insights & Trend Forecasting** ✅ Five predictive endpoints: health score forecast (linear regression on historical health buckets, trend direction with confidence levels, time-to-threshold prediction), anomaly emergence forecast (per-type frequency analysis, trend detection, severity breakdowns, risk scoring), curation workload forecast (backlog metrics, estimated days to clear, workload level classification, per-field trends for new records/updates/reviews/enrichments/anomalies), data growth forecast (record/cemetery/storage projections, growth rate per day, growth trend detection, milestone predictions with estimated dates), and comprehensive risk assessment (6 risk types: low_verification, high_anomaly_rate, missing_sources, low_confidence, missing_coordinates, stale_data, with per-cemetery severity, impact, and mitigation strategies, priority actions with cemetery lists). New models: `HealthForecast`, `AnomalyForecast`, `CurationForecast`, `DataGrowthForecast`, `RiskAssessment`. 100+ new tests. v7.2.31.
+
 ## Architecture
 
-- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 169 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
+- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 174 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
 - **Android:** 18+ screens with navigation host, external maps handoff (geo: intent), offline support
 - **Data:** GitHub repository (graveatlas-data) with JSON schemas
 - **Auth:** Google Sign-In with ID token verification, session tokens, ban system
@@ -140,7 +143,7 @@
 - **Timeline:** Chronological event visualization with decade grouping, backend endpoint
 - **External Sources:** OpenStreetMap (Overpass API), Wikidata (SPARQL), Singapore Government Open Data (data.gov.sg)
 
-## Test Suite (3506 tests)
+## Test Suite (3610 tests)
 
 | Test File | Tests | Area |
 |---|---|---|

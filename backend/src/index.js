@@ -822,6 +822,27 @@ async function handleRequest(request, env, ctx) {
       return await handleStakeholderReport(request, env, corsHeaders);
     }
 
+    // Phase 16.27: AI Predictive Insights & Trend Forecasting
+    if (path === '/api/predictions/health-forecast' && method === 'GET') {
+      return await handleHealthForecast(request, env, corsHeaders);
+    }
+
+    if (path === '/api/predictions/anomaly-forecast' && method === 'GET') {
+      return await handleAnomalyForecast(request, env, corsHeaders);
+    }
+
+    if (path === '/api/predictions/curation-forecast' && method === 'GET') {
+      return await handleCurationForecast(request, env, corsHeaders);
+    }
+
+    if (path === '/api/predictions/data-growth' && method === 'GET') {
+      return await handleDataGrowthForecast(request, env, corsHeaders);
+    }
+
+    if (path === '/api/predictions/risk-assessment' && method === 'GET') {
+      return await handleRiskAssessment(request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -23227,4 +23248,735 @@ async function handleBanAccount(googleSub, request, env, cors) {
   }
 
   return jsonResponse({ success: true, message: result.message }, 200, cors);
+}
+
+// ── Phase 16.27: AI Predictive Insights & Trend Forecasting Handlers ──
+
+/**
+ * GET /api/predictions/health-forecast
+ * Predicts cemetery health score degradation or improvement over time.
+ * Uses historical trend data from anomaly rates, verification rates, and confidence scores.
+ * Query params: cemeteryId, horizonDays (default 90)
+ */
+async function handleHealthForecast(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, forecast: {}, message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const cemeteryId = url.searchParams.get('cemeteryId');
+    const horizonDays = parseInt(url.searchParams.get('horizonDays') || '90', 10);
+    const horizonMs = horizonDays * 86400000;
+
+    const allRecords = await loadAllRecords(env);
+    let records = allRecords.filter(r => r.status === 'published');
+    if (cemeteryId) records = records.filter(r => r.cemeteryId === cemeteryId);
+
+    if (records.length === 0) {
+      return jsonResponse({ success: true, forecast: { currentScore: 0, predictedScore: 0, trend: 'stable', confidence: 'low' } }, 200, cors);
+    }
+
+    // Compute current health metrics
+    const now = Date.now();
+    const dayMs = 86400000;
+
+    // Split records into time buckets (last 90 days in 7-day buckets)
+    const numBuckets = 12;
+    const bucketMs = 7 * dayMs;
+    const buckets = Array.from({ length: numBuckets }, () => ({
+      start: now - (numBuckets - 1) * bucketMs,
+      end: now - (numBuckets - 1 - 0) * bucketMs,
+      count: 0, verified: 0, anomalies: 0, confidenceSum: 0, sources: 0, coords: 0
+    }));
+
+    for (let i = 0; i < numBuckets; i++) {
+      buckets[i].start = now - (numBuckets - 1 - i) * bucketMs;
+      buckets[i].end = buckets[i].start + bucketMs;
+    }
+
+    for (const r of records) {
+      const ts = getRecordTimestamp(r);
+      for (let i = 0; i < numBuckets; i++) {
+        if (ts >= buckets[i].start && ts < buckets[i].end) {
+          buckets[i].count++;
+          if (r.verificationStatus === 'verified') buckets[i].verified++;
+          if (r.anomalies && r.anomalies.length > 0) buckets[i].anomalies += r.anomalies.length;
+          if (r.confidenceScore) buckets[i].confidenceSum += r.confidenceScore;
+          if (r.sourceRefs && r.sourceRefs.length > 0) buckets[i].sources++;
+          if (r.latitude && r.longitude) buckets[i].coords++;
+          break;
+        }
+      }
+    }
+
+    // Calculate health score per bucket
+    const healthScores = buckets.map(b => {
+      if (b.count === 0) return null;
+      const verificationRate = b.verified / b.count;
+      const anomalyRate = b.anomalies / b.count;
+      const sourceRate = b.sources / b.count;
+      const coordRate = b.coords / b.count;
+      const avgConfidence = b.confidenceSum / b.count;
+      return Math.round(
+        (avgConfidence / 100) * 0.3 * 100 +
+        verificationRate * 0.25 * 100 +
+        sourceRate * 0.2 * 100 +
+        coordRate * 0.15 * 100 +
+        (1 - anomalyRate) * 0.1 * 100
+      );
+    }).filter(s => s !== null);
+
+    // Current score (most recent bucket with data)
+    const currentScore = healthScores.length > 0 ? healthScores[healthScores.length - 1] : 0;
+
+    // Linear regression on health scores to predict trend
+    let slope = 0;
+    if (healthScores.length >= 2) {
+      const n = healthScores.length;
+      const sumX = (n * (n - 1)) / 2;
+      const sumY = healthScores.reduce((a, b) => a + b, 0);
+      const sumXY = healthScores.reduce((acc, y, i) => acc + i * y, 0);
+      const sumX2 = (n * (n - 1) * (2 * n - 1)) / 6;
+      const denom = n * sumX2 - sumX * sumX;
+      if (denom !== 0) slope = (n * sumXY - sumX * sumY) / denom;
+    }
+
+    // Predict future score
+    const bucketsAhead = Math.ceil(horizonDays / 7);
+    const predictedScore = Math.max(0, Math.min(100, Math.round(currentScore + slope * bucketsAhead)));
+
+    // Determine trend direction
+    let trend = 'stable';
+    if (slope > 1) trend = 'improving';
+    else if (slope < -1) trend = 'degrading';
+
+    // Confidence level based on data points
+    let confidence = 'low';
+    if (healthScores.length >= 8) confidence = 'high';
+    else if (healthScores.length >= 4) confidence = 'medium';
+
+    // Risk assessment
+    let riskLevel = 'low';
+    const riskFactors = [];
+    if (predictedScore < 60) {
+      riskLevel = 'high';
+      riskFactors.push('Predicted health score below 60');
+    } else if (predictedScore < 75) {
+      riskLevel = 'medium';
+      riskFactors.push('Predicted health score below 75');
+    }
+    if (slope < -2) {
+      riskFactors.push('Strong negative trend detected');
+      if (riskLevel === 'low') riskLevel = 'medium';
+    }
+
+    // Time to threshold (when score drops below 60)
+    let timeToThreshold = null;
+    if (slope < 0 && currentScore > 60) {
+      const daysToThreshold = Math.round((currentScore - 60) / Math.abs(slope) * 7);
+      if (daysToThreshold > 0 && daysToThreshold < 365) timeToThreshold = daysToThreshold;
+    }
+
+    return jsonResponse({
+      success: true,
+      forecast: {
+        currentScore,
+        predictedScore,
+        trend,
+        slope: Math.round(slope * 100) / 100,
+        confidence,
+        horizonDays,
+        riskLevel,
+        riskFactors,
+        timeToThreshold,
+        historicalScores: healthScores,
+        bucketInterval: '7d',
+        totalBuckets: healthScores.length
+      }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to generate health forecast', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/predictions/anomaly-forecast
+ * Predicts which anomaly types are likely to emerge based on historical patterns.
+ * Uses frequency analysis and trend detection.
+ * Query params: cemeteryId, horizonDays (default 30)
+ */
+async function handleAnomalyForecast(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, forecast: {}, message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const cemeteryId = url.searchParams.get('cemeteryId');
+    const horizonDays = parseInt(url.searchParams.get('horizonDays') || '30', 10);
+
+    const allRecords = await loadAllRecords(env);
+    let records = allRecords.filter(r => r.status === 'published');
+    if (cemeteryId) records = records.filter(r => r.cemeteryId === cemeteryId);
+
+    if (records.length === 0) {
+      return jsonResponse({ success: true, forecast: { predictions: [], totalAnomalies: 0 } }, 200, cors);
+    }
+
+    const now = Date.now();
+    const dayMs = 86400000;
+
+    // Collect anomaly data over last 90 days in 7-day buckets
+    const numBuckets = 13;
+    const bucketMs = 7 * dayMs;
+    const buckets = Array.from({ length: numBuckets }, () => ({}));
+
+    for (const r of records) {
+      const ts = getRecordTimestamp(r);
+      const anomalies = r.anomalies || [];
+      if (anomalies.length === 0) continue;
+
+      for (let i = 0; i < numBuckets; i++) {
+        const bucketStart = now - (numBuckets - 1 - i) * bucketMs;
+        const bucketEnd = bucketStart + bucketMs;
+        if (ts >= bucketStart && ts < bucketEnd) {
+          for (const a of anomalies) {
+            const type = a.type || a.anomalyType || 'unknown';
+            const severity = a.severity || 'warning';
+            if (!buckets[i][type]) {
+              buckets[i][type] = { count: 0, critical: 0, warning: 0, info: 0 };
+            }
+            buckets[i][type].count++;
+            if (severity === 'critical') buckets[i][type].critical++;
+            else if (severity === 'warning') buckets[i][type].warning++;
+            else buckets[i][type].info++;
+          }
+          break;
+        }
+      }
+    }
+
+    // Calculate trend per anomaly type
+    const anomalyTypes = new Set();
+    buckets.forEach(b => Object.keys(b).forEach(t => anomalyTypes.add(t)));
+
+    const predictions = [];
+    for (const type of anomalyTypes) {
+      const counts = buckets.map(b => b[type] ? b[type].count : 0);
+      const recentCounts = counts.slice(-4);
+      const olderCounts = counts.slice(0, 4);
+
+      const recentAvg = recentCounts.reduce((a, b) => a + b, 0) / Math.max(recentCounts.length, 1);
+      const olderAvg = olderCounts.reduce((a, b) => a + b, 0) / Math.max(olderCounts.length, 1);
+
+      // Linear regression
+      let slope = 0;
+      const nonZeroCounts = counts.filter(c => c > 0);
+      if (nonZeroCounts.length >= 2) {
+        const n = counts.length;
+        const sumX = (n * (n - 1)) / 2;
+        const sumY = counts.reduce((a, b) => a + b, 0);
+        const sumXY = counts.reduce((acc, y, i) => acc + i * y, 0);
+        const sumX2 = (n * (n - 1) * (2 * n - 1)) / 6;
+        const denom = n * sumX2 - sumX * sumX;
+        if (denom !== 0) slope = (n * sumXY - sumX * sumY) / denom;
+      }
+
+      const totalAnomalies = counts.reduce((a, b) => a + b, 0);
+      const predictedCount = Math.max(0, Math.round(recentAvg + slope * Math.ceil(horizonDays / 7)));
+
+      let trendDirection = 'stable';
+      if (slope > 0.3) trendDirection = 'increasing';
+      else if (slope < -0.3) trendDirection = 'decreasing';
+
+      // Severity distribution
+      let criticalCount = 0, warningCount = 0, infoCount = 0;
+      for (const b of buckets) {
+        if (b[type]) {
+          criticalCount += b[type].critical;
+          warningCount += b[type].warning;
+          infoCount += b[type].info;
+        }
+      }
+
+      predictions.push({
+        anomalyType: type,
+        totalAnomalies,
+        predictedCount,
+        trend: trendDirection,
+        slope: Math.round(slope * 100) / 100,
+        recentAvg: Math.round(recentAvg * 100) / 100,
+        olderAvg: Math.round(olderAvg * 100) / 100,
+        severityBreakdown: { critical: criticalCount, warning: warningCount, info: infoCount },
+        riskScore: Math.min(100, Math.round((predictedCount / Math.max(totalAnomalies, 1)) * 50 + (slope > 0 ? slope * 30 : 0) + (criticalCount > 0 ? 20 : 0)))
+      });
+    }
+
+    predictions.sort((a, b) => b.riskScore - a.riskScore);
+
+    return jsonResponse({
+      success: true,
+      forecast: {
+        predictions: predictions.slice(0, 10),
+        totalAnomalyTypes: predictions.length,
+        horizonDays,
+        totalAnomalies: predictions.reduce((sum, p) => sum + p.totalAnomalies, 0),
+        highestRisk: predictions.length > 0 ? predictions[0].anomalyType : null,
+        bucketInterval: '7d'
+      }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to generate anomaly forecast', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/predictions/curation-forecast
+ * Predicts curation workload based on historical patterns.
+ * Estimates how many records will need review, fixing, or enrichment.
+ * Query params: cemeteryId, horizonDays (default 30)
+ */
+async function handleCurationForecast(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, forecast: {}, message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const cemeteryId = url.searchParams.get('cemeteryId');
+    const horizonDays = parseInt(url.searchParams.get('horizonDays') || '30', 10);
+
+    const allRecords = await loadAllRecords(env);
+    let records = allRecords.filter(r => r.status === 'published' || r.status === 'draft' || r.status === 'in_review');
+    if (cemeteryId) records = records.filter(r => r.cemeteryId === cemeteryId);
+
+    if (records.length === 0) {
+      return jsonResponse({ success: true, forecast: {} }, 200, cors);
+    }
+
+    const now = Date.now();
+    const dayMs = 86400000;
+    const bucketMs = 7 * dayMs;
+    const numBuckets = 12;
+
+    // Track weekly activity
+    const activityBuckets = Array.from({ length: numBuckets }, (_, i) => ({
+      start: now - (numBuckets - 1 - i) * bucketMs,
+      end: now - (numBuckets - 1 - i) * bucketMs + bucketMs,
+      newRecords: 0, updates: 0, fixes: 0, reviews: 0, enrichments: 0, anomalies: 0
+    }));
+
+    for (const r of records) {
+      const ts = getRecordTimestamp(r);
+      for (let i = 0; i < numBuckets; i++) {
+        if (ts >= activityBuckets[i].start && ts < activityBuckets[i].end) {
+          if (r.status === 'draft') activityBuckets[i].newRecords++;
+          else activityBuckets[i].updates++;
+          if (r.anomalies && r.anomalies.length > 0) activityBuckets[i].anomalies += r.anomalies.length;
+          if (r.verificationStatus === 'unverified' || !r.verificationStatus) activityBuckets[i].reviews++;
+          if (!r.sourceRefs || r.sourceRefs.length === 0) activityBuckets[i].enrichments++;
+          break;
+        }
+      }
+    }
+
+    // Compute averages and trends
+    function computeTrend(field) {
+      const values = activityBuckets.map(b => b[field]);
+      const recent = values.slice(-4).reduce((a, b) => a + b, 0) / 4;
+      const older = values.slice(0, 4).reduce((a, b) => a + b, 0) / 4;
+
+      let slope = 0;
+      const nonZero = values.filter(v => v > 0);
+      if (nonZero.length >= 2) {
+        const n = values.length;
+        const sumX = (n * (n - 1)) / 2;
+        const sumY = values.reduce((a, b) => a + b, 0);
+        const sumXY = values.reduce((acc, y, i) => acc + i * y, 0);
+        const sumX2 = (n * (n - 1) * (2 * n - 1)) / 6;
+        const denom = n * sumX2 - sumX * sumX;
+        if (denom !== 0) slope = (n * sumXY - sumX * sumY) / denom;
+      }
+
+      const bucketsAhead = Math.ceil(horizonDays / 7);
+      const predicted = Math.max(0, Math.round(recent + slope * bucketsAhead));
+      let trend = 'stable';
+      if (slope > 0.5) trend = 'increasing';
+      else if (slope < -0.5) trend = 'decreasing';
+
+      return { recent: Math.round(recent * 10) / 10, predicted, trend, slope: Math.round(slope * 100) / 100 };
+    }
+
+    const newRecordsTrend = computeTrend('newRecords');
+    const updatesTrend = computeTrend('updates');
+    const reviewsTrend = computeTrend('reviews');
+    const enrichmentsTrend = computeTrend('enrichments');
+    const anomaliesTrend = computeTrend('anomalies');
+
+    // Current backlog
+    const backlog = {
+      pendingReview: records.filter(r => r.status === 'draft' || r.status === 'in_review').length,
+      unverified: records.filter(r => r.verificationStatus === 'unverified' || !r.verificationStatus).length,
+      missingSources: records.filter(r => !r.sourceRefs || r.sourceRefs.length === 0).length,
+      withAnomalies: records.filter(r => r.anomalies && r.anomalies.length > 0).length
+    };
+
+    // Estimated completion time (assuming 20 records/day processing rate)
+    const processRate = 20;
+    const totalBacklog = backlog.pendingReview + backlog.unverified + backlog.missingSources + backlog.withAnomalies;
+    const estimatedDays = Math.ceil(totalBacklog / processRate);
+
+    // Workload prediction
+    const predictedWeeklyLoad = newRecordsTrend.predicted + reviewsTrend.predicted + enrichmentsTrend.predicted + anomaliesTrend.predicted;
+    let workloadLevel = 'normal';
+    if (predictedWeeklyLoad > 50) workloadLevel = 'high';
+    else if (predictedWeeklyLoad > 20) workloadLevel = 'moderate';
+    else if (predictedWeeklyLoad > 0) workloadLevel = 'low';
+
+    return jsonResponse({
+      success: true,
+      forecast: {
+        backlog,
+        estimatedDaysToClear: estimatedDays,
+        processingRate: `${processRate} records/day`,
+        predictedWeeklyLoad,
+        workloadLevel,
+        trends: {
+          newRecords: newRecordsTrend,
+          updates: updatesTrend,
+          reviews: reviewsTrend,
+          enrichments: enrichmentsTrend,
+          anomalies: anomaliesTrend
+        },
+        horizonDays,
+        historicalActivity: activityBuckets.map((b, i) => ({
+          week: i + 1,
+          newRecords: b.newRecords,
+          updates: b.updates,
+          reviews: b.reviews,
+          enrichments: b.enrichments,
+          anomalies: b.anomalies
+        }))
+      }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to generate curation forecast', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/predictions/data-growth
+ * Predicts data growth (records, cemeteries, storage) based on historical patterns.
+ * Query params: horizonDays (default 180)
+ */
+async function handleDataGrowthForecast(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, forecast: {}, message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const horizonDays = parseInt(url.searchParams.get('horizonDays') || '180', 10);
+
+    const allRecords = await loadAllRecords(env);
+    const records = allRecords.filter(r => r.status === 'published');
+
+    // Count cemeteries
+    const cemeteryIds = new Set(records.map(r => r.cemeteryId).filter(Boolean));
+    const totalCemeteries = cemeteryIds.size;
+    const totalRecords = records.length;
+
+    // Time-based growth analysis (90-day history in 14-day buckets)
+    const now = Date.now();
+    const dayMs = 86400000;
+    const bucketMs = 14 * dayMs;
+    const numBuckets = 8;
+    const growthBuckets = Array.from({ length: numBuckets }, (_, i) => ({
+      start: now - (numBuckets - 1 - i) * bucketMs,
+      end: now - (numBuckets - 1 - i) * bucketMs + bucketMs,
+      count: 0, newCemeteries: new Set()
+    }));
+
+    for (const r of records) {
+      const ts = getRecordTimestamp(r);
+      for (let i = 0; i < numBuckets; i++) {
+        if (ts >= growthBuckets[i].start && ts < growthBuckets[i].end) {
+          growthBuckets[i].count++;
+          if (r.cemeteryId) growthBuckets[i].newCemeteries.add(r.cemeteryId);
+          break;
+        }
+      }
+    }
+
+    // Compute growth rate
+    const counts = growthBuckets.map(b => b.count);
+    const avgGrowthPerBucket = counts.reduce((a, b) => a + b, 0) / Math.max(counts.filter(c => c > 0).length, 1);
+    const growthRatePerDay = avgGrowthPerBucket / 14;
+
+    // Predict future growth
+    const predictedRecords = Math.round(totalRecords + growthRatePerDay * horizonDays);
+
+    // Cemetery growth (slower rate)
+    const cemeteryGrowthRate = totalCemeteries > 0 ? growthRatePerDay / (totalRecords / totalCemeteries) * 0.1 : 0;
+    const predictedCemeteries = Math.round(totalCemeteries + cemeteryGrowthRate * horizonDays);
+
+    // Storage estimate (avg 2KB per record)
+    const avgRecordSize = 2048;
+    const currentStorageMB = (totalRecords * avgRecordSize) / (1024 * 1024);
+    const predictedStorageMB = (predictedRecords * avgRecordSize) / (1024 * 1024);
+
+    // Growth trend
+    let growthTrend = 'stable';
+    const recentGrowth = counts.slice(-2).reduce((a, b) => a + b, 0) / 2;
+    const olderGrowth = counts.slice(0, 2).reduce((a, b) => a + b, 0) / 2;
+    if (recentGrowth > olderGrowth * 1.5) growthTrend = 'accelerating';
+    else if (recentGrowth < olderGrowth * 0.5) growthTrend = 'decelerating';
+
+    // Milestone predictions
+    const milestones = [];
+    if (growthRatePerDay > 0) {
+      const milestonesList = [100, 500, 1000, 5000, 10000];
+      for (const m of milestonesList) {
+        if (totalRecords < m) {
+          const daysToMilestone = Math.ceil((m - totalRecords) / growthRatePerDay);
+          if (daysToMilestone > 0 && daysToMilestone < 3650) {
+            milestones.push({ target: m, daysRemaining: daysToMilestone, estimatedDate: new Date(now + daysToMilestone * dayMs).toISOString().split('T')[0] });
+          }
+        }
+      }
+    }
+
+    return jsonResponse({
+      success: true,
+      forecast: {
+        current: {
+          records: totalRecords,
+          cemeteries: totalCemeteries,
+          storageMB: Math.round(currentStorageMB * 100) / 100
+        },
+        predicted: {
+          records: predictedRecords,
+          cemeteries: predictedCemeteries,
+          storageMB: Math.round(predictedStorageMB * 100) / 100
+        },
+        growthRatePerDay: Math.round(growthRatePerDay * 100) / 100,
+        growthTrend,
+        horizonDays,
+        historicalGrowth: growthBuckets.map((b, i) => ({
+          bucket: i + 1,
+          newRecords: b.count,
+          newCemeteries: b.newCemeteries.size
+        })),
+        milestones: milestones.slice(0, 5)
+      }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to generate data growth forecast', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/predictions/risk-assessment
+ * Comprehensive risk assessment combining all predictive models.
+ * Identifies at-risk cemeteries, emerging threats, and priority actions.
+ * Query params: cemeteryId (optional, if omitted assesses all)
+ */
+async function handleRiskAssessment(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, assessment: {}, message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const cemeteryId = url.searchParams.get('cemeteryId');
+
+    const allRecords = await loadAllRecords(env);
+    let records = allRecords.filter(r => r.status === 'published');
+    if (cemeteryId) records = records.filter(r => r.cemeteryId === cemeteryId);
+
+    if (records.length === 0) {
+      return jsonResponse({ success: true, assessment: { overallRisk: 'unknown', risks: [] } }, 200, cors);
+    }
+
+    // Group by cemetery
+    const byCemetery = {};
+    for (const r of records) {
+      const cid = r.cemeteryId || 'unknown';
+      if (!byCemetery[cid]) byCemetery[cid] = [];
+      byCemetery[cid].push(r);
+    }
+
+    const cemeteryRisks = [];
+
+    for (const [cid, cRecords] of Object.entries(byCemetery)) {
+      const risks = [];
+      let overallScore = 0;
+
+      // Risk 1: Low verification rate
+      const verifiedCount = cRecords.filter(r => r.verificationStatus === 'verified').length;
+      const verificationRate = verifiedCount / cRecords.length;
+      if (verificationRate < 0.3) {
+        risks.push({
+          type: 'low_verification',
+          severity: verificationRate < 0.1 ? 'critical' : 'high',
+          metric: `${Math.round(verificationRate * 100)}%`,
+          description: `Only ${verifiedCount} of ${cRecords.length} records verified`,
+          impact: 'Data reliability compromised',
+          mitigation: 'Prioritize verification workflow for this cemetery'
+        });
+        overallScore += verificationRate < 0.1 ? 25 : 15;
+      }
+
+      // Risk 2: High anomaly rate
+      const recordsWithAnomalies = cRecords.filter(r => r.anomalies && r.anomalies.length > 0);
+      const anomalyRate = recordsWithAnomalies.length / cRecords.length;
+      if (anomalyRate > 0.2) {
+        const criticalAnomalies = cRecords.reduce((sum, r) => sum + (r.anomalies || []).filter(a => a.severity === 'critical').length, 0);
+        risks.push({
+          type: 'high_anomaly_rate',
+          severity: criticalAnomalies > 0 ? 'critical' : 'high',
+          metric: `${Math.round(anomalyRate * 100)}%`,
+          description: `${recordsWithAnomalies.length} records with anomalies, ${criticalAnomalies} critical`,
+          impact: 'Data quality degradation',
+          mitigation: 'Run batch anomaly resolution and auto-fix pipeline'
+        });
+        overallScore += criticalAnomalies > 0 ? 25 : 15;
+      }
+
+      // Risk 3: Missing sources
+      const noSources = cRecords.filter(r => !r.sourceRefs || r.sourceRefs.length === 0).length;
+      const sourceRate = 1 - (noSources / cRecords.length);
+      if (sourceRate < 0.5) {
+        risks.push({
+          type: 'missing_sources',
+          severity: sourceRate < 0.2 ? 'high' : 'medium',
+          metric: `${noSources} records`,
+          description: `${noSources} records have no source references`,
+          impact: 'Reduced traceability and verifiability',
+          mitigation: 'Add source references from available archives'
+        });
+        overallScore += sourceRate < 0.2 ? 15 : 10;
+      }
+
+      // Risk 4: Low confidence
+      const avgConfidence = cRecords.reduce((sum, r) => sum + (r.confidenceScore || 0), 0) / cRecords.length;
+      if (avgConfidence < 50) {
+        risks.push({
+          type: 'low_confidence',
+          severity: avgConfidence < 30 ? 'high' : 'medium',
+          metric: `${Math.round(avgConfidence)}/100`,
+          description: `Average confidence score is ${Math.round(avgConfidence)}`,
+          impact: 'Records may not meet quality thresholds',
+          mitigation: 'Run enrichment and auto-fix to improve scores'
+        });
+        overallScore += avgConfidence < 30 ? 15 : 10;
+      }
+
+      // Risk 5: Missing coordinates
+      const noCoords = cRecords.filter(r => !r.latitude || !r.longitude).length;
+      const coordRate = 1 - (noCoords / cRecords.length);
+      if (coordRate < 0.5) {
+        risks.push({
+          type: 'missing_coordinates',
+          severity: 'medium',
+          metric: `${noCoords} records`,
+          description: `${noCoords} records lack GPS coordinates`,
+          impact: 'Map functionality limited',
+          mitigation: 'Geocode from cemetery plots or field surveys'
+        });
+        overallScore += 10;
+      }
+
+      // Risk 6: Stale data (no updates in 90+ days)
+      const now = Date.now();
+      const staleRecords = cRecords.filter(r => {
+        const ts = getRecordTimestamp(r);
+        return (now - ts) > 90 * 86400000;
+      });
+      if (staleRecords.length > cRecords.length * 0.5) {
+        risks.push({
+          type: 'stale_data',
+          severity: 'low',
+          metric: `${Math.round((staleRecords.length / cRecords.length) * 100)}%`,
+          description: `${staleRecords.length} records not updated in 90+ days`,
+          impact: 'Data may be outdated',
+          mitigation: 'Schedule periodic review cycle'
+        });
+        overallScore += 5;
+      }
+
+      let riskLevel = 'low';
+      if (overallScore >= 50) riskLevel = 'critical';
+      else if (overallScore >= 30) riskLevel = 'high';
+      else if (overallScore >= 15) riskLevel = 'medium';
+
+      cemeteryRisks.push({
+        cemeteryId: cid,
+        cemeteryName: cRecords[0]?.cemeteryName || cid,
+        totalRecords: cRecords.length,
+        riskLevel,
+        riskScore: overallScore,
+        risks: risks.sort((a, b) => {
+          const severityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+          return severityOrder[a.severity] - severityOrder[b.severity];
+        }),
+        topRisk: risks.length > 0 ? risks[0].type : null
+      });
+    }
+
+    cemeteryRisks.sort((a, b) => b.riskScore - a.riskScore);
+
+    // Overall assessment
+    const totalRiskScore = cemeteryRisks.reduce((sum, c) => sum + c.riskScore, 0) / Math.max(cemeteryRisks.length, 1);
+    let overallRisk = 'low';
+    if (totalRiskScore >= 50) overallRisk = 'critical';
+    else if (totalRiskScore >= 30) overallRisk = 'high';
+    else if (totalRiskScore >= 15) overallRisk = 'medium';
+
+    // Priority actions
+    const priorityActions = [];
+    const criticalCemeteries = cemeteryRisks.filter(c => c.riskLevel === 'critical');
+    if (criticalCemeteries.length > 0) {
+      priorityActions.push({
+        priority: 1,
+        action: `Immediate intervention needed for ${criticalCemeteries.length} critical-risk cemeteries`,
+        cemeteries: criticalCemeteries.map(c => c.cemeteryId)
+      });
+    }
+    const highAnomalyCemeteries = cemeteryRisks.filter(c => c.risks.some(r => r.type === 'high_anomaly_rate'));
+    if (highAnomalyCemeteries.length > 0) {
+      priorityActions.push({
+        priority: 2,
+        action: `Run anomaly resolution for ${highAnomalyCemeteries.length} cemeteries with high anomaly rates`,
+        cemeteries: highAnomalyCemeteries.map(c => c.cemeteryId)
+      });
+    }
+    const lowVerification = cemeteryRisks.filter(c => c.risks.some(r => r.type === 'low_verification'));
+    if (lowVerification.length > 0) {
+      priorityActions.push({
+        priority: 3,
+        action: `Initiate verification campaigns for ${lowVerification.length} cemeteries with low verification rates`,
+        cemeteries: lowVerification.map(c => c.cemeteryId)
+      });
+    }
+
+    return jsonResponse({
+      success: true,
+      assessment: {
+        overallRisk,
+        totalRiskScore: Math.round(totalRiskScore),
+        totalCemeteries: cemeteryRisks.length,
+        criticalCount: criticalCemeteries.length,
+        highCount: cemeteryRisks.filter(c => c.riskLevel === 'high').length,
+        mediumCount: cemeteryRisks.filter(c => c.riskLevel === 'medium').length,
+        lowCount: cemeteryRisks.filter(c => c.riskLevel === 'low').length,
+        cemeteries: cemeteryRisks.slice(0, 20),
+        priorityActions,
+        generatedAt: new Date().toISOString()
+      }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to generate risk assessment', message: error.message }, 500, cors);
+  }
 }

@@ -10,6 +10,11 @@ import com.putraworks.graveatlas.data.model.ImportBatchReport;
 import com.putraworks.graveatlas.data.model.AnomalyReport;
 import com.putraworks.graveatlas.data.model.RecordAnomalyCheck;
 import com.putraworks.graveatlas.data.model.CemeteryHealthAnalytics;
+import com.putraworks.graveatlas.data.model.HealthForecast;
+import com.putraworks.graveatlas.data.model.AnomalyForecast;
+import com.putraworks.graveatlas.data.model.CurationForecast;
+import com.putraworks.graveatlas.data.model.DataGrowthForecast;
+import com.putraworks.graveatlas.data.model.RiskAssessment;
 import com.putraworks.graveatlas.data.model.GlobalHealthOverview;
 import com.putraworks.graveatlas.data.model.CemeteryRecommendations;
 import com.putraworks.graveatlas.data.model.GlobalRecommendations;
@@ -58,6 +63,11 @@ import com.putraworks.graveatlas.data.model.ComplianceReport;
 import com.putraworks.graveatlas.data.model.AnalyticsDashboard;
 import com.putraworks.graveatlas.data.model.StakeholderReport;
 import com.putraworks.graveatlas.data.model.CemeteryHealthAnalytics;
+import com.putraworks.graveatlas.data.model.HealthForecast;
+import com.putraworks.graveatlas.data.model.AnomalyForecast;
+import com.putraworks.graveatlas.data.model.CurationForecast;
+import com.putraworks.graveatlas.data.model.DataGrowthForecast;
+import com.putraworks.graveatlas.data.model.RiskAssessment;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -1232,6 +1242,173 @@ public class ApiClient {
                         callback.onSuccess(StakeholderReport.fromJson(new JSONObject(body)));
                     } catch (Exception e) {
                         callback.onError("Failed to parse stakeholder report.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    // ── Phase 16.27: AI Predictive Insights & Trend Forecasting ──
+
+    /**
+     * Get health score forecast for a cemetery.
+     * GET /api/predictions/health-forecast
+     */
+    public void getHealthForecast(String cemeteryId, int horizonDays,
+            final ApiCallback<HealthForecast> callback) {
+        java.util.List<String> params = new java.util.ArrayList<>();
+        if (cemeteryId != null) params.add("cemeteryId=" + cemeteryId);
+        params.add("horizonDays=" + horizonDays);
+        String url = baseUrl + "/api/predictions/health-forecast?" + String.join("&", params);
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject json = new JSONObject(body);
+                        callback.onSuccess(HealthForecast.fromJson(json.optJSONObject("forecast") != null ? json.getJSONObject("forecast") : json));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse health forecast.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get anomaly emergence forecast.
+     * GET /api/predictions/anomaly-forecast
+     */
+    public void getAnomalyForecast(String cemeteryId, int horizonDays,
+            final ApiCallback<AnomalyForecast> callback) {
+        java.util.List<String> params = new java.util.ArrayList<>();
+        if (cemeteryId != null) params.add("cemeteryId=" + cemeteryId);
+        params.add("horizonDays=" + horizonDays);
+        String url = baseUrl + "/api/predictions/anomaly-forecast?" + String.join("&", params);
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject json = new JSONObject(body);
+                        callback.onSuccess(AnomalyForecast.fromJson(json.optJSONObject("forecast") != null ? json.getJSONObject("forecast") : json));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse anomaly forecast.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get curation workload forecast.
+     * GET /api/predictions/curation-forecast
+     */
+    public void getCurationForecast(String cemeteryId, int horizonDays,
+            final ApiCallback<CurationForecast> callback) {
+        java.util.List<String> params = new java.util.ArrayList<>();
+        if (cemeteryId != null) params.add("cemeteryId=" + cemeteryId);
+        params.add("horizonDays=" + horizonDays);
+        String url = baseUrl + "/api/predictions/curation-forecast?" + String.join("&", params);
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject json = new JSONObject(body);
+                        callback.onSuccess(CurationForecast.fromJson(json.optJSONObject("forecast") != null ? json.getJSONObject("forecast") : json));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse curation forecast.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get data growth forecast.
+     * GET /api/predictions/data-growth
+     */
+    public void getDataGrowthForecast(int horizonDays,
+            final ApiCallback<DataGrowthForecast> callback) {
+        String url = baseUrl + "/api/predictions/data-growth?horizonDays=" + horizonDays;
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject json = new JSONObject(body);
+                        callback.onSuccess(DataGrowthForecast.fromJson(json.optJSONObject("forecast") != null ? json.getJSONObject("forecast") : json));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse data growth forecast.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get comprehensive risk assessment.
+     * GET /api/predictions/risk-assessment
+     */
+    public void getRiskAssessment(String cemeteryId,
+            final ApiCallback<RiskAssessment> callback) {
+        String url = baseUrl + "/api/predictions/risk-assessment";
+        if (cemeteryId != null) url += "?cemeteryId=" + cemeteryId;
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        JSONObject json = new JSONObject(body);
+                        callback.onSuccess(RiskAssessment.fromJson(json.optJSONObject("assessment") != null ? json.getJSONObject("assessment") : json));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse risk assessment.");
                     }
                 } else {
                     callback.onError(ApiErrorHandler.getHttpMessage(response.code()));

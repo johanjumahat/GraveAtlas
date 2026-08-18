@@ -519,6 +519,43 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.31] — 2026-08-18
+
+### Phase 16.27: AI Predictive Insights & Trend Forecasting
+
+**Added:**
+- `GET /api/predictions/health-forecast` — predicts cemetery health score
+  degradation/improvement using linear regression on historical health buckets.
+  Returns current/predicted scores, trend direction (improving/stable/degrading),
+  confidence level, risk assessment, and time-to-threshold calculation.
+
+- `GET /api/predictions/anomaly-forecast` — predicts which anomaly types are
+  likely to emerge based on frequency analysis and trend detection. Returns per-
+  type predicted counts, trend directions, severity breakdowns, and risk scores.
+
+- `GET /api/predictions/curation-forecast` — predicts curation workload based
+  on historical patterns. Returns backlog metrics (pending review, unverified,
+  missing sources, anomalies), estimated days to clear, workload level
+  (low/moderate/high), and per-field trend data.
+
+- `GET /api/predictions/data-growth` — predicts data growth (records, cemeteries,
+  storage) based on historical patterns. Returns current/predicted snapshots,
+  growth rate per day, growth trend (accelerating/stable/decelerating), and
+  milestone predictions with estimated dates.
+
+- `GET /api/predictions/risk-assessment` — comprehensive risk assessment combining
+  all predictive models. Detects 6 risk types per cemetery (low_verification,
+  high_anomaly_rate, missing_sources, low_confidence, missing_coordinates,
+  stale_data) with severity levels, impact descriptions, and mitigation
+  strategies. Returns priority actions with cemetery lists.
+
+New models: HealthForecast, AnomalyForecast (2 inner), CurationForecast
+  (4 inner), DataGrowthForecast (3 inner), RiskAssessment (3 inner)
+API client: 5 new methods
+AI system prompt updated, 3 new suggested prompts
+100+ new tests (phase16-27.test.js)
+
+
 ## [7.2.26] — 2026-08-18
 
 ### Phase 16.26: AI Analytics & Insights Dashboard
