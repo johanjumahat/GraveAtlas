@@ -51,6 +51,10 @@ public class AIProvider {
     public static List<AIProvider> getProviders() {
         return Arrays.asList(
             // ── Pollinations (no API key needed!) — FIRST so it's the default ──
+            // Pollinations retired the "openai" model slug — it now returns HTTP 402
+            // "requires payment". Only "openai-fast" remains free on the public
+            // endpoint as of Aug 2026. (Confirmed against the Soccer ProAI app's
+            // PollinationsProvider, which hit the same 402 and dropped "openai".)
             new AIProvider(
                 "pollinations", "Pollinations (no key needed)",
                 "100% free • no registration • no API key\nJust select and start chatting — works out of the box!",
@@ -58,12 +62,42 @@ public class AIProvider {
                 ApiFormat.OPENAI_COMPATIBLE,
                 "https://text.pollinations.ai/openai/chat/completions",
                 Arrays.asList(
-                    "openai",
                     "openai-fast"
                 ),
                 Arrays.asList(
-                    "GPT-OSS 20B (default)",
-                    "GPT-OSS 20B Fast"
+                    "GPT-OSS 20B Fast (default)"
+                ),
+                true
+            ),
+            // ── Kilo (no API key needed) — second zero-setup fallback ──
+            new AIProvider(
+                "kilo", "Kilo (no key needed)",
+                "100% free • no registration • no API key\nAutomatic fallback if Pollinations is unavailable",
+                null,
+                ApiFormat.OPENAI_COMPATIBLE,
+                "https://api.kilo.ai/api/gateway/v1/chat/completions",
+                Arrays.asList(
+                    "kilo-auto/free",
+                    "inclusionai/ling-3.0-flash:free"
+                ),
+                Arrays.asList(
+                    "Kilo Auto",
+                    "Ling 3.0 Flash"
+                ),
+                true
+            ),
+            // ── LLM7 (no API key needed) — third zero-setup fallback ──
+            new AIProvider(
+                "llm7", "LLM7 (no key needed)",
+                "100% free • no registration • no API key\nAutomatic fallback if other free options are unavailable",
+                null,
+                ApiFormat.OPENAI_COMPATIBLE,
+                "https://api.llm7.io/v1/chat/completions",
+                Arrays.asList(
+                    "gemini-3.1-flash-lite"
+                ),
+                Arrays.asList(
+                    "Gemini 3.1 Flash-Lite"
                 ),
                 true
             ),
@@ -250,21 +284,65 @@ public class AIProvider {
                 false
             ),
             // ── Cohere ──
+            // Fixed (Aug 2026): the plain /v1/chat/completions route returns HTTP 405 —
+            // the OpenAI-compatible route lives under /compatibility/v1. "command-r" and
+            // "command-r-plus" (undated aliases) were deprecated Sept 2025 — use the
+            // dated model IDs below instead. (Verified against Soccer ProAI's CohereProvider.)
             new AIProvider(
                 "cohere", "Cohere",
                 "Free trial • good for general chat\nGet key at dashboard.cohere.com/api-keys",
                 "https://dashboard.cohere.com/api-keys",
                 ApiFormat.OPENAI_COMPATIBLE,
-                "https://api.cohere.ai/v1/chat/completions",
+                "https://api.cohere.ai/compatibility/v1/chat/completions",
                 Arrays.asList(
-                    "command-a-03-2025",
-                    "command-r-plus",
-                    "command-r"
+                    "command-a-plus-05-2026",
+                    "command-a-03-2025"
                 ),
                 Arrays.asList(
-                    "Command A",
-                    "Command R+",
-                    "Command R"
+                    "Command A+",
+                    "Command A"
+                ),
+                false
+            ),
+            // ── HuggingFace ──
+            new AIProvider(
+                "huggingface", "HuggingFace",
+                "Free tier ($0.10/mo credits) • many models\nGet key at huggingface.co/settings/tokens",
+                "https://huggingface.co/settings/tokens",
+                ApiFormat.OPENAI_COMPATIBLE,
+                "https://router.huggingface.co/v1/chat/completions",
+                Arrays.asList(
+                    "openai/gpt-oss-20b",
+                    "openai/gpt-oss-120b",
+                    "meta-llama/Llama-3.3-70B-Instruct",
+                    "deepseek-ai/DeepSeek-V3",
+                    "Qwen/Qwen2.5-72B-Instruct"
+                ),
+                Arrays.asList(
+                    "GPT-OSS 20B",
+                    "GPT-OSS 120B",
+                    "Llama 3.3 70B",
+                    "DeepSeek V3",
+                    "Qwen 2.5 72B"
+                ),
+                false
+            ),
+            // ── Z.AI ──
+            new AIProvider(
+                "zai", "Z.AI",
+                "Free-tier model available • paid tiers for more\nGet key at z.ai/manage-apikey/apikey-list",
+                "https://z.ai/manage-apikey/apikey-list",
+                ApiFormat.OPENAI_COMPATIBLE,
+                "https://api.z.ai/api/paas/v4/chat/completions",
+                Arrays.asList(
+                    "glm-4.5-flash",
+                    "glm-4.6",
+                    "glm-4.7"
+                ),
+                Arrays.asList(
+                    "GLM-4.5 Flash (free tier)",
+                    "GLM-4.6",
+                    "GLM-4.7"
                 ),
                 false
             )
