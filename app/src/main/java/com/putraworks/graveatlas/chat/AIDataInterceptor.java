@@ -225,26 +225,12 @@ public class AIDataInterceptor {
         }
 
         StringBuilder sb = new StringBuilder();
-        sb.append("Query: \"").append(searchTerms).append("\"\n");
-        sb.append("This query was checked against BOTH the GraveAtlas internal database ");
-        sb.append("AND all configured external official sources (OpenStreetMap, Wikidata, ");
-        sb.append("Singapore government data, etc.). Compile and present findings from both.\n\n");
-
-        sb.append("=== GRAVEATLAS DATABASE (community-contributed) ===\n");
-        sb.append(hasDb ? databaseContext : "No response from GraveAtlas database.");
-        sb.append("\n\n");
-
-        sb.append("=== EXTERNAL OFFICIAL SOURCES (OpenStreetMap, Wikidata, government data, etc.) ===\n");
-        sb.append(hasExternal ? externalContext : "No response from external sources.");
-        sb.append("\n\n");
-
-        sb.append("INSTRUCTIONS FOR AI: Combine findings from BOTH sections above into one answer. ");
-        sb.append("Never claim 'no records found' based on the GraveAtlas database section alone — ");
-        sb.append("always check whether the external sources section found anything before telling ");
-        sb.append("the user there is nothing available. Clearly attribute each record to its source ");
-        sb.append("(GraveAtlas community record vs. named external source). If both sections report ");
-        sb.append("zero records, say so plainly and suggest next steps.");
-
+        if (hasDb) {
+            sb.append("[GraveAtlas DB]\n").append(databaseContext).append("\n");
+        }
+        if (hasExternal) {
+            sb.append("[External Sources]\n").append(externalContext);
+        }
         return sb.toString();
     }
 
@@ -297,9 +283,6 @@ public class AIDataInterceptor {
             }
             sb.append("\n");
         }
-
-        sb.append("IMPORTANT: These are EXTERNAL records with source provenance.\n");
-        sb.append("They are NOT GraveAtlas native records. Always cite the source.\n");
 
         return sb.toString();
     }
@@ -411,10 +394,6 @@ public class AIDataInterceptor {
             sb.append("\n");
         }
 
-        sb.append("INSTRUCTIONS FOR AI: Use these real database results to answer the user's question. ");
-        sb.append("Cite the record type and ID when referencing specific records. ");
-        sb.append("If verification status is not 'verified', note that the record needs verification. ");
-        sb.append("Do NOT fabricate additional records beyond what is shown here.");
 
         return sb.toString();
     }
