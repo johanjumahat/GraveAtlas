@@ -154,7 +154,7 @@
             app:backgroundTint="@color/bg_surface_2" app:cornerRadius="21dp"
             android:contentDescription="Voice conversation" />
 
-        <com.google.android.material.textfield.TextInputEditText
+        <EditText
             android:id="@+id/etInput"
             android:layout_width="0dp" android:layout_height="wrap_content"
             android:layout_weight="1" android:layout_marginStart="8dp"
@@ -162,7 +162,8 @@
             android:background="@drawable/bg_input"
             android:maxLines="4" android:inputType="textMultiLine|textCapSentences"
             android:paddingHorizontal="16dp" android:paddingVertical="12dp"
-            android:textSize="14sp" android:textColor="@color/text_primary_dark" />
+            android:textSize="14sp" android:textColor="@color/text_primary_dark"
+            android:textCursorDrawable="@null" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnSpeaker"

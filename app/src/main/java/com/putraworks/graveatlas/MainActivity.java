@@ -36,6 +36,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.button.MaterialButton;
+import android.widget.EditText;
 import com.google.android.material.textfield.TextInputEditText;
 import com.putraworks.graveatlas.chat.AIClient;
 import com.putraworks.graveatlas.chat.AIProvider;
@@ -70,7 +71,7 @@ public class MainActivity extends AppCompatActivity {
     private RecyclerView rvMessages;
     private ChatAdapter adapter;
     private View progressTyping;
-    private TextInputEditText etInput;
+    private EditText etInput;
     private MaterialButton btnSend, btnTestModels, btnMic, btnSpeaker;
 
     // Conversation mode UI
