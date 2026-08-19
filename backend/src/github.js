@@ -30,6 +30,32 @@ function unicodeAtob(b64) {
   return new TextDecoder().decode(bytes);
 }
 
+// ── Country prefix for multi-country data structure ──
+const DEFAULT_COUNTRY = 'sg';
+
+// Directories that contain country-specific data and need country prefixing.
+const COUNTRY_DATA_DIRS = new Set([
+  'graves', 'cemeteries', 'pending', 'photos', 'bukit-brown',
+  'schema', 'index', 'community-data', 'people'
+]);
+
+/**
+ * Prefix a data path with the default country code.
+ * Only known data directories are prefixed (graves/, cemeteries/, etc.).
+ * Operational directories (publication-queue/, audit/, users/, etc.) are left as-is.
+ * Paths that already start with a 2-letter country code followed by / are left as-is.
+ */
+function prefixPath(path) {
+  if (!path) return path;
+  // Already starts with a 2-letter country prefix followed by /
+  if (/^[a-z]{2}\//.test(path)) return path;
+  // Extract the top-level directory name
+  const topDir = path.split('/')[0];
+  // Only prefix known data directories
+  if (!COUNTRY_DATA_DIRS.has(topDir)) return path;
+  return DEFAULT_COUNTRY + '/' + path;
+}
+
 
 /**
  * Generate a JWT from the GitHub App's private key.
@@ -159,6 +185,7 @@ function buildSafePath(dir, id) {
  * Write a file to the GitHub repository.
  */
 async function writeFile(path, content, env, commitMessage) {
+  path = prefixPath(path);
   const token = await getToken(env);
   const ref = getRefParam(env);
   const base = getRepoUrl(env);
@@ -224,6 +251,7 @@ async function writeFile(path, content, env, commitMessage) {
  * Read a file from the GitHub repository.
  */
 async function readFile(path, env) {
+  path = prefixPath(path);
   const token = await getToken(env);
   const ref = getRefParam(env);
   const base = getRepoUrl(env);
@@ -243,6 +271,7 @@ async function readFile(path, env) {
  * List files in a directory.
  */
 async function listFiles(dirPath, env) {
+  dirPath = prefixPath(dirPath);
   const token = await getToken(env);
   const ref = getRefParam(env);
   const base = getRepoUrl(env);
@@ -263,6 +292,7 @@ async function listFiles(dirPath, env) {
  * Delete a file from the GitHub repository.
  */
 async function deleteFile(path, env, commitMessage) {
+  path = prefixPath(path);
   const token = await getToken(env);
   const ref = getRefParam(env);
   const base = getRepoUrl(env);
@@ -490,6 +520,7 @@ function wrapPkcs1InPkcs8(pkcs1Key) {
 
 // Export functions for use in Worker
 export {
+  prefixPath,
   generateJWT,
   getInstallationToken,
   getToken,

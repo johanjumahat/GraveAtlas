@@ -3901,7 +3901,7 @@ async function handleRestoreRecord(id, request, env, cors) {
 
             await createAuditEvent(env, {
               entityId: safeId,
-              entityType: path.startsWith('graves/') ? 'grave' : path.startsWith('cemeteries/') ? 'cemetery' : 'submission',
+              entityType: /\b[a-z]{2}\/graves\/.+|^graves\//.test(path) ? 'grave' : /\b[a-z]{2}\/cemeteries\/.+|^cemeteries\//.test(path) ? 'cemetery' : 'submission',
               action: 'RESTORE',
               actorType: 'admin',
               reason: `Record restored from ${record.lifecycleStatus}`,

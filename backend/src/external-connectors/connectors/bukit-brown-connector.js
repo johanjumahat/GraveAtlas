@@ -149,7 +149,7 @@ export class BukitBrownConnector extends BaseConnector {
     const allRecords = [];
     for (const letter of lettersToLoad) {
       try {
-        const records = await this.readRepoFile('bukit-brown/' + letter + '.json', env);
+        const records = await this.readRepoFile('sg/bukit-brown/' + letter + '.json', env);
         allRecords.push.apply(allRecords, records);
       } catch (err) {
         console.warn('Bukit Brown: failed to load ' + letter + '.json: ' + err.message);
