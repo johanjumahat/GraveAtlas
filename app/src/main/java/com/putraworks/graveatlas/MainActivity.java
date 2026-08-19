@@ -688,9 +688,12 @@ public class MainActivity extends AppCompatActivity {
     private List<Candidate> buildFallbackCandidates() {
         List<Candidate> candidates = new ArrayList<>();
         if (isAutoMode) {
-            // Auto mode: try ALL providers in order — no-key providers first
-            // (Pollinations → Kilo → LLM7), then keyed providers that have
-            // keys configured. Each provider uses its first (default) model.
+            // Auto mode: try ALL providers in the order defined by
+            // AIProvider.getProviders() — Gemini → Cohere → Kilo → LLM7 →
+            // OpenRouter → HuggingFace → Groq → Z.AI → Mistral → Pollinations
+            // → Cerebras → DeepSeek → Together AI → SambaNova. Keyed providers
+            // are skipped automatically if no API key is configured.
+            // Each provider uses its first (default) model.
             for (AIProvider p : providers) {
                 if (p.getApiKeyUrl() != null && !settings.hasApiKey(p.getId())) continue;
                 List<String> models = p.getModels();
