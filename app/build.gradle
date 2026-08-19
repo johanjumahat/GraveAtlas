@@ -23,6 +23,7 @@ android {
         targetSdk 34
         versionCode appVersionCode
         versionName appVersionName
+        resourceConfigurations ['en']
     }
 
     signingConfigs {
@@ -54,7 +55,8 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled true
+            shrinkResources true
             if (signingConfigs.release.storeFile != null) {
                 signingConfig signingConfigs.release
             }

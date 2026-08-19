@@ -23,7 +23,7 @@ permissions:
 
 concurrency:
   group: android-release
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -94,20 +94,20 @@ jobs:
 
       # ── 6. Validate project ──
       - name: Validate project
-        run: ./gradlew tasks --no-daemon --quiet
+        run: ./gradlew tasks --no-daemon --quiet --build-cache
 
       # ── 7. Run unit tests ──
       - name: Run unit tests
-        run: ./gradlew test --no-daemon
+        run: ./gradlew test --no-daemon --build-cache --parallel
 
       # ── 8. Run Android lint ──
       - name: Run Android lint
-        run: ./gradlew lintRelease --no-daemon
+        run: ./gradlew lintRelease --no-daemon --build-cache --parallel
 
       # ── 9. Build release APK ──
       - name: Build release APK
         run: |
-          ./gradlew assembleRelease \
+          ./gradlew assembleRelease --build-cache --parallel \
             --no-daemon \
             -PversionCode=${{ steps.version.outputs.VERSION_CODE }} \
             -PversionName=${{ steps.version.outputs.VERSION_NAME }} \
