@@ -491,46 +491,47 @@ public class HomeFragment extends Fragment {
     }
 
     /**
-     * Phase 16 - AI-native home screen: AI command bar + suggested research prompts.
+     * Phase 16 - AI-native home screen: research topic dropdown + start button.
      */
     private void setupAiCommandBar(View view) {
-        // AI command input → opens AI chat with the question pre-filled
-        EditText etAiCommand = view.findViewById(R.id.etAiCommand);
+        Spinner spinnerResearch = view.findViewById(R.id.spinnerResearch);
+        String[] topics = AISystemPrompts.SUGGESTED_PROMPTS;
+        
+        // Build dropdown items: "All topics" + individual research prompts
+        List<String> items = new ArrayList<>();
+        items.add("All topics");
+        for (String t : topics) items.add(t);
+        
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(
+            getContext(), android.R.layout.simple_spinner_item, items);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        spinnerResearch.setAdapter(adapter);
+        
+        // Style spinner text
+        spinnerResearch.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View v, int position, long id) {
+                if (v instanceof TextView) {
+                    ((TextView) v).setTextColor(getResources().getColor(R.color.text_primary_dark));
+                    ((TextView) v).setTextSize(13);
+                }
+            }
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {}
+        });
+
+        // Start Research button → opens AI chat with selected topic
         view.findViewById(R.id.btnAiAsk).setOnClickListener(v -> {
-            String question = etAiCommand.getText() != null ? etAiCommand.getText().toString().trim() : "";
+            int selected = spinnerResearch.getSelectedItemPosition();
             Intent intent = new Intent(getActivity(), MainActivity.class);
-            if (!question.isEmpty()) {
-                intent.putExtra("prefill_question", question);
+            if (selected == 0) {
+                // "All topics" — open chat with a general prompt
+                intent.putExtra("prefill_question", "Show me an overview of all available research topics.");
+            } else if (selected > 0 && selected <= topics.length) {
+                intent.putExtra("prefill_question", topics[selected - 1]);
             }
             startActivity(intent);
         });
-
-        // Suggested research prompts
-        LinearLayout promptsContainer = view.findViewById(R.id.suggestedPromptsContainer);
-        if (promptsContainer != null) {
-            for (String prompt : AISystemPrompts.SUGGESTED_PROMPTS) {
-                TextView promptView = new TextView(getContext());
-                promptView.setText(prompt);
-                promptView.setTextSize(13);
-                promptView.setTextColor(getResources().getColor(R.color.text_secondary_dark));
-                promptView.setBackgroundResource(R.drawable.bg_more_item);
-                promptView.setPadding(32, 24, 32, 24);
-                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                );
-                params.setMargins(0, 4, 0, 4);
-                promptView.setLayoutParams(params);
-                promptView.setClickable(true);
-                promptView.setFocusable(true);
-                promptView.setOnClickListener(v -> {
-                    Intent intent = new Intent(getActivity(), MainActivity.class);
-                    intent.putExtra("prefill_question", prompt);
-                    startActivity(intent);
-                });
-                promptsContainer.addView(promptView);
-            }
-        }
     }
 
     private void loadFragment(Fragment fragment) {

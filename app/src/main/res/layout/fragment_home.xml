@@ -45,7 +45,7 @@
                 app:tint="@color/gold" />
         </LinearLayout>
 
-        <!-- ===== AI-NATIVE QUESTION ===== -->
+        <!-- ===== RESEARCH DROPDOWN ===== -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -57,55 +57,10 @@
             android:layout_marginTop="8dp"
             android:layout_marginBottom="4dp" />
 
-        <!-- ===== AI COMMAND BAR ===== -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:background="@drawable/bg_input"
-            android:padding="4dp"
-            android:layout_marginTop="4dp"
-            android:layout_marginBottom="8dp"
-            android:layout_marginStart="6dp"
-            android:layout_marginEnd="6dp">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etAiCommand"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:hint="Ask anything..."
-                android:textColorHint="@color/text_muted_dark"
-                android:background="@android:color/transparent"
-                android:maxLines="2"
-                android:inputType="textMultiLine|textCapSentences"
-                android:paddingHorizontal="12dp"
-                android:paddingVertical="10dp"
-                android:textSize="14sp"
-                android:textColor="@color/text_primary_dark" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnAiAsk"
-                android:layout_width="42dp"
-                android:layout_height="42dp"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:padding="0dp"
-                app:icon="@android:drawable/ic_menu_send"
-                app:iconSize="18dp"
-                app:iconGravity="textStart"
-                app:iconTint="@color/bg_root"
-                app:backgroundTint="@color/gold"
-                app:cornerRadius="21dp"
-                android:contentDescription="Ask AI" />
-        </LinearLayout>
-
-        <!-- ===== SUGGESTED RESEARCH PROMPTS ===== -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="SUGGESTED RESEARCH"
+            android:text="SELECT RESEARCH TOPIC"
             android:textSize="10sp"
             android:textStyle="bold"
             android:textColor="@color/text_muted_dark"
@@ -113,13 +68,34 @@
             android:layout_marginTop="8dp"
             android:layout_marginBottom="4dp" />
 
-        <LinearLayout
-            android:id="@+id/suggestedPromptsContainer"
+        <Spinner
+            android:id="@+id/spinnerResearch"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
+            android:layout_height="44dp"
+            android:background="@drawable/bg_input"
+            android:popupBackground="@color/bg_surface_2"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
             android:layout_marginStart="6dp"
-            android:layout_marginEnd="6dp" />
+            android:layout_marginEnd="6dp"
+            android:layout_marginBottom="8dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnAiAsk"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:text="Start Research"
+            android:textSize="14sp"
+            android:textColor="@color/bg_root"
+            app:backgroundTint="@color/gold"
+            app:cornerRadius="22dp"
+            android:layout_marginStart="6dp"
+            android:layout_marginEnd="6dp"
+            android:layout_marginBottom="12dp"
+            app:icon="@android:drawable/ic_menu_send"
+            app:iconSize="18dp"
+            app:iconGravity="textStart"
+            app:iconTint="@color/bg_root" />
 
         <!-- ===== LOCATION CARD ===== -->
         <androidx.cardview.widget.CardView
