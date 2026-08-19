@@ -1,3 +1,35 @@
+## [7.2.42] — 2026-08-19
+
+### Fixed — UI: Double Input Box & Text Visibility (PR #50)
+- Removed the duplicate AI input box from the home screen — the home screen
+  had its own AI command bar that duplicated the main chat screen's input,
+  causing confusion and visual clutter.
+- Replaced the redundant search bar with a research topic dropdown
+  (All topics / Cemeteries / Graves / Historical / etc.) for structured queries.
+- Fixed text visibility: `TextInputEditText` → plain `EditText` in the chat
+  input field. The Material component was rendering invisible text on some
+  themes; plain `EditText` with explicit text color fixes this.
+- Fixed `WrongViewCast` lint error: `MainActivity.java` still declared `etInput`
+  as `TextInputEditText` after the layout XML was changed to `EditText`, which
+  failed the CI lint gate (`lintRelease`).
+- CI: build #176 passed.
+
+### Changed — Auto Provider Sequence: Gemini First (PR #51)
+- Reordered `AIProvider.getProviders()` to match user-requested priority:
+  **Gemini → Cohere → Kilo → LLM7 → OpenRouter → HuggingFace → Groq →
+  Z.AI → Mistral → Pollinations → Cerebras → DeepSeek → Together AI →
+  SambaNova**.
+- Previously no-key providers (Pollinations → Kilo → LLM7) were tried first.
+  Now keyed providers with configured API keys take priority, with Gemini
+  and Cohere leading.
+- Keyed providers without a configured key are still skipped automatically
+  (no behavior change there — only the priority order changed).
+- Updated stale comments in `AIProvider.java` and `MainActivity.java`
+  referencing the old Pollinations-first order.
+- CI: build #178 passed.
+
+---
+
 ## [7.2.40] — 2026-08-19 (pending merge — PRs #45, #46)
 
 ### Fixed — Map Screen: Missing Section/Plot, External-Maps-Only Navigation (PR #45)

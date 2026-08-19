@@ -29,7 +29,7 @@ subdirectories. The `prefixPath()` function in `github.js` automatically prepend
 ## Chat
 
 - **Text Chat** — Type and send messages to AI
-- **Multi-Provider** — 9 AI providers with dozens of models
+- **Multi-Provider** — 14 AI providers with dozens of models
 - **Auto-Fallback** — Automatically switches to working models if the selected one fails
 - **Model Testing** — "Test All" button checks which models are online
 - **API Key Management** — Per-provider API key storage via menu
@@ -44,17 +44,24 @@ subdirectories. The `prefixPath()` function in `github.js` automatically prepend
 - **Voice Selection** — Long-press speaker icon to pick from device TTS voices
 - **Speaker Toggle** — Toggle read-aloud on/off
 
-## Providers (all free tiers)
+## Providers (14 providers, all free tiers)
 
-1. **Pollinations** — No API key needed, works out of the box
-2. **Groq** — Ultra-fast inference, generous free tier
-3. **Google Gemini** — 15 req/min free
-4. **OpenRouter** — Rotating free models
-5. **Cerebras** — Fastest inference
-6. **Mistral AI** — European models
-7. **DeepSeek** — Strong reasoning
-8. **Together AI** — Many open-source models
-9. **SambaNova** — Fast open-source models
+**Auto mode tries in this order** (keyed providers skipped if no key configured):
+
+1. **Google Gemini** — 15 req/min free (Auto mode priority #1)
+2. **Cohere** — Free trial, good for general chat (Auto mode priority #2)
+3. **Kilo** — No API key needed, zero setup
+4. **LLM7** — No API key needed, zero setup
+5. **OpenRouter** — Rotating free models
+6. **HuggingFace** — $0.10/mo free credits, many models
+7. **Groq** — Ultra-fast inference, generous free tier
+8. **Z.AI** — Free-tier model available
+9. **Mistral AI** — European models
+10. **Pollinations** — No API key needed, works out of the box
+11. **Cerebras** — Fastest inference
+12. **DeepSeek** — Strong reasoning
+13. **Together AI** — Many open-source models
+14. **SambaNova** — Fast open-source models
 
 ## Discovery & Search (Phase 4-5)
 
