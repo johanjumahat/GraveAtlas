@@ -26,3 +26,8 @@
 
 # Fragment
 -keep class androidx.fragment.** { *; }
+
+# Tink (security-crypto) optional deps — not bundled, suppress R8 missing class errors
+-dontwarn com.google.api.client.http.**
+-dontwarn com.google.api.client.json.**
+-dontwarn org.joda.time.**
