@@ -15,10 +15,12 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
+import com.putraworks.graveatlas.MainNavActivity;
 import com.putraworks.graveatlas.data.api.ApiClient;
 import com.putraworks.graveatlas.data.api.ApiErrorHandler;
 import com.putraworks.graveatlas.data.api.LocalCache;
 import com.putraworks.graveatlas.data.model.GraveRecord;
+import com.putraworks.graveatlas.ui.gravedetail.GraveDetailFragment;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -30,7 +32,11 @@ import java.util.List;
  * - Grid-based clustering: nearby records grouped into clusters
  * - Cluster cards show count + representative name
  * - Tapping a cluster opens the device map app at the cluster center
- * - Tapping a single record opens the device map app at that location
+ *   (a cluster covers multiple records, so there's no single detail page to open)
+ * - Tapping a single record opens the in-app Grave Detail screen (Section/Plot,
+ *   dates, notes, sources, etc.) — from there, "View on Map" opens the device
+ *   map app if the user wants external navigation
+ * - Single-record cards show Section/Plot ("block"/"lot") when available
  * - No paid map SDK — uses geo: intents
  * - Falls back to cached data when offline
  * - Empty/error/offline states handled gracefully
@@ -65,7 +71,7 @@ public class MapFragment extends Fragment implements ApiClient.ApiCallback<List<
         layout.addView(title);
 
         TextView subtitle = new TextView(getContext());
-        subtitle.setText("Locations with coordinates. Tap to open in your maps app.");
+        subtitle.setText("Locations with coordinates. Tap a location to view details, tap a cluster to open it in your maps app.");
         subtitle.setTextSize(12);
         subtitle.setTextColor(0xFF5F6368);
         subtitle.setPadding(0, 0, 0, 16);
@@ -245,6 +251,9 @@ public class MapFragment extends Fragment implements ApiClient.ApiCallback<List<
         StringBuilder sb = new StringBuilder();
         sb.append(g.name != null ? g.name : "Unknown");
         if (g.cemetery != null) sb.append("\n").append(g.cemetery);
+        // Section/Plot ("block"/"lot") — shown when the record has them (Part 119 follow-up)
+        if (g.section != null && !g.section.isEmpty()) sb.append("\n").append(g.section);
+        if (g.plot != null && !g.plot.isEmpty()) sb.append(" · Plot ").append(g.plot);
         sb.append(String.format("\n📍 %.4f, %.4f", g.latitude, g.longitude));
         card.setText(sb.toString());
         card.setPadding(24, 24, 24, 24);
@@ -257,13 +266,20 @@ public class MapFragment extends Fragment implements ApiClient.ApiCallback<List<
         lp.setMargins(0, 0, 0, 12);
         card.setLayoutParams(lp);
 
+        // Open in-app detail screen (Section/Plot, dates, notes, sources, and a
+        // "View on Map" button for external navigation if still wanted).
         card.setOnClickListener(v -> {
-            String geoUri = String.format("geo:%f,%f?q=%f,%f(%s)",
-                    g.latitude, g.longitude,
-                    g.latitude, g.longitude,
-                    g.name != null ? g.name : "Grave Location");
-            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(geoUri));
-            startActivity(intent);
+            if (g.id != null && getActivity() instanceof MainNavActivity) {
+                ((MainNavActivity) getActivity()).loadFragment(GraveDetailFragment.newInstance(g.id));
+            } else {
+                // Fallback: no id to look up a detail page for — open external maps instead
+                String geoUri = String.format("geo:%f,%f?q=%f,%f(%s)",
+                        g.latitude, g.longitude,
+                        g.latitude, g.longitude,
+                        g.name != null ? g.name : "Grave Location");
+                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(geoUri));
+                startActivity(intent);
+            }
         });
         contentLayout.addView(card);
     }
