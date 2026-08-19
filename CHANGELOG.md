@@ -1,3 +1,33 @@
+## [7.2.40] — 2026-08-19 (pending merge — PRs #45, #46)
+
+### Fixed — Map Screen: Missing Section/Plot, External-Maps-Only Navigation (PR #45)
+- Map screen cards for individual records now show Section/Plot ("block"/"lot"),
+  e.g. "Block N-1-4 · Plot 1109" — data already existed, screen just didn't show it.
+- Tapping a single-record card now opens the in-app Grave Detail screen instead of
+  jumping straight to the external maps app. Cluster cards (multiple records grouped)
+  still open external maps — no single detail page exists for a group.
+- CI: passed (run #164).
+
+### Fixed — AI Chat "All Available Models Failed" (PR #46)
+- **Root cause:** Pollinations retired the `openai` model slug — it now returns
+  HTTP 402 "requires payment". Only `openai-fast` still works on the free public
+  endpoint. Since Pollinations was the only no-API-key provider and every other
+  provider needs a registered key, once `openai` failed there was no working
+  fallback for keyless users.
+- Cross-checked against the Soccer ProAI app (`johanjumahat/Android-Apks`,
+  read-only reference only — not modified) which already hit and fixed this.
+- Pollinations: dropped the dead `openai` model, kept `openai-fast`.
+- Added **Kilo** and **LLM7** as two more no-API-key providers — the app's
+  fallback logic auto-includes any provider with no key requirement, so these
+  become real zero-config fallbacks for every user immediately.
+- Fixed **Cohere**: was hitting the wrong endpoint (`/v1/chat/completions`,
+  HTTP 405) and deprecated model aliases. Now uses `/compatibility/v1/chat/completions`
+  with dated model IDs.
+- Added **HuggingFace** and **Z.AI** as two more optional (key-required) providers.
+- CI: build triggered (run #165), pending at time of writing.
+
+---
+
 ## [7.2.32] — 2026-08-19
 
 ### Fixed — Blank White Result Cards (White-on-White Text)
