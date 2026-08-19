@@ -1,4 +1,30 @@
-# GraveAtlas — Features
+# GraveAtlas — Feature Documentation
+
+## Country-Prefixed Data Architecture (v7.2.31)
+
+### Overview
+All data is stored in a single `graveatlas-data` repository with country-prefixed
+subdirectories. The `prefixPath()` function in `github.js` automatically prepends
+`sg/` (DEFAULT_COUNTRY) to all data directory paths.
+
+| Feature | Description |
+|---------|-------------|
+| Default country | `sg` (Singapore) |
+| Auto-prefixing | `prefixPath()` in `github.js` prepends country code |
+| Prefixed directories | graves, cemeteries, pending, photos, bukit-brown, schema, index, community-data, people |
+| Unprefixed directories | publication-queue, audit, users (operational) |
+| Multi-country support | ph, vn, th, id, my folders ready for future data |
+| Path collision prevention | Already-prefixed paths (e.g. `sg/graves/`) are not double-prefixed |
+
+### How It Works
+1. Any call to `readFile('graves/xxx.json', env)` is auto-prefixed to `sg/graves/xxx.json`
+2. Any call to `listFiles('cemeteries', env)` is auto-prefixed to `sg/cemeteries`
+3. Any call to `writeFile('pending/xxx.json', ...)` is auto-prefixed to `sg/pending/xxx.json`
+4. Operational directories like `writeFile('audit/log.json', ...)` are NOT prefixed
+5. Paths already starting with a 2-letter country code (e.g. `sg/`, `ph/`) are left as-is
+
+---
+
 
 ## Chat
 

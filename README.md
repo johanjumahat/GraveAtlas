@@ -14,47 +14,72 @@ A worldwide cemetery & memorial locator for Android. Search, explore, and contri
 - **Saved Items** — Bookmark records and view browsing history
 - **Sharing** — Share records via deep links and HTTPS URLs
 - **Settings** — Configure API endpoint and preferences
+- **30 AI Feature Phases** — Cemetery intelligence, anomaly detection, enrichment, confidence scoring, predictive insights, natural language queries, smart summaries, cross-reference engine, and more
 
-## External Cemetery API Integration
+## Architecture
 
-GraveAtlas integrates with external cemetery and burial record sources to provide
-comprehensive worldwide coverage beyond community-submitted records.
+### Data Model (Country-Prefixed)
+GraveAtlas uses a consolidated data repository (`graveatlas-data`) with country-prefixed
+subdirectories. The `prefixPath()` function in `github.js` automatically prepends the
+default country code (`sg/`) to all data paths.
 
-### Supported Sources
-- **OpenStreetMap (Overpass API)** — Cemetery locations, names, and geometry worldwide
-- **Wikidata SPARQL** — Cemetery metadata, coordinates, and historical information
+```
+graveatlas-data/
+├── sg/                    ← Singapore (active)
+│   ├── cemeteries/        ← Cemetery JSON files
+│   ├── graves/            ← Grave record JSON files
+│   ├── pending/           ← Pending submissions
+│   ├── photos/            ← Photo references
+│   ├── schema/            ← Schema definitions
+│   ├── bukit-brown/       ← Bukit Brown connector data
+│   ├── community-data/    ← Community-contributed records
+│   └── ...
+├── ph/  vn/  th/  id/  my/  ← Future country data
+├── old/                   ← Original root content (archived)
+├── publication-queue/     ← Operational (not prefixed)
+├── audit/                 ← Operational (not prefixed)
+└── users/                 ← Operational (not prefixed)
+```
 
-### Architecture (28-part integration)
-- **Parts 1-3**: Source registry, discovery, and OSM connector
-- **Parts 4-6**: External grave schema, cemetery matching, and field mapping
-- **Parts 7-9**: Provenance badges, licensing enforcement, and rate limiting
-- **Parts 10-12**: Redis-compatible caching, graceful failure handling, and schema change detection
-- **Part 13**: API gateway (orchestrates all source queries)
-- **Parts 14-15**: Data quality validation and batch import framework
-- **Parts 16-17**: AI external search with source transparency
-- **Part 18**: Search fallback (internal-only when external sources are unavailable)
-- **Part 19**: Map integration (external cemeteries on the map view)
-- **Part 20**: External data import workflow
-- **Parts 21-22**: Privacy review and API security controls
-- **Part 23**: Audit logging for all external API calls
-- **Part 24**: Cost control (response size limits, request budgets)
-- **Part 25**: Data quality scoring
-- **Part 26**: API health dashboard (`GET /api/external/health`)
-- **Part 27**: GUI integration (ExternalSearchFragment with source badges)
-- **Part 28**: Full documentation (21 docs)
+### Backend
+- **Cloudflare Worker** — https://graveatlas.putraworks-2026.workers.dev
+- **Version:** 7.2.31
+- **Auth:** GitHub App (JWT + installation token), admin token for write endpoints
+- **Rate limiting:** 10/min default, 30/min admin, 60/min search
+- **CORS:** Configured for Android app + web access
 
 ### API Endpoints
-- `GET /api/external/sources` — List available external sources
-- `GET /api/external/health` — Health dashboard for all sources
-- `POST /api/external/search` — Search a specific source
-- `POST /api/external/search-all` — Search all sources in parallel
-- `POST /api/external/ai-search` — AI-driven external search with source transparency
-- `POST /api/external/import` — Import external record as GraveAtlas record
-- `POST /api/external/privacy-review` — Privacy review for a record
-- `GET /api/external/provenance/{id}` — Get provenance chain for a record
+- `GET /api/health` — Health check
+- `GET /api/cemeteries` — List all cemeteries
+- `GET /api/cemeteries/:id` — Get single cemetery
+- `GET /api/cemeteries/:id/stats` — Cemetery statistics
+- `GET /api/cemeteries/:id/summary` — Auto-generated summary
+- `GET /api/cemeteries/:id/health` — Cemetery health score
+- `GET /api/cemeteries/:id/recommendations` — Smart recommendations
+- `GET /api/cemeteries/:id/anomalies` — Anomaly detection scan
+- `GET /api/cemeteries/:id/duplicates` — Duplicate person detection
+- `GET /api/cemeteries/:id/connections` — Family connection network
+- `GET /api/graves` — List grave records
+- `GET /api/search?q=` — Search graves and cemeteries
+- `GET /api/timeline` — Chronological timeline view
+- `GET /api/map/query` — AI map queries
+- `POST /api/admin/cemeteries` — Create cemetery (admin)
+- `POST /api/admin/graves` — Create grave record (admin)
+- `GET /api/external/sources` — List external data sources
+- `POST /api/external/search-all` — Search all external sources
+- `GET /api/external/sg/datasets` — Singapore government datasets
+- `POST /api/external/ai-search` — AI-driven external search
+
+### External Cemetery API Integration
+GraveAtlas integrates with external cemetery and burial record sources:
+- **OpenStreetMap (Overpass API)** — Cemetery locations worldwide
+- **Wikidata SPARQL** — Cemetery metadata and historical info
+- **data.gov.sg** — Singapore government open data (NEA, NHB)
+- **Bukit Brown Cemetery** — Community-maintained burial register
+- **GitHub Community Data** — Community-contributed records (CC BY-SA 4.0)
 
 ### Key Principles
-- External records always display with **source badges** — they are never shown as native GraveAtlas records
+- External records always display with **source badges** — never shown as native records
 - The AI never claims to have searched a source it did not actually query
 - All external API calls are cached, rate-limited, and audited
 - Privacy review redacts sensitive data before display
@@ -69,6 +94,7 @@ comprehensive worldwide coverage beyond community-submitted records.
 - CardView, RecyclerView
 - OkHttp (API client)
 - Edge TTS (voice)
+- Cloudflare Workers (backend)
 
 ## Build
 

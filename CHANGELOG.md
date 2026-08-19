@@ -1,3 +1,52 @@
+## [7.2.31] — 2026-08-19
+
+### Changed — Repository Restructure: Country-Prefixed Data Model
+- **Consolidated 6 country-specific repos into single `graveatlas-data` repo.**
+  Previously, each country (sg, ph, vn, th, id, my) had its own repository. All data
+  now lives in one repo under country-prefixed subdirectories (`sg/graves/`, 
+  `sg/cemeteries/`, etc.). Original root content archived in `old/`.
+- **`prefixPath()` function in `github.js`** — Auto-prepends `sg/` (DEFAULT_COUNTRY)
+  to all data directory paths. Only directories in `COUNTRY_DATA_DIRS` are prefixed:
+  graves, cemeteries, pending, photos, bukit-brown, schema, index, community-data,
+  people. Operational directories (publication-queue, audit, users) are left as-is.
+  Paths already starting with a 2-letter country code are not double-prefixed.
+- **Bukit Brown connector** — Updated to read from `sg/bukit-brown/` instead of root.
+- **GitHub Actions validation workflow** — Migrated to repo root, watches subfolders.
+
+### Fixed — Backend Build & Route Errors
+- **Removed 7,127 lines of duplicate code** — Phase 16.26–16.15 handler blocks were
+  duplicated in `index.js` (lines 4048–11174 were an older copy of lines 11175–18448).
+  The newer version was kept; the older block was removed.
+- **Symbol conflict: `AUDIT_ACTIONS`** — Two constants with the same name served
+  different purposes (core audit events vs governance audit actions). Renamed the
+  governance version to `GOV_AUDIT_ACTIONS`.
+- **Symbol conflict: `handleCemeterySummary`** — Two functions with the same name
+  served different routes (`/api/cemeteries/:id/summary` vs `/api/summaries/cemetery/:id`).
+  Renamed the Phase 16.29 version to `handleCemeterySmartSummary`.
+- **Route ordering bug** — Generic `GET /api/cemeteries/:id` handler was catching all
+  sub-path GETs (`/stats`, `/summary`, `/health`, etc.) before their specific handlers
+  could match. Added `path.split('/').length === 4` guard so it only matches exactly
+  `/api/cemeteries/:id`.
+
+### Verified — Live Endpoint Tests
+All endpoints tested against the deployed Cloudflare Worker:
+- `GET /api/health` → v7.1.0, GitHub configured ✅
+- `GET /api/cemeteries` → 7 Singapore cemeteries ✅
+- `GET /api/cemeteries/bukit-brown` → Single cemetery GET ✅
+- `GET /api/cemeteries/bukit-brown/stats` → Stats ✅
+- `GET /api/cemeteries/bukit-brown/summary` → Summary ✅
+- `GET /api/cemeteries/bukit-brown/health` → Health ✅
+- `GET /api/search?q=jumat` → Search works ✅
+- `GET /api/graves` → Returns grave records ✅
+
+### Infrastructure
+- **Cloudflare Worker deployed** → https://graveatlas.putraworks-2026.workers.dev
+- **Worker version:** d095822a-e3a7-4cfa-b31f-1b8663d29657
+- **GitHub repos synced:** `GraveAtlas` (backend code) + `graveatlas-data` (data)
+- **Original 6 country repos deleted** (by user)
+
+---
+
 ## [7.2.5] — 2026-08-16
 
 ### Added
