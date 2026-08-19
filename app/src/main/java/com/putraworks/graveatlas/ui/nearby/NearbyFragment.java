@@ -319,8 +319,13 @@ public class NearbyFragment extends Fragment {
             card.setText(sb.toString());
             card.setPadding(32, 32, 32, 32);
             card.setTextSize(14);
+            // Fix: explicit dark card background + light text color.
+            // Previously used the system editbox_background_normal (white) with
+            // no text color set, so text inherited the theme's near-white
+            // textColorPrimary and was invisible against the white box.
+            card.setBackground(com.putraworks.graveatlas.utils.UiUtils.createCardBackground(getContext()));
+            com.putraworks.graveatlas.utils.UiUtils.applyPrimaryTextColor(getContext(), card);
             card.setContentDescription("Nearby " + r.getCategoryLabel() + ": " + (r.name != null ? r.name : "Unknown"));
-            card.setBackground(ContextCompat.getDrawable(getContext(), android.R.drawable.editbox_background_normal));
 
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,

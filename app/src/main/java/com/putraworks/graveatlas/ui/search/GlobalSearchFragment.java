@@ -449,7 +449,10 @@ public class GlobalSearchFragment extends Fragment implements ApiClient.ApiCallb
             LinearLayout cardContainer = new LinearLayout(getContext());
             cardContainer.setOrientation(LinearLayout.VERTICAL);
             cardContainer.setPadding(32, 32, 32, 32);
-            cardContainer.setBackground(ContextCompat.getDrawable(getContext(), android.R.drawable.editbox_background_normal));
+            // Fix: explicit dark card background (was the light system
+            // editbox_background_normal, which made result text invisible
+            // against it since text color defaults to the theme's near-white).
+            cardContainer.setBackground(com.putraworks.graveatlas.utils.UiUtils.createCardBackground(getContext()));
 
             LinearLayout.LayoutParams containerLp = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
@@ -482,6 +485,7 @@ public class GlobalSearchFragment extends Fragment implements ApiClient.ApiCallb
 
             card.setText(sb.toString());
             card.setTextSize(14);
+            com.putraworks.graveatlas.utils.UiUtils.applyPrimaryTextColor(getContext(), card);
             card.setContentDescription(buildContentDescription(r));
             cardContainer.addView(card);
 
@@ -490,6 +494,7 @@ public class GlobalSearchFragment extends Fragment implements ApiClient.ApiCallb
             whyLink.setText("Why am I seeing this?");
             whyLink.setTextSize(11);
             whyLink.setPadding(0, 8, 0, 0);
+            com.putraworks.graveatlas.utils.UiUtils.applySecondaryTextColor(getContext(), whyLink);
             EvidenceStatus.Category whyCategory = EvidenceStatus.fromVerificationStatus(r.verificationStatus);
             whyLink.setOnClickListener(v -> showEvidenceExplanation(r, whyCategory));
             cardContainer.addView(whyLink);

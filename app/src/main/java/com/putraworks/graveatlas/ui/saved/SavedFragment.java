@@ -114,7 +114,9 @@ public class SavedFragment extends Fragment {
             LinearLayout card = new LinearLayout(getContext());
             card.setOrientation(LinearLayout.VERTICAL);
             card.setPadding(32, 32, 32, 32);
-            card.setBackground(ContextCompat.getDrawable(getContext(), android.R.drawable.editbox_background_normal));
+            // Fix: explicit dark card background (was the light system
+            // editbox_background_normal, which made text invisible against it).
+            card.setBackground(com.putraworks.graveatlas.utils.UiUtils.createCardBackground(getContext()));
 
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
@@ -127,6 +129,7 @@ public class SavedFragment extends Fragment {
             typeLabel.setText(item.type.substring(0, 1).toUpperCase() + item.type.substring(1));
             typeLabel.setTextSize(11);
             typeLabel.setContentDescription("Saved item type: " + item.type);
+            com.putraworks.graveatlas.utils.UiUtils.applySecondaryTextColor(getContext(), typeLabel);
             card.addView(typeLabel);
 
             // Name
@@ -135,6 +138,7 @@ public class SavedFragment extends Fragment {
             nameText.setTextSize(15);
             nameText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
             nameText.setContentDescription("Saved item name: " + item.name);
+            com.putraworks.graveatlas.utils.UiUtils.applyPrimaryTextColor(getContext(), nameText);
             card.addView(nameText);
 
             // Subtitle (optional)
@@ -143,6 +147,7 @@ public class SavedFragment extends Fragment {
                 subText.setText(item.subtitle);
                 subText.setTextSize(12);
                 subText.setContentDescription("Saved item subtitle: " + item.subtitle);
+                com.putraworks.graveatlas.utils.UiUtils.applySecondaryTextColor(getContext(), subText);
                 card.addView(subText);
             }
 
