@@ -83,6 +83,7 @@ public class MainActivity extends AppCompatActivity {
     private List<AIProvider> providers;
     private AIProvider currentProvider;
     private String currentModel;
+    private boolean isAutoMode = false;
     private boolean isWaiting = false;
     private boolean isTesting = false;
 
@@ -477,7 +478,8 @@ public class MainActivity extends AppCompatActivity {
         } else {
             adapter.addMessage(new ChatMessage(
                 "Welcome to GraveAtlas!\n\n"
-                + "✅ Pollinations is ready — no API key needed, just start chatting!\n\n"
+                + "✅ Auto mode is selected — it picks the best available AI provider automatically!\n\n"
+                + "No API key needed — Pollinations, Kilo, and LLM7 all work without registration.\n\n"
                 + "Want more models? Pick another provider and tap the wrench icon to add your free API key.\n"
                 + "• Press \"Test All\" to check which models are online (✓/✗).\n"
                 + "• Tap the mic for VOICE CONVERSATION — speak, AI auto-responds "
@@ -502,6 +504,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void setupSpinners() {
         List<String> providerNames = new ArrayList<>();
+        providerNames.add("Auto (best available)");
         for (AIProvider p : providers) providerNames.add(p.getName());
         ArrayAdapter<String> providerAdapter = new ArrayAdapter<>(
             this, android.R.layout.simple_spinner_item, providerNames);
@@ -509,22 +512,46 @@ public class MainActivity extends AppCompatActivity {
         spinnerProvider.setAdapter(providerAdapter);
 
         int savedProvider = settings.getSelectedProvider();
-        if (savedProvider >= 0 && savedProvider < providers.size()) spinnerProvider.setSelection(savedProvider);
+        if (savedProvider >= 0 && savedProvider < providerNames.size()) spinnerProvider.setSelection(savedProvider);
 
         spinnerProvider.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                currentProvider = providers.get(position);
+                isAutoMode = (position == 0);
+                if (isAutoMode) {
+                    // Auto mode — no specific provider, uses fallback sequence
+                    currentProvider = null;
+                    spinnerModel.setEnabled(false);
+                    List<String> autoModelList = new ArrayList<>();
+                    autoModelList.add("Auto — tries Pollinations → Kilo → LLM7 → keyed providers");
+                    ArrayAdapter<String> autoAdapter = new ArrayAdapter<>(
+                        MainActivity.this, android.R.layout.simple_spinner_item, autoModelList);
+                    autoAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+                    spinnerModel.setAdapter(autoAdapter);
+                    currentModel = "auto";
+                } else {
+                    currentProvider = providers.get(position - 1); // offset by 1 for "Auto" entry
+                    spinnerModel.setEnabled(true);
+                    updateModelSpinner();
+                }
                 settings.setSelectedProvider(position);
-                updateModelSpinner();
                 updateToolbarSubtitle();
             }
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
         });
 
-        currentProvider = providers.get(spinnerProvider.getSelectedItemPosition());
-        updateModelSpinner();
+        // Initialize based on saved selection
+        int initPos = spinnerProvider.getSelectedItemPosition();
+        if (initPos == 0) {
+            isAutoMode = true;
+            currentProvider = null;
+            currentModel = "auto";
+        } else {
+            isAutoMode = false;
+            currentProvider = providers.get(initPos - 1);
+            updateModelSpinner();
+        }
         updateToolbarSubtitle();
     }
 
@@ -578,7 +605,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updateToolbarSubtitle() {
-        if (getSupportActionBar() == null || currentProvider == null) return;
+        if (getSupportActionBar() == null) return;
+        if (isAutoMode) {
+            getSupportActionBar().setSubtitle("Auto • best available");
+            return;
+        }
+        if (currentProvider == null) return;
         String modelLabel = "";
         List<String> labels = currentProvider.getModelLabels();
         if (spinnerModel != null && spinnerModel.getSelectedItemPosition() < labels.size()) {
@@ -591,6 +623,10 @@ public class MainActivity extends AppCompatActivity {
 
     private void testAllModels() {
         if (isTesting) return;
+        if (isAutoMode || currentProvider == null) {
+            Toast.makeText(this, "Auto mode has no specific provider to test. Select a provider first.", Toast.LENGTH_SHORT).show();
+            return;
+        }
         if (currentProvider.getApiKeyUrl() != null && !settings.hasApiKey(currentProvider.getId())) { showApiKeyDialog(); return; }
 
         isTesting = true;
@@ -651,6 +687,21 @@ public class MainActivity extends AppCompatActivity {
 
     private List<Candidate> buildFallbackCandidates() {
         List<Candidate> candidates = new ArrayList<>();
+        if (isAutoMode) {
+            // Auto mode: try ALL providers in order — no-key providers first
+            // (Pollinations → Kilo → LLM7), then keyed providers that have
+            // keys configured. Each provider uses its first (default) model.
+            for (AIProvider p : providers) {
+                if (p.getApiKeyUrl() != null && !settings.hasApiKey(p.getId())) continue;
+                List<String> models = p.getModels();
+                List<String> labels = p.getModelLabels();
+                if (!models.isEmpty()) {
+                    candidates.add(new Candidate(p, models.get(0), labels.get(0)));
+                }
+            }
+            return candidates;
+        }
+        // Normal mode: current provider's models first, then other providers
         List<String> curModels = currentProvider.getModels();
         List<String> curLabels = currentProvider.getModelLabels();
         int curIndex = curModels.indexOf(currentModel);
@@ -672,7 +723,7 @@ public class MainActivity extends AppCompatActivity {
     private void sendMessage() {
         String text = etInput.getText().toString().trim();
         if (text.isEmpty()) return;
-        if (currentProvider.getApiKeyUrl() != null && !settings.hasApiKey(currentProvider.getId())) { showApiKeyDialog(); return; }
+        if (!isAutoMode && currentProvider != null && currentProvider.getApiKeyUrl() != null && !settings.hasApiKey(currentProvider.getId())) { showApiKeyDialog(); return; }
         if (isWaiting) return;
 
         adapter.addMessage(new ChatMessage(text, true));
@@ -764,6 +815,7 @@ public class MainActivity extends AppCompatActivity {
     // ── API Key Dialog ──
 
     private void showApiKeyDialog() {
+        if (currentProvider == null) return;
         View dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_api_key, null);
         TextView tvName = dialogView.findViewById(R.id.tvProviderName);
         TextView tvDesc = dialogView.findViewById(R.id.tvProviderDesc);
