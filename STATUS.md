@@ -1,11 +1,11 @@
 # GraveAtlas — Project Status
 
 **Last Updated:** 2026-08-19 (Asia/Singapore)
-**Version:** 7.2.31
+**Version:** 7.2.32
 **Branch:** main
 **Worker URL:** https://graveatlas.putraworks-2026.workers.dev
 
-## Current Phase: Post-Consolidation — Repository Restructure Complete
+## Current Phase: Post-Consolidation — UI Bug Fixes
 
 ### Completed Today (2026-08-19)
 - ✅ Consolidated 6 country-specific repos (sg, ph, vn, th, id, my) into single `graveatlas-data` repo
@@ -23,6 +23,8 @@
 - ✅ All endpoints tested and verified against new `sg/` path structure
 - ✅ Original 6 country repos deleted (by user)
 - ✅ Google Drive sync confirmed not needed for this project
+- ✅ Fixed blank white result cards (white-on-white text) in Nearby, Search, and Saved Items screens
+- ✅ Added shared `UiUtils.java` helper for consistent dark-theme card styling
 
 ### Verified Endpoints (2026-08-19)
 | Endpoint | Status |
@@ -96,3 +98,12 @@ The `prefixPath()` function in `github.js` automatically prepends `sg/` to all d
 
 ### Known Issues
 - None
+
+### Not Yet Verified
+- **Blank card fix could not be compile-checked.** Sandbox network is
+  HTTPS:443 only; apt (HTTP:80) could not fetch a JDK to run Gradle/javac.
+  Fix was verified via static review only (balanced braces, confirmed color
+  resources exist in colors.xml, confirmed no remaining functional
+  references to the old drawable). **Recommend building the APK once and
+  visually confirming the Nearby/Search/Saved screens render correctly
+  before next release.**

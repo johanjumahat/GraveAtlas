@@ -1,3 +1,28 @@
+## [7.2.32] — 2026-08-19
+
+### Fixed — Blank White Result Cards (White-on-White Text)
+- **Root cause:** `android.R.drawable.editbox_background_normal` (a light/white
+  system drawable) was used as the card background for result lists, with no
+  explicit `TextView` text color set. The app theme's `android:textColorPrimary`
+  (`text_primary_dark`, `#F5F1E8`) is near-white, so result text rendered
+  white-on-white and was invisible — reported by user as 5 blank white boxes
+  on the Nearby screen.
+- **Same bug found in 2 additional screens** via codebase-wide grep for the
+  same drawable:
+  - `NearbyFragment.java` (user-reported)
+  - `GlobalSearchFragment.java` (search results — not yet reported)
+  - `SavedFragment.java` (saved items list — not yet reported)
+- **Fix:** Added `utils/UiUtils.java` — shared helper providing a theme-correct
+  dark rounded card background (`card_background_dark` fill + `divider_dark`
+  stroke) and primary/secondary text color helpers. Applied consistently
+  across all three fragments in place of the light system drawable.
+- Could not run a full Gradle/javac compile check — sandbox network is
+  HTTPS:443 only; apt (HTTP:80) could not fetch a JDK to verify. Fix was
+  verified via static review (balanced braces, confirmed color resources
+  exist, confirmed no remaining functional references to the old drawable).
+
+---
+
 ## [7.2.31] — 2026-08-19
 
 ### Changed — Repository Restructure: Country-Prefixed Data Model
