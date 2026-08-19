@@ -15,7 +15,7 @@ def appVersionCode = project.findProperty('versionCode') ?
 
 android {
     namespace 'com.putraworks.graveatlas'
-    compileSdk 34
+    compileSdk 35
 
     defaultConfig {
         applicationId "com.putraworks.graveatlas"
@@ -72,11 +72,11 @@ android {
 }
 
 dependencies {
-    implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'androidx.appcompat:appcompat:1.8.0'
+    implementation 'com.google.android.material:material:1.14.0'
     implementation 'androidx.cardview:cardview:1.0.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.2.2'
-    implementation 'androidx.recyclerview:recyclerview:1.3.2'
+    implementation 'androidx.recyclerview:recyclerview:1.4.0'
     implementation 'androidx.work:work-runtime:2.9.0'
 
     // Networking
