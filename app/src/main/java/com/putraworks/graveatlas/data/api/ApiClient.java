@@ -9,6 +9,7 @@ import com.putraworks.graveatlas.data.model.ImportQualityScore;
 import com.putraworks.graveatlas.data.model.ImportBatchReport;
 import com.putraworks.graveatlas.data.model.AnomalyReport;
 import com.putraworks.graveatlas.data.model.RecordAnomalyCheck;
+import com.putraworks.graveatlas.data.model.CemeteryHealth;
 import com.putraworks.graveatlas.data.model.CemeteryHealthAnalytics;
 import com.putraworks.graveatlas.data.model.HealthForecast;
 import com.putraworks.graveatlas.data.model.AnomalyForecast;
@@ -4983,10 +4984,10 @@ public class ApiClient {
     }
 
     /**
-     * Get auto-generated cemetery summary.
+     * Get auto-generated cemetery summary text.
      * GET /api/cemeteries/{id}/summary
      */
-    public void getCemeterySummary(String cemeteryId, final ApiCallback<String> callback) {
+    public void getCemeterySummaryText(String cemeteryId, final ApiCallback<String> callback) {
         Request request = new Request.Builder()
                 .url(baseUrl + "/api/cemeteries/" + cemeteryId + "/summary")
                 .get()
