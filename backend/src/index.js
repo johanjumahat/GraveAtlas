@@ -327,7 +327,8 @@ async function handleRequest(request, env, ctx) {
       return await handleGetCemeteries(request, env, corsHeaders);
     }
 
-    if (path.startsWith('/api/cemeteries/') && method === 'GET') {
+    // Generic single-cemetery GET — only for /api/cemeteries/:id (exactly 4 segments, no sub-paths)
+    if (path.startsWith('/api/cemeteries/') && method === 'GET' && path.split('/').length === 4) {
       const id = path.split('/').pop();
       if (id === 'cemeteries' || !id) return notFound(corsHeaders);
       return await handleGetCemetery(id, request, env, corsHeaders);
