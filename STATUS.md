@@ -54,6 +54,7 @@
 | 16.29. AI Smart Summaries & Auto-Documentation | ✅ COMPLETE | 100% |
 | 16.30. AI Cross-Reference & Linkage Engine | ✅ COMPLETE | 100% |
 | 16.31. AI Data Enrichment & Auto-Completion Engine | ✅ COMPLETE | 100% |
+| 16.32. AI Deduplication Intelligence & Conflict Resolution | ✅ COMPLETE | 100% |
 
 ### Earlier (v7.2.41)
 - R8 minification enabled (APK ~7.9MB, down from larger)
@@ -131,9 +132,11 @@
 
 29. **Add — AI Data Enrichment & Auto-Completion Engine** ✅ Five endpoints for auto-completing missing record fields: per-record suggestions (birth/death year inference, cemetery from GPS, confidence score computation, verification status, section from plot pattern), batch enrichment (up to 100 records), gap analysis (missing field statistics by cemetery), single-field inference with reasoning, and enrichment priorities (records ranked by missing fields + impact score with critical field weighting). New models: `EnrichmentSuggestion`, `EnrichmentSuggestionsResult`, `EnrichmentGapsResult`. v7.2.35.
 
+30. **Add — AI Deduplication Intelligence & Conflict Resolution Engine** ✅ Five endpoints for detecting and resolving duplicate records: scan (Levenshtein name similarity, date/cemetery/plot/GPS matching, match score 0-100, conflict detection, auto-merge vs review recommendations), per-record duplicate pairs, resolve (merge with auto field resolution by confidence, source/photo ref merging, merge history, or mark not-duplicate), conflicts listing (unresolved field conflicts sorted by count), and stats (potential pairs, high confidence, auto-mergeable, conflicts, dedup rate). New models: `DedupScanResult` (3 inner), `DedupStatsResult`. v7.2.46.
+
 ## Architecture
 
-- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 194 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
+- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 199 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
 - **Android:** 18+ screens with navigation host, external maps handoff (geo: intent), offline support
 - **Data:** GitHub repository (graveatlas-data) with JSON schemas
 - **Auth:** Google Sign-In with ID token verification, session tokens, ban system
@@ -141,7 +144,7 @@
 - **Timeline:** Chronological event visualization with decade grouping, backend endpoint
 - **External Sources:** OpenStreetMap (Overpass API), Wikidata (SPARQL), Singapore Government Open Data (data.gov.sg)
 
-## Test Suite (3495 tests)
+## Test Suite (3566 tests)
 
 | Test File | Tests | Area |
 |---|---|---|

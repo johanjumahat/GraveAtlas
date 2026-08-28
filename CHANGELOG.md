@@ -655,6 +655,49 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.46] — 2026-08-28
+
+### Phase 16.32: AI Deduplication Intelligence & Conflict Resolution Engine
+
+**Added:**
+- `GET /api/dedup/scan` — scans for potential duplicate records using
+  Levenshtein name similarity (40% weight), death date matching ±1 year
+  (+20), birth date matching ±2 years (+15), same cemetery (+10),
+  same plot (+15), same section (+5), GPS proximity <10m (+15) or <50m
+  (+8). Returns match score 0-100, match reasons, conflict fields, and
+  recommended action (auto_merge or review_and_merge). Configurable
+  threshold (default 75).
+
+- `GET /api/dedup/pairs/:recordId` — finds all potential duplicates of
+  a specific record with per-pair match scores and conflicts.
+
+- `POST /api/dedup/resolve` — resolves a duplicate pair by merging or
+  marking as not-duplicate. Auto-resolves field conflicts by confidence
+  score, merges source/photo references, logs merge history, marks
+  superseded record as 'merged'. Accepts user fieldResolutions for
+  manual override.
+
+- `GET /api/dedup/conflicts` — lists all unresolved conflicts from
+  duplicate pairs, sorted by conflict count and match score.
+
+- `GET /api/dedup/stats` — deduplication statistics: total records,
+  merged records, potential duplicate pairs, high confidence pairs,
+  auto-mergeable pairs, conflict pairs, estimated duplicates, and
+  deduplication rate.
+
+New models: DedupScanResult (3 inner), DedupStatsResult
+API client: 5 new methods
+AI system prompt updated with dedup endpoint descriptions
+4 new suggested prompts
+
+### Fix: Restored missing functions
+
+- Restored `computeCemeteryStats()`, `computeCemeteryAnomalies()`, and
+  `generateRecommendations()` — definitions lost during remote merge
+- Fixed anomaly type names to match test expectations
+- Fixed `AIDataInterceptor` context section labels
+
+
 ## [7.2.45] — 2026-08-28
 
 ### Fix: Restore missing function definitions

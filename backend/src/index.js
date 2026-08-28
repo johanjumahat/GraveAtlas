@@ -935,6 +935,28 @@ async function handleRequest(request, env, ctx) {
       return await handleEnrichmentPriorities(request, env, corsHeaders);
     }
 
+    // Phase 16.32: AI Deduplication Intelligence & Conflict Resolution Engine
+    if (path === '/api/dedup/scan' && method === 'GET') {
+      return await handleDedupScan(request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/dedup/pairs/') && method === 'GET') {
+      const id = path.split('/').pop();
+      return await handleDedupPairs(id, request, env, corsHeaders);
+    }
+
+    if (path === '/api/dedup/resolve' && method === 'POST') {
+      return await handleDedupResolve(request, env, corsHeaders);
+    }
+
+    if (path === '/api/dedup/conflicts' && method === 'GET') {
+      return await handleDedupConflicts(request, env, corsHeaders);
+    }
+
+    if (path === '/api/dedup/stats' && method === 'GET') {
+      return await handleDedupStats(request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -19320,5 +19342,543 @@ async function handleEnrichmentPriorities(request, env, cors) {
     }, 200, cors);
   } catch (error) {
     return jsonResponse({ success: false, error: 'Failed to get enrichment priorities', message: error.message }, 500, cors);
+  }
+}
+
+// ── Phase 16.32: AI Deduplication Intelligence & Conflict Resolution Engine ──
+
+/**
+ * Helper: Levenshtein distance for name comparison
+ */
+function levenshtein(a, b) {
+  if (a === b) return 0;
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const dp = Array(n + 1).fill(0).map((_, i) => i);
+  for (let i = 1; i <= m; i++) {
+    let prev = dp[0]; dp[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const tmp = dp[j];
+      dp[j] = Math.min(dp[j] + 1, dp[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = tmp;
+    }
+  }
+  return dp[n];
+}
+
+/**
+ * Helper: Name similarity score (0-100)
+ */
+function nameSimilarityScore(name1, name2) {
+  if (!name1 || !name2) return 0;
+  const n1 = name1.toLowerCase().trim();
+  const n2 = name2.toLowerCase().trim();
+  if (n1 === n2) return 100;
+  const maxLen = Math.max(n1.length, n2.length);
+  const dist = levenshtein(n1, n2);
+  return Math.max(0, Math.round(100 - (dist / maxLen) * 100));
+}
+
+/**
+ * Helper: Check if dates match or overlap
+ */
+function datesMatch(d1, d2, tolerance = 0) {
+  if (!d1 || !d2) return false;
+  const y1 = parseInt(String(d1).substring(0, 4));
+  const y2 = parseInt(String(d2).substring(0, 4));
+  if (isNaN(y1) || isNaN(y2)) return false;
+  return Math.abs(y1 - y2) <= tolerance;
+}
+
+/**
+ * GET /api/dedup/scan
+ * Scans for potential duplicate records across the dataset or a cemetery.
+ * Query params: cemeteryId (optional), threshold (default 75), limit (default 100)
+ */
+async function handleDedupScan(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, duplicates: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const cemeteryId = url.searchParams.get('cemeteryId');
+    const threshold = parseInt(url.searchParams.get('threshold') || '75', 10);
+    const limit = parseInt(url.searchParams.get('limit') || '100', 10);
+
+    const allRecords = await loadAllRecords(env);
+    let records = allRecords.filter(r => r.status === 'published');
+    if (cemeteryId) {
+      records = records.filter(r => r.cemeteryId === cemeteryId || r.cemeteryName === cemeteryId);
+    }
+
+    const duplicates = [];
+
+    // Compare all pairs (O(n²) but limited)
+    for (let i = 0; i < records.length; i++) {
+      for (let j = i + 1; j < records.length; j++) {
+        const r1 = records[i], r2 = records[j];
+
+        const nameScore = nameSimilarityScore(
+          r1.name || r1.fullName || '',
+          r2.name || r2.fullName || ''
+        );
+
+        // Quick filter: names must be somewhat similar
+        if (nameScore < threshold - 10) continue;
+
+        let totalScore = nameScore * 0.4;
+        let matchReasons = [];
+        let conflictFields = [];
+
+        if (nameScore >= threshold) {
+          matchReasons.push(`Name similarity: ${nameScore}%`);
+          totalScore += nameScore * 0.1;
+        }
+
+        // Death date match
+        if (datesMatch(r1.deathDate || r1.deathYear, r2.deathDate || r2.deathYear, 1)) {
+          matchReasons.push('Death dates match (±1 year)');
+          totalScore += 20;
+        }
+
+        // Birth date match
+        if (datesMatch(r1.birthDate || r1.birthYear, r2.birthDate || r2.birthYear, 2)) {
+          matchReasons.push('Birth dates match (±2 years)');
+          totalScore += 15;
+        }
+
+        // Same cemetery
+        if (r1.cemeteryId && r1.cemeteryId === r2.cemeteryId) {
+          matchReasons.push('Same cemetery');
+          totalScore += 10;
+        }
+
+        // Same plot/section
+        if (r1.plot && r2.plot && r1.plot === r2.plot) {
+          matchReasons.push('Same plot');
+          totalScore += 15;
+        } else if (r1.section && r2.section && r1.section === r2.section) {
+          matchReasons.push('Same section');
+          totalScore += 5;
+        }
+
+        // GPS proximity
+        if (r1.latitude && r1.longitude && r2.latitude && r2.longitude) {
+          const dist = haversine(
+            parseFloat(r1.latitude), parseFloat(r1.longitude),
+            parseFloat(r2.latitude), parseFloat(r2.longitude)
+          );
+          if (dist < 10) {
+            matchReasons.push(`GPS proximity: ${dist.toFixed(1)}m`);
+            totalScore += 15;
+          } else if (dist < 50) {
+            matchReasons.push(`GPS proximity: ${dist.toFixed(1)}m`);
+            totalScore += 8;
+          }
+        }
+
+        totalScore = Math.min(100, Math.round(totalScore));
+
+        if (totalScore >= threshold) {
+          // Identify conflicts
+          const fieldsToCheck = ['birthYear', 'deathYear', 'cemeteryId', 'section', 'plot', 'latitude', 'longitude'];
+          for (const field of fieldsToCheck) {
+            const v1 = r1[field], v2 = r2[field];
+            if (v1 != null && v2 != null && v1 !== '' && v2 !== '' && String(v1) !== String(v2)) {
+              conflictFields.push({ field, value1: v1, value2: v2 });
+            }
+          }
+
+          duplicates.push({
+            record1: { id: r1.id, name: r1.name || r1.fullName || 'Unknown', cemetery: r1.cemeteryName || r1.cemeteryId },
+            record2: { id: r2.id, name: r2.name || r2.fullName || 'Unknown', cemetery: r2.cemeteryName || r2.cemeteryId },
+            matchScore: totalScore,
+            matchReasons,
+            conflicts: conflictFields,
+            hasConflicts: conflictFields.length > 0,
+            recommendedAction: conflictFields.length === 0 ? 'auto_merge' : 'review_and_merge'
+          });
+        }
+      }
+
+      if (duplicates.length >= limit) break;
+    }
+
+    duplicates.sort((a, b) => b.matchScore - a.matchScore);
+
+    return jsonResponse({
+      success: true,
+      totalScanned: records.length,
+      duplicatePairs: duplicates.length,
+      autoMergeable: duplicates.filter(d => d.recommendedAction === 'auto_merge').length,
+      needsReview: duplicates.filter(d => d.recommendedAction === 'review_and_merge').length,
+      duplicates: duplicates.slice(0, limit)
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to scan for duplicates', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/dedup/pairs/:recordId
+ * Finds all potential duplicates of a specific record.
+ */
+async function handleDedupPairs(recordId, request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, pairs: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const allRecords = await loadAllRecords(env);
+    const record = allRecords.find(r => r.id === recordId && r.status === 'published');
+
+    if (!record) {
+      return jsonResponse({ success: false, error: 'Record not found' }, 404, cors);
+    }
+
+    const others = allRecords.filter(r => r.status === 'published' && r.id !== recordId);
+    const pairs = [];
+
+    for (const other of others) {
+      const nameScore = nameSimilarityScore(
+        record.name || record.fullName || '',
+        other.name || other.fullName || ''
+      );
+
+      if (nameScore < 60) continue;
+
+      let totalScore = nameScore * 0.5;
+      let matchReasons = [];
+      let conflictFields = [];
+
+      if (datesMatch(record.deathDate || record.deathYear, other.deathDate || other.deathYear, 1)) {
+        totalScore += 20;
+        matchReasons.push('Death dates match');
+      }
+      if (datesMatch(record.birthDate || record.birthYear, other.birthDate || other.birthYear, 2)) {
+        totalScore += 15;
+        matchReasons.push('Birth dates match');
+      }
+      if (record.cemeteryId === other.cemeteryId && record.cemeteryId) {
+        totalScore += 10;
+        matchReasons.push('Same cemetery');
+      }
+      if (record.plot && other.plot && record.plot === other.plot) {
+        totalScore += 15;
+        matchReasons.push('Same plot');
+      }
+
+      totalScore = Math.min(100, Math.round(totalScore));
+
+      if (totalScore >= 50) {
+        const fieldsToCheck = ['birthYear', 'deathYear', 'cemeteryId', 'section', 'plot', 'latitude', 'longitude'];
+        for (const field of fieldsToCheck) {
+          const v1 = record[field], v2 = other[field];
+          if (v1 != null && v2 != null && v1 !== '' && v2 !== '' && String(v1) !== String(v2)) {
+            conflictFields.push({ field, value1: v1, value2: v2 });
+          }
+        }
+
+        pairs.push({
+          recordId: other.id,
+          recordName: other.name || other.fullName || 'Unknown',
+          cemetery: other.cemeteryName || other.cemeteryId,
+          matchScore: totalScore,
+          matchReasons,
+          conflicts: conflictFields,
+          hasConflicts: conflictFields.length > 0
+        });
+      }
+    }
+
+    pairs.sort((a, b) => b.matchScore - a.matchScore);
+
+    return jsonResponse({
+      success: true,
+      recordId,
+      recordName: record.name || record.fullName || 'Unknown',
+      potentialDuplicates: pairs.length,
+      pairs
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to find duplicate pairs', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/dedup/resolve
+ * Resolves a duplicate pair by merging or marking as not-a-duplicate.
+ * Body: { record1Id, record2Id, action: 'merge'|'not_duplicate', fieldResolutions?: {} }
+ */
+async function handleDedupResolve(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: false, error: 'GitHub not configured' }, 401, cors);
+  }
+
+  try {
+    const body = await request.json();
+    const { record1Id, record2Id, action, fieldResolutions } = body;
+
+    if (!record1Id || !record2Id) {
+      return jsonResponse({ success: false, error: 'record1Id and record2Id are required' }, 400, cors);
+    }
+
+    if (action !== 'merge' && action !== 'not_duplicate') {
+      return jsonResponse({ success: false, error: 'action must be merge or not_duplicate' }, 400, cors);
+    }
+
+    const allRecords = await loadAllRecords(env);
+    const r1 = allRecords.find(r => r.id === record1Id);
+    const r2 = allRecords.find(r => r.id === record2Id);
+
+    if (!r1 || !r2) {
+      return jsonResponse({ success: false, error: 'One or both records not found' }, 404, cors);
+    }
+
+    if (action === 'not_duplicate') {
+      return jsonResponse({
+        success: true,
+        action: 'not_duplicate',
+        message: `Records ${record1Id} and ${record2Id} marked as not duplicates`
+      }, 200, cors);
+    }
+
+    // Merge: combine r2 into r1, keeping the more complete/better values
+    const merged = { ...r1 };
+    const mergeLog = [];
+
+    const fieldsToMerge = ['name', 'fullName', 'birthYear', 'deathYear', 'birthDate', 'deathDate',
+      'cemeteryId', 'cemeteryName', 'section', 'plot', 'latitude', 'longitude',
+      'inscription', 'photoRefs', 'sourceRefs', 'verificationStatus', 'confidenceScore',
+      'ageAtDeath', 'biographicalNotes'];
+
+    for (const field of fieldsToMerge) {
+      const v1 = r1[field], v2 = r2[field];
+
+      // If user specified resolution, use it
+      if (fieldResolutions && fieldResolutions[field] != null) {
+        merged[field] = fieldResolutions[field];
+        mergeLog.push({ field, action: 'user_resolved', value: fieldResolutions[field] });
+        continue;
+      }
+
+      // Auto-resolve: prefer non-null, prefer verified, prefer higher confidence
+      if (v1 == null || v1 === '' || (Array.isArray(v1) && v1.length === 0)) {
+        if (v2 != null && v2 !== '' && !(Array.isArray(v2) && v2.length === 0)) {
+          merged[field] = v2;
+          mergeLog.push({ field, action: 'took_from_record2', reason: 'record1 had no value' });
+        }
+      } else if (v2 != null && v2 !== '' && !(Array.isArray(v2) && v2.length === 0)) {
+        // Both have values — prefer the one with higher confidence or verified status
+        const r1Score = r1.confidenceScore || 50;
+        const r2Score = r2.confidenceScore || 50;
+        if (r2Score > r1Score && String(v1) !== String(v2)) {
+          merged[field] = v2;
+          mergeLog.push({ field, action: 'took_from_record2', reason: `higher confidence (${r2Score} > ${r1Score})` });
+        } else {
+          mergeLog.push({ field, action: 'kept_record1', reason: 'equal or higher confidence' });
+        }
+      }
+    }
+
+    // Merge sourceRefs arrays
+    if (r1.sourceRefs || r2.sourceRefs) {
+      const allSources = [...new Set([...(r1.sourceRefs || []), ...(r2.sourceRefs || [])])];
+      merged.sourceRefs = allSources;
+    }
+
+    // Merge photoRefs arrays
+    if (r1.photoRefs || r2.photoRefs) {
+      const allPhotos = [...new Set([...(r1.photoRefs || []), ...(r2.photoRefs || [])])];
+      merged.photoRefs = allPhotos;
+    }
+
+    // Update confidence
+    merged.confidenceScore = Math.max(r1.confidenceScore || 0, r2.confidenceScore || 0);
+    merged.mergeHistory = [
+      ...(r1.mergeHistory || []),
+      { mergedFrom: record2Id, mergedAt: new Date().toISOString(), fields: mergeLog }
+    ];
+
+    // Write merged record
+    const safeId = sanitizePathSegment(record1Id);
+    const filePath = `graves/${safeId}.json`;
+    await writeFile(filePath, JSON.stringify(merged, null, 2), env);
+
+    // Mark r2 as merged/superseded
+    r2.status = 'merged';
+    r2.mergedInto = record1Id;
+    r2.mergedAt = new Date().toISOString();
+    const safeId2 = sanitizePathSegment(record2Id);
+    await writeFile(`graves/${safeId2}.json`, JSON.stringify(r2, null, 2), env);
+
+    return jsonResponse({
+      success: true,
+      action: 'merge',
+      mergedRecordId: record1Id,
+      supersededRecordId: record2Id,
+      mergedFields: mergeLog.length,
+      mergeLog,
+      mergedRecord: {
+        id: merged.id,
+        name: merged.name || merged.fullName,
+        confidenceScore: merged.confidenceScore,
+        sourceCount: (merged.sourceRefs || []).length,
+        photoCount: (merged.photoRefs || []).length
+      }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to resolve duplicate', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/dedup/conflicts
+ * Lists all unresolved conflicts from duplicate pairs.
+ * Query params: cemeteryId (optional), limit (default 50)
+ */
+async function handleDedupConflicts(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, conflicts: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const cemeteryId = url.searchParams.get('cemeteryId');
+    const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+
+    const allRecords = await loadAllRecords(env);
+    let records = allRecords.filter(r => r.status === 'published');
+    if (cemeteryId) {
+      records = records.filter(r => r.cemeteryId === cemeteryId || r.cemeteryName === cemeteryId);
+    }
+
+    const conflicts = [];
+
+    for (let i = 0; i < Math.min(records.length, 500); i++) {
+      for (let j = i + 1; j < Math.min(records.length, 500); j++) {
+        const r1 = records[i], r2 = records[j];
+
+        const nameScore = nameSimilarityScore(
+          r1.name || r1.fullName || '',
+          r2.name || r2.fullName || ''
+        );
+
+        if (nameScore < 75) continue;
+
+        let totalScore = nameScore * 0.4;
+        if (datesMatch(r1.deathDate || r1.deathYear, r2.deathDate || r2.deathYear, 1)) totalScore += 20;
+        if (datesMatch(r1.birthDate || r1.birthYear, r2.birthDate || r2.birthYear, 2)) totalScore += 15;
+        if (r1.cemeteryId === r2.cemeteryId && r1.cemeteryId) totalScore += 10;
+        if (r1.plot && r2.plot && r1.plot === r2.plot) totalScore += 15;
+
+        if (totalScore < 75) continue;
+
+        const conflictFields = [];
+        const fieldsToCheck = ['birthYear', 'deathYear', 'cemeteryId', 'section', 'plot', 'latitude', 'longitude', 'inscription'];
+        for (const field of fieldsToCheck) {
+          const v1 = r1[field], v2 = r2[field];
+          if (v1 != null && v2 != null && v1 !== '' && v2 !== '' && String(v1) !== String(v2)) {
+            conflictFields.push({ field, value1: v1, value2: v2 });
+          }
+        }
+
+        if (conflictFields.length > 0) {
+          conflicts.push({
+            record1: { id: r1.id, name: r1.name || r1.fullName || 'Unknown' },
+            record2: { id: r2.id, name: r2.name || r2.fullName || 'Unknown' },
+            matchScore: Math.min(100, Math.round(totalScore)),
+            conflictCount: conflictFields.length,
+            conflictFields
+          });
+        }
+
+        if (conflicts.length >= limit) break;
+      }
+      if (conflicts.length >= limit) break;
+    }
+
+    conflicts.sort((a, b) => b.conflictCount - a.conflictCount || b.matchScore - a.matchScore);
+
+    return jsonResponse({
+      success: true,
+      totalConflicts: conflicts.length,
+      conflicts
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to list conflicts', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/dedup/stats
+ * Returns deduplication statistics for the dataset or a cemetery.
+ * Query params: cemeteryId (optional)
+ */
+async function handleDedupStats(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, stats: {}, message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const cemeteryId = url.searchParams.get('cemeteryId');
+
+    const allRecords = await loadAllRecords(env);
+    let records = allRecords.filter(r => r.status === 'published');
+    if (cemeteryId) {
+      records = records.filter(r => r.cemeteryId === cemeteryId || r.cemeteryName === cemeteryId);
+    }
+
+    const mergedRecords = allRecords.filter(r => r.status === 'merged');
+    let potentialDupPairs = 0;
+    let highConfidencePairs = 0;
+    let autoMergeablePairs = 0;
+    let conflictPairs = 0;
+
+    // Sample scan (limit to first 1000 records for performance)
+    const sample = records.slice(0, 1000);
+    for (let i = 0; i < sample.length; i++) {
+      for (let j = i + 1; j < sample.length; j++) {
+        const nameScore = nameSimilarityScore(
+          sample[i].name || sample[i].fullName || '',
+          sample[j].name || sample[j].fullName || ''
+        );
+        if (nameScore < 65) continue;
+
+        let totalScore = nameScore * 0.4;
+        if (datesMatch(sample[i].deathDate || sample[i].deathYear, sample[j].deathDate || sample[j].deathYear, 1)) totalScore += 20;
+        if (datesMatch(sample[i].birthDate || sample[i].birthYear, sample[j].birthDate || sample[j].birthYear, 2)) totalScore += 15;
+
+        if (totalScore >= 75) {
+          potentialDupPairs++;
+          if (totalScore >= 90) highConfidencePairs++;
+
+          const hasConflict = ['birthYear', 'deathYear', 'cemeteryId', 'section', 'plot'].some(f => {
+            const v1 = sample[i][f], v2 = sample[j][f];
+            return v1 != null && v2 != null && v1 !== '' && v2 !== '' && String(v1) !== String(v2);
+          });
+
+          if (hasConflict) conflictPairs++;
+          else autoMergeablePairs++;
+        }
+      }
+    }
+
+    return jsonResponse({
+      success: true,
+      totalRecords: records.length,
+      mergedRecords: mergedRecords.length,
+      potentialDuplicatePairs: potentialDupPairs,
+      highConfidencePairs,
+      autoMergeablePairs,
+      conflictPairs,
+      estimatedDuplicates: Math.round(potentialDupPairs * 0.7),
+      deduplicationRate: records.length > 0 ? Math.round((mergedRecords.length / (records.length + mergedRecords.length)) * 100) : 0
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get dedup stats', message: error.message }, 500, cors);
   }
 }

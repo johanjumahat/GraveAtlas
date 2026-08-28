@@ -28,6 +28,8 @@ import com.putraworks.graveatlas.data.model.EventClusteringResult;
 import com.putraworks.graveatlas.data.model.EnrichmentSuggestion;
 import com.putraworks.graveatlas.data.model.EnrichmentSuggestionsResult;
 import com.putraworks.graveatlas.data.model.EnrichmentGapsResult;
+import com.putraworks.graveatlas.data.model.DedupScanResult;
+import com.putraworks.graveatlas.data.model.DedupStatsResult;
 import com.putraworks.graveatlas.data.model.GlobalHealthOverview;
 import com.putraworks.graveatlas.data.model.CemeteryRecommendations;
 import com.putraworks.graveatlas.data.model.GlobalRecommendations;
@@ -93,6 +95,8 @@ import com.putraworks.graveatlas.data.model.EventClusteringResult;
 import com.putraworks.graveatlas.data.model.EnrichmentSuggestion;
 import com.putraworks.graveatlas.data.model.EnrichmentSuggestionsResult;
 import com.putraworks.graveatlas.data.model.EnrichmentGapsResult;
+import com.putraworks.graveatlas.data.model.DedupScanResult;
+import com.putraworks.graveatlas.data.model.DedupStatsResult;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -1874,6 +1878,169 @@ public class ApiClient {
                         callback.onSuccess(LinkageGraph.fromJson(new JSONObject(body)));
                     } catch (Exception e) {
                         callback.onError("Failed to parse linkage graph.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    // ── Phase 16.32: AI Deduplication Intelligence & Conflict Resolution Engine ──
+
+    /**
+     * Scan for potential duplicate records.
+     * GET /api/dedup/scan
+     */
+    public void scanDuplicates(String cemeteryId, int threshold, int limit,
+            final ApiCallback<DedupScanResult> callback) {
+        String url = baseUrl + "/api/dedup/scan?threshold=" + threshold + "&limit=" + limit;
+        if (cemeteryId != null) url += "&cemeteryId=" + cemeteryId;
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(DedupScanResult.fromJson(new JSONObject(body)));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse dedup scan.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Find potential duplicates of a specific record.
+     * GET /api/dedup/pairs/:recordId
+     */
+    public void findDuplicatePairs(String recordId,
+            final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/dedup/pairs/" + recordId;
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse duplicate pairs.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Resolve a duplicate pair (merge or mark not-duplicate).
+     * POST /api/dedup/resolve
+     */
+    public void resolveDuplicate(String record1Id, String record2Id, String action,
+            JSONObject fieldResolutions, final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/dedup/resolve";
+        JSONObject body = new JSONObject();
+        try {
+            body.put("record1Id", record1Id);
+            body.put("record2Id", record2Id);
+            body.put("action", action);
+            if (fieldResolutions != null) body.put("fieldResolutions", fieldResolutions);
+        } catch (Exception e) { }
+
+        RequestBody rb = RequestBody.create(body.toString(), JSON);
+        Request request = new Request.Builder().url(url).post(rb).build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String respBody = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(respBody));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse resolve response.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * List all unresolved conflicts from duplicate pairs.
+     * GET /api/dedup/conflicts
+     */
+    public void getDuplicateConflicts(String cemeteryId, int limit,
+            final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/dedup/conflicts?limit=" + limit;
+        if (cemeteryId != null) url += "&cemeteryId=" + cemeteryId;
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse conflicts.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get deduplication statistics.
+     * GET /api/dedup/stats
+     */
+    public void getDedupStats(String cemeteryId,
+            final ApiCallback<DedupStatsResult> callback) {
+        String url = baseUrl + "/api/dedup/stats";
+        if (cemeteryId != null) url += "?cemeteryId=" + cemeteryId;
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(DedupStatsResult.fromJson(new JSONObject(body)));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse dedup stats.");
                     }
                 } else {
                     callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
