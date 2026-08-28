@@ -24,6 +24,8 @@ import org.json.JSONObject;
 import java.util.List;
 import com.putraworks.graveatlas.data.model.CemeteryRecommendations;
 import com.putraworks.graveatlas.data.model.GlobalRecommendations;
+import com.putraworks.graveatlas.data.model.CemeteryStats;
+import org.json.JSONArray;
 
 public class AnalyticsFragment extends Fragment {
 
@@ -86,6 +88,42 @@ public class AnalyticsFragment extends Fragment {
         healthCheckBtn.setAllCaps(false);
         layout.addView(healthCheckBtn);
 
+        Button burialTrendsBtn = new Button(getContext());
+        burialTrendsBtn.setText("Burial Trends Analysis");
+        burialTrendsBtn.setAllCaps(false);
+        layout.addView(burialTrendsBtn);
+        Button demographicsBtn = new Button(getContext());
+        demographicsBtn.setText("Demographics Analysis");
+        demographicsBtn.setAllCaps(false);
+        layout.addView(demographicsBtn);
+        Button familiesBtn = new Button(getContext());
+        familiesBtn.setText("Family Analysis");
+        familiesBtn.setAllCaps(false);
+        layout.addView(familiesBtn);
+        Button surnamesBtn = new Button(getContext());
+        surnamesBtn.setText("Surname Analytics");
+        surnamesBtn.setAllCaps(false);
+        layout.addView(surnamesBtn);
+        Button anomalyDistBtn = new Button(getContext());
+        anomalyDistBtn.setText("Anomaly Distribution");
+        anomalyDistBtn.setAllCaps(false);
+        layout.addView(anomalyDistBtn);
+        Button cemeteryStatsBtn = new Button(getContext());
+        cemeteryStatsBtn.setText("Cemetery Stats");
+        cemeteryStatsBtn.setAllCaps(false);
+        layout.addView(cemeteryStatsBtn);
+        Button cemeterySummaryBtn = new Button(getContext());
+        cemeterySummaryBtn.setText("Cemetery Summary Text");
+        cemeterySummaryBtn.setAllCaps(false);
+        layout.addView(cemeterySummaryBtn);
+        Button confDistBtn = new Button(getContext());
+        confDistBtn.setText("Confidence Distribution");
+        confDistBtn.setAllCaps(false);
+        layout.addView(confDistBtn);
+        Button insightsBtn = new Button(getContext());
+        insightsBtn.setText("Generate Insights");
+        insightsBtn.setAllCaps(false);
+        layout.addView(insightsBtn);
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.VISIBLE);
         layout.addView(progressBar);
@@ -203,6 +241,132 @@ public class AnalyticsFragment extends Fragment {
                 @Override public void onError(String error) {
                     if (getActivity() == null) return;
                     getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        burialTrendsBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.analyzeBurialTrends(new JSONArray(), new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { dashboardText.setText(result.toString(2)); } catch (Exception e) { dashboardText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); dashboardText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        demographicsBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.analyzeDemographics(new JSONArray(), new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { dashboardText.setText(result.toString(2)); } catch (Exception e) { dashboardText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); dashboardText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        familiesBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.analyzeFamilies(new JSONArray(), null, new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { dashboardText.setText(result.toString(2)); } catch (Exception e) { dashboardText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); dashboardText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        surnamesBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.analyzeSurnamesAnalytics(new JSONArray(), new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { dashboardText.setText(result.toString(2)); } catch (Exception e) { dashboardText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); dashboardText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        anomalyDistBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getAnomalyDistribution(cemeteryIdField.getText().toString().trim().isEmpty() ? null : cemeteryIdField.getText().toString().trim(), new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { dashboardText.setText(result.toString(2)); } catch (Exception e) { dashboardText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); dashboardText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        cemeteryStatsBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getCemeteryStats(cemeteryIdField.getText().toString().trim().isEmpty() ? "" : cemeteryIdField.getText().toString().trim(), new ApiClient.ApiCallback<CemeteryStats>() {
+                @Override public void onSuccess(CemeteryStats result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); dashboardText.setText(result != null ? result.toString() : "No data"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); dashboardText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        cemeterySummaryBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getCemeterySummaryText(cemeteryIdField.getText().toString().trim().isEmpty() ? "" : cemeteryIdField.getText().toString().trim(), new ApiClient.ApiCallback<String>() {
+                @Override public void onSuccess(String result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); dashboardText.setText(result != null ? result : "No data"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); dashboardText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        confDistBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getConfidenceDistribution(cemeteryIdField.getText().toString().trim().isEmpty() ? null : cemeteryIdField.getText().toString().trim(), new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { dashboardText.setText(result.toString(2)); } catch (Exception e) { dashboardText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); dashboardText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        insightsBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.generateInsights(new JSONArray(), new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { dashboardText.setText(result.toString(2)); } catch (Exception e) { dashboardText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); dashboardText.setText("Error: " + error); });
                 }
             });
         });

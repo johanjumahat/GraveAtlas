@@ -53,6 +53,10 @@ public class ConfidenceFragment extends Fragment {
         batchBtn = mkBtn("Batch Confidence"); layout.addView(batchBtn);
         leaderboardBtn = mkBtn("Leaderboard"); layout.addView(leaderboardBtn);
 
+        Button batchVerifyBtn = new Button(getContext());
+        batchVerifyBtn.setText("Batch Verify Sources");
+        batchVerifyBtn.setAllCaps(false);
+        layout.addView(batchVerifyBtn);
         progressBar = new ProgressBar(getContext()); progressBar.setVisibility(View.GONE); layout.addView(progressBar);
         resultText = new TextView(getContext()); resultText.setTextSize(13); resultText.setPadding(0, 16, 0, 0); layout.addView(resultText);
 
@@ -60,6 +64,20 @@ public class ConfidenceFragment extends Fragment {
         cemeteryBtn.setOnClickListener(v -> doAction("cemetery"));
         batchBtn.setOnClickListener(v -> doAction("batch"));
         leaderboardBtn.setOnClickListener(v -> doAction("leaderboard"));
+
+        batchVerifyBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.batchVerifySources(new java.util.ArrayList<>(), new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
 
         return layout;
     }

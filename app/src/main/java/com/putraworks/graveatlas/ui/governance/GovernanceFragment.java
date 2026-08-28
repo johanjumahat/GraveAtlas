@@ -22,6 +22,7 @@ import com.putraworks.graveatlas.data.model.GovernancePolicy;
 import org.json.JSONObject;
 
 import java.util.List;
+import com.putraworks.graveatlas.data.model.GovernancePolicy;
 
 public class GovernanceFragment extends Fragment {
     private ApiClient apiClient;
@@ -54,6 +55,10 @@ public class GovernanceFragment extends Fragment {
         rtbfBtn = mkBtn("Right to be Forgotten"); layout.addView(rtbfBtn);
         exportBtn = mkBtn("Export Personal Data"); layout.addView(exportBtn);
 
+        Button createPolicyBtn = new Button(getContext());
+        createPolicyBtn.setText("Create Governance Policy");
+        createPolicyBtn.setAllCaps(false);
+        layout.addView(createPolicyBtn);
         progressBar = new ProgressBar(getContext()); progressBar.setVisibility(View.GONE); layout.addView(progressBar);
         resultText = new TextView(getContext()); resultText.setTextSize(13); resultText.setPadding(0, 16, 0, 0); layout.addView(resultText);
 
@@ -63,6 +68,20 @@ public class GovernanceFragment extends Fragment {
         auditBtn.setOnClickListener(v -> doAction("audit"));
         rtbfBtn.setOnClickListener(v -> doAction("rtbf"));
         exportBtn.setOnClickListener(v -> doAction("export"));
+
+        createPolicyBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.createGovernancePolicy("retention", "Test Policy", "Test description", 365, "public, new ApiClient.ApiCallback<GovernancePolicy>() {
+                @Override public void onSuccess(GovernancePolicy result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No data"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
 
         return layout;
     }

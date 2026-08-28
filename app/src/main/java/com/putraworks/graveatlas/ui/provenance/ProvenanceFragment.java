@@ -26,6 +26,7 @@ import java.util.List;
 import com.putraworks.graveatlas.data.model.SourceCoverageResult;
 import com.putraworks.graveatlas.data.model.SourceVerificationStatus;
 import org.json.JSONObject;
+import com.putraworks.graveatlas.data.model.CemeterySourceVerification;
 
 public class ProvenanceFragment extends Fragment {
 
@@ -103,6 +104,22 @@ public class ProvenanceFragment extends Fragment {
         verifyStatusBtn.setAllCaps(false);
         layout.addView(verifyStatusBtn);
 
+        Button sourceCountriesBtn = new Button(getContext());
+        sourceCountriesBtn.setText("Source Countries");
+        sourceCountriesBtn.setAllCaps(false);
+        layout.addView(sourceCountriesBtn);
+        Button sourceDetailsBtn = new Button(getContext());
+        sourceDetailsBtn.setText("Source Details");
+        sourceDetailsBtn.setAllCaps(false);
+        layout.addView(sourceDetailsBtn);
+        Button sourceReliabilityBtn = new Button(getContext());
+        sourceReliabilityBtn.setText("Source Reliability");
+        sourceReliabilityBtn.setAllCaps(false);
+        layout.addView(sourceReliabilityBtn);
+        Button verifyCemSrcBtn = new Button(getContext());
+        verifyCemSrcBtn.setText("Verify Cemetery Sources");
+        verifyCemSrcBtn.setAllCaps(false);
+        layout.addView(verifyCemSrcBtn);
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.GONE);
         layout.addView(progressBar);
@@ -175,6 +192,62 @@ public class ProvenanceFragment extends Fragment {
                 @Override public void onSuccess(SourceVerificationStatus result) {
                     if (getActivity() == null) return;
                     getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText(result != null ? result.toString() : "No status"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        sourceCountriesBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getSourceCountries( new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { statusText.setText(result.toString(2)); } catch (Exception e) { statusText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        sourceDetailsBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getSourceDetails(recordIdField.getText().toString().trim(), new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { statusText.setText(result.toString(2)); } catch (Exception e) { statusText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        sourceReliabilityBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getSourceReliability(null, new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { statusText.setText(result.toString(2)); } catch (Exception e) { statusText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        verifyCemSrcBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.verifyCemeterySources("", new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { statusText.setText(result.toString(2)); } catch (Exception e) { statusText.setText(result.toString()); } });
                 }
                 @Override public void onError(String error) {
                     if (getActivity() == null) return;

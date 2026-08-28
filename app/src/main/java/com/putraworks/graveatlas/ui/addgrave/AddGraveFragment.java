@@ -38,6 +38,7 @@ import java.io.InputStream;
 import com.putraworks.graveatlas.data.model.CemeteryRecord;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
 import java.util.HashMap;
+import com.putraworks.graveatlas.data.model.SubmissionResponse;
 
 /**
  * Add grave screen — form for submitting new grave records.
@@ -185,6 +186,18 @@ public class AddGraveFragment extends Fragment {
         correctionBtn.setAllCaps(false);
         layout.addView(correctionBtn);
 
+        Button submitWithKeyBtn = new Button(getContext());
+        submitWithKeyBtn.setText("Submit Grave (Idempotent)");
+        submitWithKeyBtn.setAllCaps(false);
+        layout.addView(submitWithKeyBtn);
+        Button queryFeedbackBtn = new Button(getContext());
+        queryFeedbackBtn.setText("Submit Query Feedback");
+        queryFeedbackBtn.setAllCaps(false);
+        layout.addView(queryFeedbackBtn);
+        Button reportGraveBtn = new Button(getContext());
+        reportGraveBtn.setText("Report Grave");
+        reportGraveBtn.setAllCaps(false);
+        layout.addView(reportGraveBtn);
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.GONE);
         progressBar.setContentDescription("Loading");
@@ -222,6 +235,48 @@ public class AddGraveFragment extends Fragment {
                 @Override public void onSuccess(SubmissionResponse result) {
                     if (getActivity() == null) return;
                     getActivity().runOnUiThread(() -> { setBusy(false); statusLabel.setText(result != null ? result.toString() : "Correction submitted"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusLabel.setText("Error: " + error); });
+                }
+            });
+        });
+
+        submitWithKeyBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.submitGraveWithKey(new com.putraworks.graveatlas.data.model.GraveSubmission(), "key-" + System.currentTimeMillis(), new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { statusLabel.setText(result.toString(2)); } catch (Exception e) { statusLabel.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusLabel.setText("Error: " + error); });
+                }
+            });
+        });
+
+        queryFeedbackBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.submitQueryFeedback("test", true, "good", new ApiClient.ApiCallback<Void>() {
+                @Override public void onSuccess(Void result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusLabel.setText("Feedback submitted"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusLabel.setText("Error: " + error); });
+                }
+            });
+        });
+
+        reportGraveBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.reportGrave(nameField.getText().toString().trim(), "Report from app", new ApiClient.ApiCallback<String>() {
+                @Override public void onSuccess(String result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusLabel.setText(result != null ? result : "No data"); });
                 }
                 @Override public void onError(String error) {
                     if (getActivity() == null) return;

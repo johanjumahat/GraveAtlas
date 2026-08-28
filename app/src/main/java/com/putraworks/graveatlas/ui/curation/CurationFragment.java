@@ -23,6 +23,8 @@ import com.putraworks.graveatlas.data.model.RecordLock;
 import org.json.JSONObject;
 
 import java.util.List;
+import com.putraworks.graveatlas.data.model.CurationTask;
+import com.putraworks.graveatlas.data.model.SubmissionStatus;
 
 public class CurationFragment extends Fragment {
     private ApiClient apiClient;
@@ -59,6 +61,18 @@ public class CurationFragment extends Fragment {
         lockBtn = mkBtn("Lock Record"); layout.addView(lockBtn);
         unlockBtn = mkBtn("Unlock Record"); layout.addView(unlockBtn);
 
+        Button getTaskBtn = new Button(getContext());
+        getTaskBtn.setText("Get Curation Task");
+        getTaskBtn.setAllCaps(false);
+        layout.addView(getTaskBtn);
+        Button velocityBtn = new Button(getContext());
+        velocityBtn.setText("Curation Velocity");
+        velocityBtn.setAllCaps(false);
+        layout.addView(velocityBtn);
+        Button correctionStatusBtn = new Button(getContext());
+        correctionStatusBtn.setText("Correction Status");
+        correctionStatusBtn.setAllCaps(false);
+        layout.addView(correctionStatusBtn);
         progressBar = new ProgressBar(getContext()); progressBar.setVisibility(View.GONE); layout.addView(progressBar);
         resultText = new TextView(getContext()); resultText.setTextSize(13); resultText.setPadding(0, 16, 0, 0); layout.addView(resultText);
 
@@ -71,6 +85,48 @@ public class CurationFragment extends Fragment {
         reviewBtn.setOnClickListener(v -> doAction("review"));
         lockBtn.setOnClickListener(v -> doAction("lock"));
         unlockBtn.setOnClickListener(v -> doAction("unlock"));
+
+        getTaskBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getCurationTask("", new ApiClient.ApiCallback<CurationTask>() {
+                @Override public void onSuccess(CurationTask result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No data"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        velocityBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getCurationVelocity(null, "30d", new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        correctionStatusBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getCorrectionStatus("", new ApiClient.ApiCallback<SubmissionStatus>() {
+                @Override public void onSuccess(SubmissionStatus result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No data"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
 
         return layout;
     }

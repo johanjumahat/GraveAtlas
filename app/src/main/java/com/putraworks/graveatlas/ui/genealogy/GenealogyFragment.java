@@ -19,6 +19,7 @@ import com.putraworks.graveatlas.data.api.ApiClient;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import com.putraworks.graveatlas.data.model.PersonRecord;
+import org.json.JSONArray;
 
 /**
  * Genealogy — build family trees, detect relationships, surname analysis.
@@ -81,6 +82,14 @@ public class GenealogyFragment extends Fragment {
         infoBtn.setAllCaps(false);
         layout.addView(infoBtn);
 
+        Button confirmRelBtn = new Button(getContext());
+        confirmRelBtn.setText("Confirm Relationship");
+        confirmRelBtn.setAllCaps(false);
+        layout.addView(confirmRelBtn);
+        Button detectRelBtn = new Button(getContext());
+        detectRelBtn.setText("Detect Relationships");
+        detectRelBtn.setAllCaps(false);
+        layout.addView(detectRelBtn);
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.GONE);
         layout.addView(progressBar);
@@ -109,6 +118,34 @@ public class GenealogyFragment extends Fragment {
         infoBtn.setOnClickListener(v -> {
             setBusy(true);
             apiClient.getGenealogyInfo(new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        confirmRelBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.confirmRelationship(new JSONObject(), new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        detectRelBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.detectRelationships(new JSONObject(), new JSONArray(), 50, new ApiClient.ApiCallback<JSONObject>() {
                 @Override public void onSuccess(JSONObject result) {
                     if (getActivity() == null) return;
                     getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });

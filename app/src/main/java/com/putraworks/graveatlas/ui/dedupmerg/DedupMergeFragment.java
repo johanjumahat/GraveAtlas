@@ -24,6 +24,7 @@ import com.putraworks.graveatlas.data.model.DedupStatsResult;
 import com.putraworks.graveatlas.data.model.MergeSuggestion;
 import org.json.JSONObject;
 import java.util.List;
+import com.putraworks.graveatlas.data.model.RecordAnomalyCheck;
 
 public class DedupMergeFragment extends Fragment {
     private ApiClient apiClient;
@@ -63,6 +64,14 @@ public class DedupMergeFragment extends Fragment {
         mergeSuggestBtn = mkBtn("Merge Suggestions"); layout.addView(mergeSuggestBtn);
         mergeHistoryBtn = mkBtn("Merge History"); layout.addView(mergeHistoryBtn);
 
+        Button resolveDupBtn = new Button(getContext());
+        resolveDupBtn.setText("Resolve Duplicate");
+        resolveDupBtn.setAllCaps(false);
+        layout.addView(resolveDupBtn);
+        Button checkAnomalyBtn = new Button(getContext());
+        checkAnomalyBtn.setText("Check Record Anomalies");
+        checkAnomalyBtn.setAllCaps(false);
+        layout.addView(checkAnomalyBtn);
         progressBar = new ProgressBar(getContext()); progressBar.setVisibility(View.GONE); layout.addView(progressBar);
         resultText = new TextView(getContext()); resultText.setTextSize(13); resultText.setPadding(0, 16, 0, 0); layout.addView(resultText);
 
@@ -74,6 +83,34 @@ public class DedupMergeFragment extends Fragment {
         mergeApplyBtn.setOnClickListener(v -> merge("apply"));
         mergeSuggestBtn.setOnClickListener(v -> merge("suggestions"));
         mergeHistoryBtn.setOnClickListener(v -> merge("history"));
+
+        resolveDupBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.resolveDuplicate(cemeteryIdField.getText().toString().trim(), "", "merge", null, new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        checkAnomalyBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.checkRecordAnomalies(cemeteryIdField.getText().toString().trim(), new ApiClient.ApiCallback<RecordAnomalyCheck>() {
+                @Override public void onSuccess(RecordAnomalyCheck result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No data"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
 
         return layout;
     }

@@ -21,6 +21,7 @@ import com.putraworks.graveatlas.data.model.AlertRule;
 import org.json.JSONObject;
 
 import java.util.List;
+import com.putraworks.graveatlas.data.model.Notification;
 
 public class AlertsFragment extends Fragment {
     private ApiClient apiClient;
@@ -53,6 +54,14 @@ public class AlertsFragment extends Fragment {
         checkBtn = mkBtn("Check Alerts"); layout.addView(checkBtn);
         digestBtn = mkBtn("Alert Digest"); layout.addView(digestBtn);
 
+        Button deleteAlertRuleBtn = new Button(getContext());
+        deleteAlertRuleBtn.setText("Delete Alert Rule");
+        deleteAlertRuleBtn.setAllCaps(false);
+        layout.addView(deleteAlertRuleBtn);
+        Button createNotifBtn = new Button(getContext());
+        createNotifBtn.setText("Create Notification");
+        createNotifBtn.setAllCaps(false);
+        layout.addView(createNotifBtn);
         progressBar = new ProgressBar(getContext()); progressBar.setVisibility(View.GONE); layout.addView(progressBar);
         resultText = new TextView(getContext()); resultText.setTextSize(13); resultText.setPadding(0, 16, 0, 0); layout.addView(resultText);
 
@@ -60,6 +69,34 @@ public class AlertsFragment extends Fragment {
         listBtn.setOnClickListener(v -> listRules());
         checkBtn.setOnClickListener(v -> checkAlerts());
         digestBtn.setOnClickListener(v -> getDigest());
+
+        deleteAlertRuleBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.deleteAlertRule("", new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        createNotifBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.createNotification("info", "low", "Test", "Test notification", null, null, new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
 
         return layout;
     }

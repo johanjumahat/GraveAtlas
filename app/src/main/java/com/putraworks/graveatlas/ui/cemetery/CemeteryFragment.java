@@ -27,6 +27,16 @@ import com.putraworks.graveatlas.data.model.CemeteryRecord;
 
 import java.util.ArrayList;
 import java.util.List;
+import org.json.JSONObject;
+import com.putraworks.graveatlas.data.model.CemeteryRecord;
+import com.putraworks.graveatlas.data.model.ConnectionNetwork;
+import com.putraworks.graveatlas.data.model.DuplicateResult;
+import com.putraworks.graveatlas.data.model.CityInfo;
+import com.putraworks.graveatlas.data.model.CountryInfo;
+import com.putraworks.graveatlas.data.model.RegionInfo;
+import com.putraworks.graveatlas.data.model.SearchResult;
+import java.util.List;
+import org.json.JSONObject;
 
 /**
  * Cemetery discovery screen — browse and search cemeteries.
@@ -86,6 +96,38 @@ public class CemeteryFragment extends Fragment implements ApiClient.ApiCallback<
         statusText.setTextSize(13);
         layout.addView(statusText);
 
+        Button getCemeteryBtn = new Button(getContext());
+        getCemeteryBtn.setText("Get Cemetery");
+        getCemeteryBtn.setAllCaps(false);
+        layout.addView(getCemeteryBtn);
+        Button connectionsBtn = new Button(getContext());
+        connectionsBtn.setText("Cemetery Connections");
+        connectionsBtn.setAllCaps(false);
+        layout.addView(connectionsBtn);
+        Button dupBtn = new Button(getContext());
+        dupBtn.setText("Cemetery Duplicates");
+        dupBtn.setAllCaps(false);
+        layout.addView(dupBtn);
+        Button citiesBtn = new Button(getContext());
+        citiesBtn.setText("Get Cities");
+        citiesBtn.setAllCaps(false);
+        layout.addView(citiesBtn);
+        Button countriesBtn = new Button(getContext());
+        countriesBtn.setText("Get Countries");
+        countriesBtn.setAllCaps(false);
+        layout.addView(countriesBtn);
+        Button regionsBtn = new Button(getContext());
+        regionsBtn.setText("Get Regions");
+        regionsBtn.setAllCaps(false);
+        layout.addView(regionsBtn);
+        Button spatialInfoBtn = new Button(getContext());
+        spatialInfoBtn.setText("Spatial Info");
+        spatialInfoBtn.setAllCaps(false);
+        layout.addView(spatialInfoBtn);
+        Button searchBtn2 = new Button(getContext());
+        searchBtn2.setText("Search");
+        searchBtn2.setAllCaps(false);
+        layout.addView(searchBtn2);
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.GONE);
         progressBar.setContentDescription("Loading");
@@ -123,6 +165,142 @@ public class CemeteryFragment extends Fragment implements ApiClient.ApiCallback<
             }
             @Override
             public void afterTextChanged(Editable s) {}
+        });
+
+        getCemeteryBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getCemetery("", new ApiClient.ApiCallback<CemeteryRecord>() {
+                @Override public void onSuccess(CemeteryRecord result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText(result != null ? result.toString() : "No data"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        connectionsBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getCemeteryConnections("", new ApiClient.ApiCallback<ConnectionNetwork>() {
+                @Override public void onSuccess(ConnectionNetwork result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText(result != null ? result.toString() : "No data"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        dupBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getCemeteryDuplicates("", new ApiClient.ApiCallback<DuplicateResult>() {
+                @Override public void onSuccess(DuplicateResult result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText(result != null ? result.toString() : "No data"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        citiesBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getCities("", "", new ApiClient.ApiCallback<java.util.List<CityInfo>>() {
+                @Override public void onSuccess(java.util.List<CityInfo> result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> {
+                        setBusy(false);
+                        if (result == null || result.isEmpty()) { statusText.setText("No results"); return; }
+                        StringBuilder sb = new StringBuilder();
+                        for (CityInfo item : result) sb.append(item.toString()).append("\n");
+                        statusText.setText(sb.toString());
+                    });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        countriesBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getCountries( new ApiClient.ApiCallback<java.util.List<CountryInfo>>() {
+                @Override public void onSuccess(java.util.List<CountryInfo> result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> {
+                        setBusy(false);
+                        if (result == null || result.isEmpty()) { statusText.setText("No results"); return; }
+                        StringBuilder sb = new StringBuilder();
+                        for (CountryInfo item : result) sb.append(item.toString()).append("\n");
+                        statusText.setText(sb.toString());
+                    });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        regionsBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getRegions("", new ApiClient.ApiCallback<java.util.List<RegionInfo>>() {
+                @Override public void onSuccess(java.util.List<RegionInfo> result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> {
+                        setBusy(false);
+                        if (result == null || result.isEmpty()) { statusText.setText("No results"); return; }
+                        StringBuilder sb = new StringBuilder();
+                        for (RegionInfo item : result) sb.append(item.toString()).append("\n");
+                        statusText.setText(sb.toString());
+                    });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        spatialInfoBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getSpatialInfo( new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { statusText.setText(result.toString(2)); } catch (Exception e) { statusText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        searchBtn2.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.search("", new ApiClient.ApiCallback<java.util.List<SearchResult>>() {
+                @Override public void onSuccess(java.util.List<SearchResult> result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> {
+                        setBusy(false);
+                        if (result == null || result.isEmpty()) { statusText.setText("No results"); return; }
+                        StringBuilder sb = new StringBuilder();
+                        for (SearchResult item : result) sb.append(item.toString()).append("\n");
+                        statusText.setText(sb.toString());
+                    });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
+                }
+            });
         });
 
         return layout;

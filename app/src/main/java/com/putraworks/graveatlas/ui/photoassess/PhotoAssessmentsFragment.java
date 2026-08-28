@@ -17,6 +17,7 @@ import androidx.fragment.app.Fragment;
 import com.putraworks.graveatlas.data.api.ApiClient;
 
 import org.json.JSONObject;
+import org.json.JSONArray;
 
 public class PhotoAssessmentsFragment extends Fragment {
     private ApiClient apiClient;
@@ -48,12 +49,30 @@ public class PhotoAssessmentsFragment extends Fragment {
         enhanceBtn = mkBtn("Enhancement Suggestions"); layout.addView(enhanceBtn);
         listBtn = mkBtn("List Assessments"); layout.addView(listBtn);
 
+        Button batchAssessBtn = new Button(getContext());
+        batchAssessBtn.setText("Batch Assess Photos");
+        batchAssessBtn.setAllCaps(false);
+        layout.addView(batchAssessBtn);
         progressBar = new ProgressBar(getContext()); progressBar.setVisibility(View.GONE); layout.addView(progressBar);
         resultText = new TextView(getContext()); resultText.setTextSize(13); resultText.setPadding(0, 16, 0, 0); layout.addView(resultText);
 
         assessBtn.setOnClickListener(v -> assess());
         enhanceBtn.setOnClickListener(v -> enhance());
         listBtn.setOnClickListener(v -> listAll());
+
+        batchAssessBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.batchAssessPhotos(new JSONArray(), new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
 
         return layout;
     }

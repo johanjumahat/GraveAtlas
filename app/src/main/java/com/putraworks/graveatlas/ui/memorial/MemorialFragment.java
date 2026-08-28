@@ -17,6 +17,7 @@ import androidx.fragment.app.Fragment;
 import com.putraworks.graveatlas.data.api.ApiClient;
 
 import org.json.JSONObject;
+import org.json.JSONArray;
 
 /**
  * Memorial Stories — generate AI memorial narratives, historical context.
@@ -88,6 +89,10 @@ public class MemorialFragment extends Fragment {
         infoBtn.setAllCaps(false);
         layout.addView(infoBtn);
 
+        Button batchStoriesBtn = new Button(getContext());
+        batchStoriesBtn.setText("Generate Batch Stories");
+        batchStoriesBtn.setAllCaps(false);
+        layout.addView(batchStoriesBtn);
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.GONE);
         layout.addView(progressBar);
@@ -100,6 +105,20 @@ public class MemorialFragment extends Fragment {
         infoBtn.setOnClickListener(v -> {
             setBusy(true);
             apiClient.getMemorialStoryInfo(new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        batchStoriesBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.generateBatchStories(new JSONArray(), null, new ApiClient.ApiCallback<JSONObject>() {
                 @Override public void onSuccess(JSONObject result) {
                     if (getActivity() == null) return;
                     getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });

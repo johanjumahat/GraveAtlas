@@ -23,7 +23,9 @@ import java.util.ArrayList;
 import java.util.List;
 import com.putraworks.graveatlas.data.model.GlobalSearchResponse;
 import com.putraworks.graveatlas.data.model.SearchSuggestion;
+import org.json.JSONObject;
 import java.util.List;
+import com.putraworks.graveatlas.data.model.RelatedRecord;
 
 public class IntelligentSearchFragment extends Fragment {
 
@@ -75,6 +77,22 @@ public class IntelligentSearchFragment extends Fragment {
         suggestBtn.setAllCaps(false);
         layout.addView(suggestBtn);
 
+        Button crossLangBtn = new Button(getContext());
+        crossLangBtn.setText("Cross-Language Search");
+        crossLangBtn.setAllCaps(false);
+        layout.addView(crossLangBtn);
+        Button searchHistoryBtn = new Button(getContext());
+        searchHistoryBtn.setText("Search History");
+        searchHistoryBtn.setAllCaps(false);
+        layout.addView(searchHistoryBtn);
+        Button externalSearchBtn = new Button(getContext());
+        externalSearchBtn.setText("Search External Sources");
+        externalSearchBtn.setAllCaps(false);
+        layout.addView(externalSearchBtn);
+        Button relatedBtn = new Button(getContext());
+        relatedBtn.setText("Find Related Records");
+        relatedBtn.setAllCaps(false);
+        layout.addView(relatedBtn);
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.GONE);
         layout.addView(progressBar);
@@ -120,6 +138,68 @@ public class IntelligentSearchFragment extends Fragment {
                         if (result == null || result.isEmpty()) { statusText.setText("No suggestions"); return; }
                         StringBuilder sb = new StringBuilder();
                         for (SearchSuggestion s : result) sb.append(s.toString()).append("\n");
+                        statusText.setText(sb.toString());
+                    });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        crossLangBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.crossLanguageSearch(queryField.getText().toString().trim(), new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { statusText.setText(result.toString(2)); } catch (Exception e) { statusText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        searchHistoryBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getSearchHistory(50, new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { statusText.setText(result.toString(2)); } catch (Exception e) { statusText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        externalSearchBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.searchExternalSources(queryField.getText().toString().trim(), null, null, 50, new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { statusText.setText(result.toString(2)); } catch (Exception e) { statusText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        relatedBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.findRelatedRecords(queryField.getText().toString().trim(), 50, new ApiClient.ApiCallback<java.util.List<RelatedRecord>>() {
+                @Override public void onSuccess(java.util.List<RelatedRecord> result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> {
+                        setBusy(false);
+                        if (result == null || result.isEmpty()) { statusText.setText("No results"); return; }
+                        StringBuilder sb = new StringBuilder();
+                        for (RelatedRecord item : result) sb.append(item.toString()).append("\n");
                         statusText.setText(sb.toString());
                     });
                 }

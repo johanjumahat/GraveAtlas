@@ -91,6 +91,14 @@ public class AIHeadstoneFragment extends Fragment {
         getAnalysisBtn.setAllCaps(false);
         layout.addView(getAnalysisBtn);
 
+        Button identifyNotationsBtn = new Button(getContext());
+        identifyNotationsBtn.setText("Identify Notations");
+        identifyNotationsBtn.setAllCaps(false);
+        layout.addView(identifyNotationsBtn);
+        Button inferFieldBtn = new Button(getContext());
+        inferFieldBtn.setText("Infer Field");
+        inferFieldBtn.setAllCaps(false);
+        layout.addView(inferFieldBtn);
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.GONE);
         layout.addView(progressBar);
@@ -104,6 +112,34 @@ public class AIHeadstoneFragment extends Fragment {
             if (aid.isEmpty()) { resultText.setText("Enter analysis ID"); return; }
             setBusy(true);
             apiClient.getHeadstoneAnalysis(aid, new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        identifyNotationsBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.identifyNotations(textField.getText().toString().trim(), new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        inferFieldBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.inferField(analysisIdField.getText().toString().trim(), "name", new ApiClient.ApiCallback<JSONObject>() {
                 @Override public void onSuccess(JSONObject result) {
                     if (getActivity() == null) return;
                     getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });

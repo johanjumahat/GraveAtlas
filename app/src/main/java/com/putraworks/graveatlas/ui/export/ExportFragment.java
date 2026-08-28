@@ -21,6 +21,7 @@ import com.putraworks.graveatlas.data.model.GeoJSONExport;
 import com.putraworks.graveatlas.data.model.JSONLDExport;
 
 import org.json.JSONObject;
+import org.json.JSONArray;
 
 public class ExportFragment extends Fragment {
 
@@ -81,6 +82,10 @@ public class ExportFragment extends Fragment {
         btnRow2.addView(manifestBtn);
         layout.addView(btnRow2);
 
+        Button exportBatchBtn = new Button(getContext());
+        exportBatchBtn.setText("Export Batch");
+        exportBatchBtn.setAllCaps(false);
+        layout.addView(exportBatchBtn);
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.GONE);
         layout.addView(progressBar);
@@ -90,6 +95,20 @@ public class ExportFragment extends Fragment {
         layout.addView(resultText);
 
         loadManifest();
+        exportBatchBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.exportBatch(new JSONArray(), new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
         return layout;
     }
 
