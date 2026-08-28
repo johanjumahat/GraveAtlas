@@ -7076,7 +7076,7 @@ public class ApiClient {
         } catch (Exception e) { callback.onError("Failed: " + e.getMessage()); }
     }
 
-    public void analyzeSurnames(JSONArray records, final ApiCallback<JSONObject> callback) {
+    public void analyzeSurnamesAnalytics(JSONArray records, final ApiCallback<JSONObject> callback) {
         try {
             JSONObject body = new JSONObject(); body.put("records", records);
             RequestBody requestBody = RequestBody.create(body.toString(), JSON);
