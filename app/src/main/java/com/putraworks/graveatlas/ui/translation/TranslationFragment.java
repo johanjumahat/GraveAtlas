@@ -190,6 +190,6 @@ public class TranslationFragment extends Fragment {
     }
 
     private String formatJSON(JSONObject obj) {
-        return obj.toString(2);
+        try { return obj.toString(2); } catch (Exception ex) { return obj.toString(); }
     }
 }

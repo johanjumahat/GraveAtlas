@@ -17,6 +17,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.putraworks.graveatlas.data.api.ApiClient;
 import com.putraworks.graveatlas.data.model.Notification;
+import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -134,7 +135,7 @@ public class NotificationsFragment extends Fragment {
     private void markAllRead() {
         apiClient.markAllNotificationsRead(new ApiClient.ApiCallback<JSONObject>() {
             @Override
-            public void onSuccess(org.json.JSONObject result) {
+            public void onSuccess(JSONObject result) {
                 if (getActivity() == null) return;
                 getActivity().runOnUiThread(() -> loadAll());
             }

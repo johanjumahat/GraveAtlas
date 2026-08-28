@@ -113,7 +113,7 @@ public class MemorialFragment extends Fragment {
                     progressBar.setVisibility(View.GONE);
                     generateBtn.setEnabled(true);
                     String story = result.optString("story", result.optString("narrative", ""));
-                    if (story.isEmpty()) story = result.toString(2);
+                    if (story.isEmpty()) { try { story = result.toString(2); } catch (Exception ex) { story = result.toString(); } }
                     resultText.setText(story);
                 });
             }
@@ -146,7 +146,7 @@ public class MemorialFragment extends Fragment {
                     getActivity().runOnUiThread(() -> {
                         progressBar.setVisibility(View.GONE);
                         historyBtn.setEnabled(true);
-                        resultText.setText(result.toString(2));
+                        try { resultText.setText(result.toString(2)); } catch (Exception ex) { resultText.setText(result.toString()); }
                     });
                 }
                 @Override

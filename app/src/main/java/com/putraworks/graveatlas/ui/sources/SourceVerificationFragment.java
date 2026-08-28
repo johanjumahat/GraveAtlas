@@ -16,6 +16,7 @@ import androidx.fragment.app.Fragment;
 
 import com.putraworks.graveatlas.data.api.ApiClient;
 import com.putraworks.graveatlas.data.model.RecordSourceVerification;
+import com.putraworks.graveatlas.data.model.SourceVerification;
 import com.putraworks.graveatlas.data.model.SourceVerificationStatus;
 
 public class SourceVerificationFragment extends Fragment {
@@ -91,7 +92,7 @@ public class SourceVerificationFragment extends Fragment {
                     sb.append("Total Sources: ").append(result.totalSources).append("\n\n");
                     if (result.results != null) {
                         sb.append("Source Details:\n");
-                        for (RecordSourceVerification.SourceVerification s : result.results) {
+                        for (SourceVerification s : result.results) {
                             sb.append("  ").append(s.url != null ? s.url : "?").append("\n");
                             sb.append("    Status: ").append(s.status != null ? s.status : "?").append("\n");
                         }

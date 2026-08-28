@@ -13,6 +13,7 @@ import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
 import com.putraworks.graveatlas.data.api.ApiClient;
+import com.putraworks.graveatlas.data.model.AnalyticsDashboard;
 import com.putraworks.graveatlas.data.model.CemeteryHealthAnalytics;
 import com.putraworks.graveatlas.data.model.GlobalHealthOverview;
 
@@ -80,20 +81,21 @@ public class AnalyticsFragment extends Fragment {
     }
 
     private void loadDashboard(LinearLayout cemeteryList) {
-        apiClient.getAnalyticsDashboard(null, "30d", new ApiClient.ApiCallback<JSONObject>() {
+        apiClient.getAnalyticsDashboard(null, "30d", new ApiClient.ApiCallback<AnalyticsDashboard>() {
             @Override
-            public void onSuccess(JSONObject result) {
+            public void onSuccess(AnalyticsDashboard result) {
                 if (getActivity() == null) return;
                 getActivity().runOnUiThread(() -> {
                     progressBar.setVisibility(View.GONE);
                     StringBuilder sb = new StringBuilder();
-                    sb.append("Total Records: ").append(result.optInt("totalRecords", 0)).append("\n");
-                    sb.append("Total Cemeteries: ").append(result.optInt("totalCemeteries", 0)).append("\n");
-                    sb.append("Verified Records: ").append(result.optInt("verifiedRecords", 0)).append("\n");
-                    sb.append("Verification Rate: ").append(result.optDouble("verificationRate", 0)).append("%\n");
-                    sb.append("Avg Confidence: ").append(result.optDouble("avgConfidence", 0)).append("/100\n");
-                    sb.append("Source Coverage: ").append(result.optDouble("sourceCoverage", 0)).append("%\n");
-                    sb.append("Photo Coverage: ").append(result.optDouble("photoCoverage", 0)).append("%");
+                    if (result.summary != null) {
+                        sb.append("Total Records: ").append(result.summary.totalRecords).append("\n");
+                        sb.append("Verified: ").append(result.summary.verifiedRecords).append("\n");
+                        sb.append("Verification Rate: ").append(result.summary.verificationRate).append("%\n");
+                        sb.append("Source Coverage: ").append(result.summary.sourceCoverage).append("%\n");
+                        sb.append("Coordinate Coverage: ").append(result.summary.coordinateCoverage).append("%\n");
+                        sb.append("Anomaly Rate: ").append(result.summary.anomalyRate).append("%");
+                    }
                     dashboardText.setText(sb.toString());
                 });
             }
@@ -118,12 +120,12 @@ public class AnalyticsFragment extends Fragment {
                     sb.append("Total Records: ").append(result.totalRecords).append("\n");
                     sb.append("Critical Issues: ").append(result.criticalIssues).append("\n");
                     sb.append("Content Average: ").append(result.contentAverage);
-                    if (result.coverage != null) {
+                    if (result.contentCoverage != null) {
                         sb.append("\n\nCoverage:\n");
-                        sb.append("  Photo: ").append(result.coverage.photoCoverage).append("%\n");
-                        sb.append("  Inscription: ").append(result.coverage.inscriptionCoverage).append("%\n");
-                        sb.append("  Source: ").append(result.coverage.sourceCoverage).append("%\n");
-                        sb.append("  Coordinate: ").append(result.coverage.coordinateCoverage).append("%");
+                        sb.append("  Photo: ").append(result.contentCoverage.photoCoverage).append("%\n");
+                        sb.append("  Inscription: ").append(result.contentCoverage.inscriptionCoverage).append("%\n");
+                        sb.append("  Source: ").append(result.contentCoverage.sourceCoverage).append("%\n");
+                        sb.append("  Coordinate: ").append(result.contentCoverage.coordinateCoverage).append("%");
                     }
                     healthText.setText(sb.toString());
                 });

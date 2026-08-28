@@ -88,14 +88,14 @@ public class ReportsFragment extends Fragment {
                     StringBuilder sb = new StringBuilder();
                     sb.append("Cemetery: ").append(result.cemeteryName != null ? result.cemeteryName : id).append("\n");
                     sb.append("Records: ").append(result.recordCount).append("\n");
-                    if (result.content != null) {
+                    if (result.contentCoverage != null) {
                         sb.append("\nContent Coverage:\n");
-                        sb.append("  Photos: ").append(result.content.withPhotos).append("\n");
-                        sb.append("  Inscriptions: ").append(result.content.withInscriptions).append("\n");
-                        sb.append("  Sources: ").append(result.content.withSources).append("\n");
-                        sb.append("  Coordinates: ").append(result.content.withCoordinates).append("\n");
-                        sb.append("  Sections: ").append(result.content.withSection).append("\n");
-                        sb.append("  Plots: ").append(result.content.withPlot);
+                        sb.append("  Photos: ").append(result.contentCoverage.withPhotos).append("\n");
+                        sb.append("  Inscriptions: ").append(result.contentCoverage.withInscriptions).append("\n");
+                        sb.append("  Sources: ").append(result.contentCoverage.withSources).append("\n");
+                        sb.append("  Coordinates: ").append(result.contentCoverage.withCoordinates).append("\n");
+                        sb.append("  Sections: ").append(result.contentCoverage.withSection).append("\n");
+                        sb.append("  Plots: ").append(result.contentCoverage.withPlot);
                     }
                     resultText.setText(sb.toString());
                 });
@@ -128,13 +128,13 @@ public class ReportsFragment extends Fragment {
                     sb.append("Global Quality Report\n\n");
                     sb.append("Total Cemeteries: ").append(result.totalCemeteries).append("\n");
                     sb.append("Total Records: ").append(result.totalRecords).append("\n");
-                    if (result.coverage != null) {
+                    if (result.globalContentCoverage != null) {
                         sb.append("\nCoverage:\n");
-                        sb.append("  With Photos: ").append(result.coverage.totalWithPhotos).append("\n");
-                        sb.append("  With Sources: ").append(result.coverage.totalWithSources).append("\n");
-                        sb.append("  With Inscriptions: ").append(result.coverage.totalWithInscriptions).append("\n");
-                        sb.append("  With Coordinates: ").append(result.coverage.totalWithCoordinates).append("\n");
-                        sb.append("  With Birth Date: ").append(result.coverage.totalWithBirthDate);
+                        sb.append("  With Photos: ").append(result.globalContentCoverage.totalWithPhotos).append("\n");
+                        sb.append("  With Sources: ").append(result.globalContentCoverage.totalWithSources).append("\n");
+                        sb.append("  With Inscriptions: ").append(result.globalContentCoverage.totalWithInscriptions).append("\n");
+                        sb.append("  With Coordinates: ").append(result.globalContentCoverage.totalWithCoordinates).append("\n");
+                        sb.append("  With Birth Date: ").append(result.globalContentCoverage.totalWithBirthDate);
                     }
                     resultText.setText(sb.toString());
                 });

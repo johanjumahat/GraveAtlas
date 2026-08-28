@@ -114,7 +114,7 @@ public class AIHeadstoneFragment extends Fragment {
             @Override
             public void onSuccess(JSONObject result) {
                 if (getActivity() == null) return;
-                getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result.toString(2)); });
+                getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception ex) { resultText.setText(result.toString()); }; });
             }
             @Override
             public void onError(String error) {
@@ -135,7 +135,7 @@ public class AIHeadstoneFragment extends Fragment {
             @Override
             public void onSuccess(JSONObject result) {
                 if (getActivity() == null) return;
-                getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result.toString(2)); });
+                getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception ex) { resultText.setText(result.toString()); }; });
             }
             @Override
             public void onError(String error) {
@@ -154,7 +154,7 @@ public class AIHeadstoneFragment extends Fragment {
             @Override
             public void onSuccess(JSONObject result) {
                 if (getActivity() == null) return;
-                getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result.toString(2)); });
+                getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception ex) { resultText.setText(result.toString()); }; });
             }
             @Override
             public void onError(String error) {
@@ -170,7 +170,7 @@ public class AIHeadstoneFragment extends Fragment {
             @Override
             public void onSuccess(JSONObject result) {
                 if (getActivity() == null) return;
-                getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result.toString(2)); });
+                getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception ex) { resultText.setText(result.toString()); }; });
             }
             @Override
             public void onError(String error) {

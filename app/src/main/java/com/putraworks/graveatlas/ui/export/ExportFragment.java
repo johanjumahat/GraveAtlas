@@ -108,9 +108,9 @@ public class ExportFragment extends Fragment {
                     StringBuilder sb = new StringBuilder();
                     sb.append("Dataset Export:\n");
                     sb.append("Total Records: ").append(result.records != null ? result.records.size() : 0).append("\n");
-                    if (result.meta != null) {
-                        sb.append("Format: ").append(result.meta.format).append("\n");
-                        sb.append("Exported: ").append(result.meta.exportedAt);
+                    if (result.metadata != null) {
+                        sb.append("Format: ").append(result.metadata.format).append("\n");
+                        sb.append("Exported: ").append(result.metadata.exportedAt);
                     }
                     resultText.setText(sb.toString());
                 });
