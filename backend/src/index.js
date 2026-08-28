@@ -986,6 +986,11 @@ async function handleRequest(request, env, ctx) {
       return await handleKuburSGSources(request, env, corsHeaders);
     }
 
+    // Kubur SG search endpoint
+    if (path === '/api/kubur-sg/search' && (method === 'GET' || method === 'POST')) {
+      return await handleKuburSGSearch(request, env, corsHeaders);
+    }
+
     // Phase 19: Community Engagement & Memorial Features
     if (path === '/api/tributes' && method === 'POST') {
       return await handleCreateTribute(request, env, corsHeaders);
@@ -20233,6 +20238,147 @@ async function handleKuburSGSources(request, env, cors) {
     }, 200, cors);
   } catch (error) {
     return jsonResponse({ success: false, error: 'Failed to list sources', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET/POST /api/kubur-sg/search
+ * Search across all Kubur SG data sources for burial records and cemeteries.
+ *
+ * GET query params: ?q=&cemetery=&region=&type=&limit=&offset=
+ * POST body: { query, cemetery, region, type, limit, offset }
+ *
+ * Searches community-contributed burial records and known Muslim cemeteries
+ * in Singapore. Supports name, cemetery, region, and plot filtering.
+ */
+async function handleKuburSGSearch(request, env, cors) {
+  try {
+    let params;
+    if (request.method === 'POST') {
+      const body = await request.json();
+      params = {
+        q: body.query || body.q || '',
+        cemetery: body.cemetery || '',
+        region: body.region || '',
+        type: body.type || '',
+        limit: body.limit || 50,
+        offset: body.offset || 0
+      };
+    } else {
+      const url = new URL(request.url);
+      params = {
+        q: url.searchParams.get('q') || '',
+        cemetery: url.searchParams.get('cemetery') || '',
+        region: url.searchParams.get('region') || '',
+        type: url.searchParams.get('type') || '',
+        limit: parseInt(url.searchParams.get('limit') || '50', 10),
+        offset: parseInt(url.searchParams.get('offset') || '0', 10)
+      };
+    }
+
+    const connector = new KuburSGConnector();
+    const queryObj = { search: params.q, query: params.q };
+
+    // Fetch all results from connector
+    const rawResults = await connector.request(queryObj, env);
+
+    const burialRecords = [];
+    const cemeteryRecords = [];
+
+    // Filter burial records
+    for (const record of (rawResults.burialRecords || [])) {
+      const name = (record.name || record.personName || '').toLowerCase();
+      const cemetery = (record.cemetery || '').toLowerCase();
+      const recordRegion = (record.region || record.area || '').toLowerCase();
+      const recordType = (record.type || record.religion || '').toLowerCase();
+      const q = params.q.toLowerCase();
+      const cemFilter = params.cemetery.toLowerCase();
+      const regFilter = params.region.toLowerCase();
+      const typeFilter = params.type.toLowerCase();
+
+      let match = true;
+      if (q && !name.includes(q) && !cemetery.includes(q) && !recordRegion.includes(q)) match = false;
+      if (cemFilter && !cemetery.includes(cemFilter)) match = false;
+      if (regFilter && !recordRegion.includes(regFilter)) match = false;
+      if (typeFilter && !recordType.includes(typeFilter)) match = false;
+
+      if (match) {
+        burialRecords.push({
+          id: record.id || record.plot || null,
+          personName: record.name || record.personName || null,
+          givenName: record.givenName || null,
+          familyName: record.familyName || null,
+          birthDate: record.birthDate || record.dob || null,
+          deathDate: record.deathDate || record.dod || null,
+          cemetery: record.cemetery || null,
+          region: record.region || record.area || null,
+          plot: record.plot || record.plotNumber || null,
+          section: record.section || null,
+          religion: record.religion || record.type || 'muslim',
+          source: 'community-records',
+          attribution: 'Kubur SG Community Burial Records, GraveAtlas',
+          license: 'CC-BY-SA 4.0'
+        });
+      }
+    }
+
+    // Filter cemetery records
+    for (const cemetery of (rawResults.cemeteryRecords || [])) {
+      const cemName = (cemetery.name || '').toLowerCase();
+      const cemRegion = (cemetery.region || '').toLowerCase();
+      const cemType = (cemetery.type || '').toLowerCase();
+      const q = params.q.toLowerCase();
+      const cemFilter = params.cemetery.toLowerCase();
+      const regFilter = params.region.toLowerCase();
+      const typeFilter = params.type.toLowerCase();
+
+      let match = true;
+      if (q && !cemName.includes(q) && !cemRegion.includes(q) && !cemType.includes(q)) match = false;
+      if (cemFilter && !cemName.includes(cemFilter)) match = false;
+      if (regFilter && !cemRegion.includes(regFilter)) match = false;
+      if (typeFilter && !cemType.includes(typeFilter)) match = false;
+
+      if (match) {
+        cemeteryRecords.push({
+          name: cemetery.name,
+          region: cemetery.region,
+          latitude: cemetery.latitude,
+          longitude: cemetery.longitude,
+          type: cemetery.type,
+          status: cemetery.status || 'active',
+          source: 'static-cemetery-list',
+          attribution: 'Kubur SG Community Burial Records, GraveAtlas'
+        });
+      }
+    }
+
+    // Combine and paginate
+    const allResults = [
+      ...burialRecords.map(r => ({ ...r, recordType: 'burial' })),
+      ...cemeteryRecords.map(r => ({ ...r, recordType: 'cemetery' }))
+    ];
+
+    const total = allResults.length;
+    const paginated = allResults.slice(params.offset, params.offset + params.limit);
+
+    return jsonResponse({
+      success: true,
+      query: params.q || null,
+      filters: {
+        cemetery: params.cemetery || null,
+        region: params.region || null,
+        type: params.type || null
+      },
+      total,
+      limit: params.limit,
+      offset: params.offset,
+      hasMore: params.offset + params.limit < total,
+      results: paginated,
+      sourcesQueried: rawResults.sourcesQueried || [],
+      attribution: 'Kubur SG Community Burial Records, GraveAtlas'
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Search failed', message: error.message }, 500, cors);
   }
 }
 

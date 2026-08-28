@@ -1896,6 +1896,50 @@ public class ApiClient {
         });
     }
 
+    // ── Kubur SG Connector — Singapore Muslim Community Burial Records ──
+
+    /**
+     * Search Kubur SG burial records and cemeteries.
+     * GET/POST /api/kubur-sg/search
+     */
+    public void searchKuburSG(String query, String cemetery, String region, String type,
+            int limit, int offset, final ApiCallback<JSONObject> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            if (query != null) body.put("query", query);
+            if (cemetery != null) body.put("cemetery", cemetery);
+            if (region != null) body.put("region", region);
+            if (type != null) body.put("type", type);
+            body.put("limit", limit);
+            body.put("offset", offset);
+        } catch (Exception e) { return; }
+
+        RequestBody rb = RequestBody.create(body.toString(), JSON);
+        Request request = new Request.Builder()
+            .url(baseUrl + "/api/kubur-sg/search")
+            .post(rb)
+            .build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String respBody = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(respBody));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse Kubur SG search results.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
     // ── Phase 21: AI Photo Quality Assessment & Enhancement ──
 
     /**
