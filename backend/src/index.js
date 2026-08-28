@@ -1087,6 +1087,25 @@ async function handleRequest(request, env, ctx) {
     if (path === "/api/spatial/family" && method === "POST") {
       return await handleSpatialFamily(request, env, corsHeaders);
     }
+    // Phase 26: AI Cemetery Analytics & Insights Dashboard
+    if (path === "/api/analytics/info" && method === "GET") {
+      return await handleAnalyticsInfo(request, env, corsHeaders);
+    }
+    if (path === "/api/analytics/trends" && method === "POST") {
+      return await handleAnalyticsTrends(request, env, corsHeaders);
+    }
+    if (path === "/api/analytics/demographics" && method === "POST") {
+      return await handleAnalyticsDemographics(request, env, corsHeaders);
+    }
+    if (path === "/api/analytics/surnames" && method === "POST") {
+      return await handleAnalyticsSurnames(request, env, corsHeaders);
+    }
+    if (path === "/api/analytics/families" && method === "POST") {
+      return await handleAnalyticsFamilies(request, env, corsHeaders);
+    }
+    if (path === "/api/analytics/insights" && method === "POST") {
+      return await handleAnalyticsInsights(request, env, corsHeaders);
+    }
     }
 
     // Phase 19: Community Engagement & Memorial Features
@@ -22752,4 +22771,68 @@ async function handleSpatialFamily(request, env, cors) {
   } catch (error) {
     return jsonResponse({ success: false, error: 'Family proximity analysis failed', message: error.message }, 500, cors);
   }
+}
+
+// ── Phase 26: AI Cemetery Analytics & Insights Dashboard ──
+
+async function handleAnalyticsInfo(request, env, cors) {
+  const { getAnalyticsInfo } = await import('./analytics/cemetery-analytics.js');
+  const info = getAnalyticsInfo();
+  return jsonResponse({ success: true, ...info }, 200, cors);
+}
+
+async function handleAnalyticsTrends(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { records } = body;
+    if (!records || !Array.isArray(records)) return jsonResponse({ success: false, error: 'records array is required' }, 400, cors);
+    const { analyzeBurialTrends } = await import('./analytics/cemetery-analytics.js');
+    const result = analyzeBurialTrends(records);
+    return jsonResponse({ success: true, ...result, attribution: 'GraveAtlas — AI Cemetery Analytics' }, 200, cors);
+  } catch (e) { return jsonResponse({ success: false, error: 'Trends analysis failed', message: e.message }, 500, cors); }
+}
+
+async function handleAnalyticsDemographics(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { records } = body;
+    if (!records || !Array.isArray(records)) return jsonResponse({ success: false, error: 'records array is required' }, 400, cors);
+    const { analyzeDemographics } = await import('./analytics/cemetery-analytics.js');
+    const result = analyzeDemographics(records);
+    return jsonResponse({ success: true, ...result, attribution: 'GraveAtlas — AI Cemetery Analytics' }, 200, cors);
+  } catch (e) { return jsonResponse({ success: false, error: 'Demographics failed', message: e.message }, 500, cors); }
+}
+
+async function handleAnalyticsSurnames(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { records } = body;
+    if (!records || !Array.isArray(records)) return jsonResponse({ success: false, error: 'records array is required' }, 400, cors);
+    const { analyzeSurnameDistribution } = await import('./analytics/cemetery-analytics.js');
+    const result = analyzeSurnameDistribution(records);
+    return jsonResponse({ success: true, ...result, attribution: 'GraveAtlas — AI Cemetery Analytics' }, 200, cors);
+  } catch (e) { return jsonResponse({ success: false, error: 'Surname analysis failed', message: e.message }, 500, cors); }
+}
+
+async function handleAnalyticsFamilies(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { records, familyTree } = body;
+    if (!records || !Array.isArray(records)) return jsonResponse({ success: false, error: 'records array is required' }, 400, cors);
+    if (!familyTree) return jsonResponse({ success: false, error: 'familyTree is required' }, 400, cors);
+    const { analyzeFamilies } = await import('./analytics/cemetery-analytics.js');
+    const result = analyzeFamilies(records, familyTree);
+    return jsonResponse({ success: true, ...result, attribution: 'GraveAtlas — AI Cemetery Analytics' }, 200, cors);
+  } catch (e) { return jsonResponse({ success: false, error: 'Family analysis failed', message: e.message }, 500, cors); }
+}
+
+async function handleAnalyticsInsights(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { records, options } = body;
+    if (!records || !Array.isArray(records)) return jsonResponse({ success: false, error: 'records array is required' }, 400, cors);
+    const { generateInsights } = await import('./analytics/cemetery-analytics.js');
+    const result = generateInsights(records, options || {});
+    return jsonResponse({ success: true, ...result, attribution: 'GraveAtlas — AI Cemetery Analytics' }, 200, cors);
+  } catch (e) { return jsonResponse({ success: false, error: 'Insights generation failed', message: e.message }, 500, cors); }
 }

@@ -1,10 +1,10 @@
 # GraveAtlas — Project Status
 
-**Current Version:** 7.2.57 (build 195)
+**Current Version:** 7.2.58 (build 196)
 **Last Updated:** 2026-08-28
 **Status:** Active — all PRs merged, CI green
 
-## Recent Changes (v7.2.57)
+## Recent Changes (v7.2.58)
 
 ### UI Fixes (PR #50 — merged)
 - Removed duplicate AI input box from home screen
@@ -65,6 +65,7 @@
 | 23. AI Genealogy & Family Tree Builder | ✅ COMPLETE | 100% |
 | 24. AI Memorial Story Generator | ✅ COMPLETE | 100% |
 | 25. AI Cemetery Mapping & Spatial Intelligence | ✅ COMPLETE | 100% |
+| 26. AI Cemetery Analytics & Insights Dashboard | ✅ COMPLETE | 100% |
 
 ### Earlier (v7.2.41)
 - R8 minification enabled (APK ~7.9MB, down from larger)

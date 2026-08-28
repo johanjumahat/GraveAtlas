@@ -40,6 +40,7 @@ import com.putraworks.graveatlas.data.model.InscriptionTranslationResult;
 import com.putraworks.graveatlas.data.model.FamilyTreeResult;
 import com.putraworks.graveatlas.data.model.MemorialStoryResult;
 import com.putraworks.graveatlas.data.model.SpatialIntelligenceResult;
+import com.putraworks.graveatlas.data.model.CemeteryAnalyticsResult;
 import com.putraworks.graveatlas.data.model.GlobalHealthOverview;
 import com.putraworks.graveatlas.data.model.CemeteryRecommendations;
 import com.putraworks.graveatlas.data.model.GlobalRecommendations;
@@ -7036,6 +7037,78 @@ public class ApiClient {
                 @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
                 @Override public void onResponse(Call call, Response response) throws IOException {
                     if (response.isSuccessful()) { try { String b = response.body() != null ? response.body().string() : "{}"; callback.onSuccess(new JSONObject(b)); } catch (Exception e) { callback.onError("Failed to parse family proximity."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); } } });
+        } catch (Exception e) { callback.onError("Failed: " + e.getMessage()); }
+    }
+
+
+    // ── Phase 26: AI Cemetery Analytics & Insights Dashboard ──
+
+    public void getAnalyticsInfo(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder().url(baseUrl + "/api/analytics/info").get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { String b = response.body() != null ? response.body().string() : "{}"; callback.onSuccess(new JSONObject(b)); } catch (Exception e) { callback.onError("Failed to parse analytics info."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); } }
+        });
+    }
+
+    public void analyzeBurialTrends(JSONArray records, final ApiCallback<JSONObject> callback) {
+        try {
+            JSONObject body = new JSONObject(); body.put("records", records);
+            RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+            Request request = new Request.Builder().url(baseUrl + "/api/analytics/trends").post(requestBody).build();
+            client.newCall(request).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+                @Override public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) { try { String b = response.body() != null ? response.body().string() : "{}"; callback.onSuccess(new JSONObject(b)); } catch (Exception e) { callback.onError("Failed to parse trends."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); } } });
+        } catch (Exception e) { callback.onError("Failed: " + e.getMessage()); }
+    }
+
+    public void analyzeDemographics(JSONArray records, final ApiCallback<JSONObject> callback) {
+        try {
+            JSONObject body = new JSONObject(); body.put("records", records);
+            RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+            Request request = new Request.Builder().url(baseUrl + "/api/analytics/demographics").post(requestBody).build();
+            client.newCall(request).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+                @Override public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) { try { String b = response.body() != null ? response.body().string() : "{}"; callback.onSuccess(new JSONObject(b)); } catch (Exception e) { callback.onError("Failed to parse demographics."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); } } });
+        } catch (Exception e) { callback.onError("Failed: " + e.getMessage()); }
+    }
+
+    public void analyzeSurnames(JSONArray records, final ApiCallback<JSONObject> callback) {
+        try {
+            JSONObject body = new JSONObject(); body.put("records", records);
+            RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+            Request request = new Request.Builder().url(baseUrl + "/api/analytics/surnames").post(requestBody).build();
+            client.newCall(request).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+                @Override public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) { try { String b = response.body() != null ? response.body().string() : "{}"; callback.onSuccess(new JSONObject(b)); } catch (Exception e) { callback.onError("Failed to parse surnames."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); } } });
+        } catch (Exception e) { callback.onError("Failed: " + e.getMessage()); }
+    }
+
+    public void analyzeFamilies(JSONArray records, JSONObject familyTree, final ApiCallback<JSONObject> callback) {
+        try {
+            JSONObject body = new JSONObject(); body.put("records", records); body.put("familyTree", familyTree);
+            RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+            Request request = new Request.Builder().url(baseUrl + "/api/analytics/families").post(requestBody).build();
+            client.newCall(request).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+                @Override public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) { try { String b = response.body() != null ? response.body().string() : "{}"; callback.onSuccess(new JSONObject(b)); } catch (Exception e) { callback.onError("Failed to parse families."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); } } });
+        } catch (Exception e) { callback.onError("Failed: " + e.getMessage()); }
+    }
+
+    public void generateInsights(JSONArray records, final ApiCallback<JSONObject> callback) {
+        try {
+            JSONObject body = new JSONObject(); body.put("records", records);
+            RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+            Request request = new Request.Builder().url(baseUrl + "/api/analytics/insights").post(requestBody).build();
+            client.newCall(request).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+                @Override public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) { try { String b = response.body() != null ? response.body().string() : "{}"; callback.onSuccess(new JSONObject(b)); } catch (Exception e) { callback.onError("Failed to parse insights."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); } } });
         } catch (Exception e) { callback.onError("Failed: " + e.getMessage()); }
     }
 

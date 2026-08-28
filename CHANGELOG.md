@@ -655,6 +655,47 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.58] — 2026-08-28
+
+### Phase 26: AI Cemetery Analytics & Insights Dashboard
+
+Aggregates data from all previous phases into cemetery-level analytics
+for administrators, genealogists, and researchers.
+
+**Analytics Modules (5):**
+- Burial Trends: by decade, by year, peak year/decade, trend direction (increasing/decreasing/stable)
+- Demographics: age distribution (5 brackets), avg/max/min lifespan, gender estimate, birth decades
+- Surname Distribution: top 20 surnames, Simpson diversity index, coverage metrics
+- Family Analysis: family count, avg/largest/smallest size, relationship types, coverage
+- Cemetery Insights: data quality, trends, demographics, surnames summary
+
+**Key Metrics:**
+- Data coverage (death dates, age data, surnames)
+- Peak burial year/decade
+- Average/max/min lifespan
+- Surname diversity (Simpson index)
+- Family coverage percentage
+- Burial trend direction
+
+**Integrations:**
+- Phase 23: Family Tree Builder
+- Phase 22: Inscription Translation
+- Phase 25: Spatial Intelligence
+
+**New Backend Endpoints (6):**
+- GET /api/analytics/info — system info
+- POST /api/analytics/trends — burial trend analysis
+- POST /api/analytics/demographics — demographic breakdown
+- POST /api/analytics/surnames — surname distribution
+- POST /api/analytics/families — family analysis
+- POST /api/analytics/insights — full insights dashboard
+
+**New Module:** backend/src/analytics/cemetery-analytics.js
+**New Model:** CemeteryAnalyticsResult (1 inner class: Insight)
+**API client:** 6 new methods
+**New tests:** 71 (phase26.test.js)
+
+
 ## [7.2.57] — 2026-08-28
 
 ### Phase 25: AI Cemetery Mapping & Spatial Intelligence
