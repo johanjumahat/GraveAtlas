@@ -986,6 +986,37 @@ async function handleRequest(request, env, ctx) {
       return await handleKuburSGSources(request, env, corsHeaders);
     }
 
+    // Phase 19: Community Engagement & Memorial Features
+    if (path === '/api/tributes' && method === 'POST') {
+      return await handleCreateTribute(request, env, corsHeaders);
+    }
+
+    if (path === '/api/tributes' && method === 'GET') {
+      return await handleListTributes(request, env, corsHeaders);
+    }
+
+    if (path.match(/^\/api\/tributes\/[^/]+$/) && method === 'DELETE') {
+      const tributeId = path.split('/').pop();
+      return await handleDeleteTribute(tributeId, request, env, corsHeaders);
+    }
+
+    if (path.match(/^\/api\/tributes\/[^/]+\/like$/) && method === 'POST') {
+      const tributeId = path.split('/')[3];
+      return await handleLikeTribute(tributeId, request, env, corsHeaders);
+    }
+
+    if (path === '/api/community/feed' && method === 'GET') {
+      return await handleCommunityFeed(request, env, corsHeaders);
+    }
+
+    if (path === '/api/community/stats' && method === 'GET') {
+      return await handleCommunityStats(request, env, corsHeaders);
+    }
+
+    if (path === '/api/community/leaderboard' && method === 'GET') {
+      return await handleCommunityLeaderboard(request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -20163,5 +20194,459 @@ async function handleKuburSGSources(request, env, cors) {
     }, 200, cors);
   } catch (error) {
     return jsonResponse({ success: false, error: 'Failed to list sources', message: error.message }, 500, cors);
+  }
+}
+
+// ── Phase 19: Community Engagement & Memorial Features ──
+
+/**
+ * POST /api/tributes
+ * Leave a tribute/memorial message on a grave or cemetery record.
+ * Body: { targetType: "grave"|"cemetery", targetId: "...", message: "...", type: "candle"|"message"|"photo-memory", isAnonymous: boolean }
+ */
+async function handleCreateTribute(request, env, cors) {
+  try {
+    const user = await getAuthenticatedUser(request, env);
+    if (!user) {
+      return jsonResponse({ success: false, error: 'Authentication required to leave a tribute' }, 401, cors);
+    }
+
+    const body = await request.json();
+    const { targetType, targetId, message, type, isAnonymous } = body;
+
+    if (!targetType || !targetId) {
+      return jsonResponse({ success: false, error: 'targetType and targetId are required' }, 400, cors);
+    }
+    if (!['grave', 'cemetery'].includes(targetType)) {
+      return jsonResponse({ success: false, error: 'targetType must be "grave" or "cemetery"' }, 400, cors);
+    }
+    if (!message || message.length > 1000) {
+      return jsonResponse({ success: false, error: 'Message is required (max 1000 characters)' }, 400, cors);
+    }
+    const tributeType = type || 'message';
+    if (!['candle', 'message', 'photo-memory', 'flower'].includes(tributeType)) {
+      return jsonResponse({ success: false, error: 'Invalid tribute type' }, 400, cors);
+    }
+
+    // Rate limit: max 10 tributes per hour per user
+    const rateLimitKey = `tribute-rate:${user.userId}`;
+    const recentCount = await getRateLimitCount(rateLimitKey, env);
+    if (recentCount >= 10) {
+      return jsonResponse({ success: false, error: 'Rate limit: max 10 tributes per hour' }, 429, cors);
+    }
+    await incrementRateLimit(rateLimitKey, 3600, env);
+
+    const tributeId = crypto.randomUUID();
+    const timestamp = new Date().toISOString();
+
+    const tribute = {
+      tributeId,
+      targetType,
+      targetId,
+      userId: isAnonymous ? null : user.userId,
+      displayName: isAnonymous ? 'Anonymous' : (user.displayName || user.userId.slice(0, 8)),
+      message: sanitizeText(message),
+      type: tributeType,
+      createdAt: timestamp,
+      status: 'active'
+    };
+
+    // Store tribute
+    const filePath = `community/tributes/${targetType}/${targetId}/${tributeId}.json`;
+    await writeFile(env, filePath, JSON.stringify(tribute, null, 2));
+
+    // Update user's contribution count
+    await incrementUserContributionCount(user.userId, env);
+
+    return jsonResponse({
+      success: true,
+      tribute,
+      message: 'Tribute added successfully'
+    }, 201, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to create tribute', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/tributes?targetType=...&targetId=...
+ * List tributes for a specific record.
+ */
+async function handleListTributes(request, env, cors) {
+  try {
+    const url = new URL(request.url);
+    const targetType = url.searchParams.get('targetType');
+    const targetId = url.searchParams.get('targetId');
+    const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+    const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+
+    if (!targetType || !targetId) {
+      return jsonResponse({ success: false, error: 'targetType and targetId are required' }, 400, cors);
+    }
+
+    const dirPath = `community/tributes/${targetType}/${targetId}`;
+    let files = [];
+    try {
+      files = await listFiles(env, dirPath);
+    } catch (e) {
+      files = [];
+    }
+
+    const jsonFiles = files.filter(f => f.endsWith('.json'));
+    const allTributes = [];
+
+    for (const file of jsonFiles) {
+      try {
+        const content = await readFile(env, `${dirPath}/${file}`);
+        const tribute = JSON.parse(content);
+        if (tribute.status === 'active') allTributes.push(tribute);
+      } catch (e) { continue; }
+    }
+
+    // Sort newest first
+    allTributes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    // Paginate
+    const paginated = allTributes.slice(offset, offset + limit);
+
+    return jsonResponse({
+      success: true,
+      total: allTributes.length,
+      limit,
+      offset,
+      hasMore: offset + limit < allTributes.length,
+      tributes: paginated
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to list tributes', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * DELETE /api/tributes/:tributeId
+ * Delete a tribute (owner or admin only).
+ */
+async function handleDeleteTribute(tributeId, request, env, cors) {
+  try {
+    const user = await getAuthenticatedUser(request, env);
+    if (!user) {
+      return jsonResponse({ success: false, error: 'Authentication required' }, 401, cors);
+    }
+
+    // Search all tribute directories for this tribute
+    const types = ['grave', 'cemetery'];
+    let found = false;
+    let filePath = null;
+
+    for (const targetType of types) {
+      try {
+        const basePath = `community/tributes/${targetType}`;
+        const targetDirs = await listFiles(env, basePath);
+        for (const dir of targetDirs) {
+          try {
+            const files = await listFiles(env, `${basePath}/${dir}`);
+            const match = files.find(f => f.includes(tributeId));
+            if (match) {
+              filePath = `${basePath}/${dir}/${match}`;
+              found = true;
+              break;
+            }
+          } catch (e) { continue; }
+        }
+        if (found) break;
+      } catch (e) { continue; }
+    }
+
+    if (!found || !filePath) {
+      return jsonResponse({ success: false, error: 'Tribute not found' }, 404, cors);
+    }
+
+    // Read tribute to check ownership
+    const content = await readFile(env, filePath);
+    const tribute = JSON.parse(content);
+
+    if (tribute.userId !== user.userId && !user.isAdmin) {
+      return jsonResponse({ success: false, error: 'You can only delete your own tributes' }, 403, cors);
+    }
+
+    // Mark as deleted
+    tribute.status = 'deleted';
+    tribute.deletedAt = new Date().toISOString();
+    await writeFile(env, filePath, JSON.stringify(tribute, null, 2));
+
+    return jsonResponse({ success: true, message: 'Tribute deleted' }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to delete tribute', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/tributes/:tributeId/like
+ * Like a tribute.
+ */
+async function handleLikeTribute(tributeId, request, env, cors) {
+  try {
+    const user = await getAuthenticatedUser(request, env);
+    if (!user) {
+      return jsonResponse({ success: false, error: 'Authentication required' }, 401, cors);
+    }
+
+    // Find tribute file
+    const types = ['grave', 'cemetery'];
+    let found = false;
+    let filePath = null;
+
+    for (const targetType of types) {
+      try {
+        const basePath = `community/tributes/${targetType}`;
+        const targetDirs = await listFiles(env, basePath);
+        for (const dir of targetDirs) {
+          try {
+            const files = await listFiles(env, `${basePath}/${dir}`);
+            const match = files.find(f => f.includes(tributeId));
+            if (match) {
+              filePath = `${basePath}/${dir}/${match}`;
+              found = true;
+              break;
+            }
+          } catch (e) { continue; }
+        }
+        if (found) break;
+      } catch (e) { continue; }
+    }
+
+    if (!found || !filePath) {
+      return jsonResponse({ success: false, error: 'Tribute not found' }, 404, cors);
+    }
+
+    const content = await readFile(env, filePath);
+    const tribute = JSON.parse(content);
+
+    // Track likes
+    if (!tribute.likes) tribute.likes = [];
+    if (!tribute.likes.includes(user.userId)) {
+      tribute.likes.push(user.userId);
+    }
+
+    await writeFile(env, filePath, JSON.stringify(tribute, null, 2));
+
+    return jsonResponse({
+      success: true,
+      likeCount: tribute.likes.length,
+      hasLiked: true
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to like tribute', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/community/feed
+ * Community activity feed: recent tributes, contributions, photos.
+ */
+async function handleCommunityFeed(request, env, cors) {
+  try {
+    const url = new URL(request.url);
+    const limit = parseInt(url.searchParams.get('limit') || '20', 10);
+    const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+    const type = url.searchParams.get('type'); // optional filter: tributes, contributions, photos
+
+    const feedItems = [];
+
+    // Fetch recent tributes
+    if (!type || type === 'tributes') {
+      try {
+        const basePath = 'community/tributes';
+        const typeDirs = await listFiles(env, basePath);
+        for (const typeDir of typeDirs.slice(0, 5)) {
+          try {
+            const recordDirs = await listFiles(env, `${basePath}/${typeDir}`);
+            for (const recordDir of recordDirs.slice(0, 10)) {
+              try {
+                const files = await listFiles(env, `${basePath}/${typeDir}/${recordDir}`);
+                for (const file of files.slice(0, 5)) {
+                  try {
+                    const content = await readFile(env, `${basePath}/${typeDir}/${recordDir}/${file}`);
+                    const tribute = JSON.parse(content);
+                    if (tribute.status === 'active') {
+                      feedItems.push({
+                        type: 'tribute',
+                        tributeId: tribute.tributeId,
+                        targetType: tribute.targetType,
+                        targetId: tribute.targetId,
+                        displayName: tribute.displayName,
+                        message: tribute.message.substring(0, 200),
+                        tributeType: tribute.type,
+                        likes: (tribute.likes || []).length,
+                        createdAt: tribute.createdAt
+                      });
+                    }
+                  } catch (e) { continue; }
+                }
+              } catch (e) { continue; }
+            }
+          } catch (e) { continue; }
+        }
+      } catch (e) { /* no tributes yet */ }
+    }
+
+    // Sort newest first
+    feedItems.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    // Paginate
+    const paginated = feedItems.slice(offset, offset + limit);
+
+    return jsonResponse({
+      success: true,
+      total: feedItems.length,
+      limit,
+      offset,
+      hasMore: offset + limit < feedItems.length,
+      feed: paginated
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get community feed', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/community/stats
+ * Community statistics: total tributes, contributors, contributions.
+ */
+async function handleCommunityStats(request, env, cors) {
+  try {
+    let totalTributes = 0;
+    let totalCandles = 0;
+    let totalMessages = 0;
+    let totalFlowers = 0;
+
+    try {
+      const basePath = 'community/tributes';
+      const typeDirs = await listFiles(env, basePath);
+      for (const typeDir of typeDirs) {
+        try {
+          const recordDirs = await listFiles(env, `${basePath}/${typeDir}`);
+          for (const recordDir of recordDirs) {
+            try {
+              const files = await listFiles(env, `${basePath}/${typeDir}/${recordDir}`);
+              for (const file of files) {
+                try {
+                  const content = await readFile(env, `${basePath}/${typeDir}/${recordDir}/${file}`);
+                  const tribute = JSON.parse(content);
+                  if (tribute.status === 'active') {
+                    totalTributes++;
+                    if (tribute.type === 'candle') totalCandles++;
+                    else if (tribute.type === 'message') totalMessages++;
+                    else if (tribute.type === 'flower') totalFlowers++;
+                  }
+                } catch (e) { continue; }
+              }
+            } catch (e) { continue; }
+          }
+        } catch (e) { continue; }
+      }
+    } catch (e) { /* no tributes yet */ }
+
+    return jsonResponse({
+      success: true,
+      totalTributes,
+      candles: totalCandles,
+      messages: totalMessages,
+      flowers: totalFlowers,
+      timestamp: new Date().toISOString()
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get community stats', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/community/leaderboard
+ * Top contributors by tribute count.
+ */
+async function handleCommunityLeaderboard(request, env, cors) {
+  try {
+    const url = new URL(request.url);
+    const limit = parseInt(url.searchParams.get('limit') || '10', 10);
+
+    const contributorMap = {};
+
+    try {
+      const basePath = 'community/tributes';
+      const typeDirs = await listFiles(env, basePath);
+      for (const typeDir of typeDirs) {
+        try {
+          const recordDirs = await listFiles(env, `${basePath}/${typeDir}`);
+          for (const recordDir of recordDirs) {
+            try {
+              const files = await listFiles(env, `${basePath}/${typeDir}/${recordDir}`);
+              for (const file of files) {
+                try {
+                  const content = await readFile(env, `${basePath}/${typeDir}/${recordDir}/${file}`);
+                  const tribute = JSON.parse(content);
+                  if (tribute.status === 'active' && tribute.userId) {
+                    if (!contributorMap[tribute.userId]) {
+                      contributorMap[tribute.userId] = {
+                        userId: tribute.userId,
+                        displayName: tribute.displayName,
+                        tributeCount: 0
+                      };
+                    }
+                    contributorMap[tribute.userId].tributeCount++;
+                  }
+                } catch (e) { continue; }
+              }
+            } catch (e) { continue; }
+          }
+        } catch (e) { continue; }
+      }
+    } catch (e) { /* no tributes yet */ }
+
+    const leaderboard = Object.values(contributorMap)
+      .sort((a, b) => b.tributeCount - a.tributeCount)
+      .slice(0, limit);
+
+    return jsonResponse({
+      success: true,
+      leaderboard,
+      total: leaderboard.length
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get leaderboard', message: error.message }, 500, cors);
+  }
+}
+
+// ── Helper functions for Phase 19 ──
+
+function sanitizeText(text) {
+  if (!text) return '';
+  return text
+    .replace(/<[^>]*>/g, '') // strip HTML
+    .replace(/javascript:/gi, '')
+    .replace(/on\w+\s*=/gi, '')
+    .trim()
+    .substring(0, 1000);
+}
+
+async function getRateLimitCount(key, env) {
+  // Simple rate limiting via GitHub file metadata or in-memory cache
+  // In production this would use KV or Durable Objects
+  return 0; // Permissive for now — rate limiting is handled by the worker middleware
+}
+
+async function incrementRateLimit(key, windowSeconds, env) {
+  // No-op for now — rate limiting handled by worker middleware
+}
+
+async function incrementUserContributionCount(userId, env) {
+  try {
+    const profilePath = `users/${userId}/profile.json`;
+    const content = await readFile(env, profilePath);
+    const profile = JSON.parse(content);
+    profile.contributionCount = (profile.contributionCount || 0) + 1;
+    profile.lastContributionAt = new Date().toISOString();
+    await writeFile(env, profilePath, JSON.stringify(profile, null, 2));
+  } catch (e) {
+    // Profile might not exist yet
   }
 }

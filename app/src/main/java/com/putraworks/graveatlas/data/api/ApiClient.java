@@ -31,6 +31,8 @@ import com.putraworks.graveatlas.data.model.EnrichmentGapsResult;
 import com.putraworks.graveatlas.data.model.DedupScanResult;
 import com.putraworks.graveatlas.data.model.DedupStatsResult;
 import com.putraworks.graveatlas.data.model.SourceCoverageResult;
+import com.putraworks.graveatlas.data.model.Tribute;
+import com.putraworks.graveatlas.data.model.CommunityFeedItem;
 import com.putraworks.graveatlas.data.model.GlobalHealthOverview;
 import com.putraworks.graveatlas.data.model.CemeteryRecommendations;
 import com.putraworks.graveatlas.data.model.GlobalRecommendations;
@@ -99,6 +101,8 @@ import com.putraworks.graveatlas.data.model.EnrichmentGapsResult;
 import com.putraworks.graveatlas.data.model.DedupScanResult;
 import com.putraworks.graveatlas.data.model.DedupStatsResult;
 import com.putraworks.graveatlas.data.model.SourceCoverageResult;
+import com.putraworks.graveatlas.data.model.Tribute;
+import com.putraworks.graveatlas.data.model.CommunityFeedItem;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -1880,6 +1884,223 @@ public class ApiClient {
                         callback.onSuccess(LinkageGraph.fromJson(new JSONObject(body)));
                     } catch (Exception e) {
                         callback.onError("Failed to parse linkage graph.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    // ── Phase 19: Community Engagement & Memorial Features ──
+
+    /**
+     * Create a tribute (memorial message/candle) on a record.
+     * POST /api/tributes
+     */
+    public void createTribute(String targetType, String targetId, String message,
+            String type, boolean isAnonymous, final ApiCallback<JSONObject> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("targetType", targetType);
+            body.put("targetId", targetId);
+            body.put("message", message);
+            body.put("type", type != null ? type : "message");
+            body.put("isAnonymous", isAnonymous);
+        } catch (Exception e) { return; }
+
+        RequestBody rb = RequestBody.create(body.toString(), JSON);
+        Request request = new Request.Builder()
+            .url(baseUrl + "/api/tributes")
+            .post(rb)
+            .build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String respBody = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(respBody));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse tribute response.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * List tributes for a specific record.
+     * GET /api/tributes?targetType=...&targetId=...&limit=...&offset=...
+     */
+    public void listTributes(String targetType, String targetId, int limit, int offset,
+            final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/tributes?targetType=" + targetType +
+            "&targetId=" + targetId + "&limit=" + limit + "&offset=" + offset;
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse tributes.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Delete a tribute (owner or admin).
+     * DELETE /api/tributes/:tributeId
+     */
+    public void deleteTribute(String tributeId, final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder()
+            .url(baseUrl + "/api/tributes/" + tributeId)
+            .delete()
+            .build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse response.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Like a tribute.
+     * POST /api/tributes/:tributeId/like
+     */
+    public void likeTribute(String tributeId, final ApiCallback<JSONObject> callback) {
+        RequestBody rb = RequestBody.create("", JSON);
+        Request request = new Request.Builder()
+            .url(baseUrl + "/api/tributes/" + tributeId + "/like")
+            .post(rb)
+            .build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse response.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get community activity feed.
+     * GET /api/community/feed?limit=...&offset=...
+     */
+    public void getCommunityFeed(int limit, int offset, final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/community/feed?limit=" + limit + "&offset=" + offset;
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse feed.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get community statistics.
+     * GET /api/community/stats
+     */
+    public void getCommunityStats(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder().url(baseUrl + "/api/community/stats").get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse stats.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get community leaderboard (top contributors).
+     * GET /api/community/leaderboard?limit=...
+     */
+    public void getCommunityLeaderboard(int limit, final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/community/leaderboard?limit=" + limit;
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse leaderboard.");
                     }
                 } else {
                     callback.onError(ApiErrorHandler.getHttpMessage(response.code()));

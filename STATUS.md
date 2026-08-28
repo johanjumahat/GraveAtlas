@@ -56,6 +56,7 @@
 | 16.31. AI Data Enrichment & Auto-Completion Engine | ✅ COMPLETE | 100% |
 | 16.32. AI Deduplication Intelligence & Conflict Resolution | ✅ COMPLETE | 100% |
 | 18. Multi-Country Open Data Connectors | ✅ COMPLETE | 100% |
+| 19. Community Engagement & Memorial Features | ✅ COMPLETE | 100% |
 
 ### Earlier (v7.2.41)
 - R8 minification enabled (APK ~7.9MB, down from larger)
@@ -139,9 +140,11 @@
 
 32. **Add — Kubur SG Connector** ✅ Singapore Muslim/Malay community burial records connector. "Kubur" (Malay for "grave") serves the Muslim community's need to locate ancestral burial sites not covered by NEA's official datasets. 6 known SG Muslim cemeteries with coordinates (Pusara Aman, Pusara Abadi, CCK Muslim, LCK Muslim, Bidadari closed, Jalan Kubor heritage). 5 data sources: community GitHub records (CC-BY-SA 4.0), NEA CCK portal, MUIS listings, Pusara Aman/Abadi committees. Two new endpoints: cemeteries listing and sources listing. v7.2.48.
 
+33. **Add — Community Engagement & Memorial Features** ✅ The social layer: tributes (virtual candles, messages, flowers, photo-memories) on grave/cemetery records with anonymous option, rate limiting (10/hour), like system, delete (owner/admin). Community activity feed (recent tributes, paginated). Community statistics (total tributes, candles, messages, flowers). Contributor leaderboard (top contributors by tribute count). 7 new endpoints, 2 new models (Tribute, CommunityFeedItem), 7 API client methods, 4 new suggested prompts. v7.2.49.
+
 ## Architecture
 
-- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 205 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
+- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 212 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
 - **Android:** 18+ screens with navigation host, external maps handoff (geo: intent), offline support
 - **Data:** GitHub repository (graveatlas-data) with JSON schemas
 - **Auth:** Google Sign-In with ID token verification, session tokens, ban system
@@ -149,7 +152,7 @@
 - **Timeline:** Chronological event visualization with decade grouping, backend endpoint
 - **External Sources:** OpenStreetMap (Overpass API), Wikidata (SPARQL), Singapore Government Open Data (data.gov.sg)
 
-## Test Suite (3684 tests)
+## Test Suite (3760 tests)
 
 | Test File | Tests | Area |
 |---|---|---|

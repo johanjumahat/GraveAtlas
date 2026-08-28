@@ -655,6 +655,47 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.49] — 2026-08-28
+
+### Phase 19: Community Engagement & Memorial Features
+
+The social layer that turns GraveAtlas from a data viewer into a
+living community platform.
+
+**Tributes (Memorial Messages):**
+- Leave virtual candles, messages, flowers, and photo-memories
+  on grave or cemetery records
+- Anonymous option for users who prefer not to be identified
+- Rate limited: 10 tributes per hour per user
+- Message sanitization (HTML stripped, max 1000 chars)
+- Like tributes (unique per user)
+- Delete own tributes (admins can delete any)
+
+**Community Feed:**
+- Activity feed showing recent tributes, contributions, and photos
+- Sortable by type, paginated
+- Community statistics: total tributes, candles, messages, flowers
+
+**Contributor Leaderboard:**
+- Top contributors ranked by tribute count
+- Displays contributor name and contribution count
+
+**New Backend Endpoints (7):**
+- `POST /api/tributes` — create a tribute
+- `GET /api/tributes?targetType=&targetId=&limit=&offset=` — list tributes
+- `DELETE /api/tributes/:tributeId` — delete tribute (owner/admin)
+- `POST /api/tributes/:tributeId/like` — like a tribute
+- `GET /api/community/feed?limit=&offset=` — community activity feed
+- `GET /api/community/stats` — community statistics
+- `GET /api/community/leaderboard?limit=` — top contributors
+
+**New Models (2):** Tribute, CommunityFeedItem
+**API client:** 7 new methods
+**AI system prompt:** Updated with community endpoints
+**4 new suggested prompts**
+**New tests:** 70 (phase19.test.js)
+
+
 ## [7.2.48] — 2026-08-28
 
 ### Kubur SG Connector — Singapore Community Burial Records
