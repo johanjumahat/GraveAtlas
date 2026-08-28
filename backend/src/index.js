@@ -34,6 +34,7 @@ import { validateBatch } from './external-connectors/data-quality.js';
 import { wantsExternalSearch, executeExternalSearch, combinedSearch } from './external-connectors/ai-external-search.js';
 import { DataGovSgConnector } from './external-connectors/connectors/datagov-sg-connector.js';
 import { KuburSGConnector } from './external-connectors/connectors/kubur-sg-connector.js';
+import { KuburSearchConnector } from './external-connectors/connectors/kubur-search-connector.js';
 import { validateNormalizedRecord } from './external-connectors/normalized-schema.js';
 
 import {
@@ -989,6 +990,27 @@ async function handleRequest(request, env, ctx) {
     // Kubur SG search endpoint
     if (path === '/api/kubur-sg/search' && (method === 'GET' || method === 'POST')) {
       return await handleKuburSGSearch(request, env, corsHeaders);
+    }
+
+    // ── Kubur Search Connector (kubursearch.com) ──
+    if (path === '/api/kubur-search/cemeteries' && method === 'GET') {
+      return await handleKuburSearchCemeteries(request, env, corsHeaders);
+    }
+
+    if (path === '/api/kubur-search/sources' && method === 'GET') {
+      return await handleKuburSearchSources(request, env, corsHeaders);
+    }
+
+    if (path === '/api/kubur-search/search' && (method === 'GET' || method === 'POST')) {
+      return await handleKuburSearchSearch(request, env, corsHeaders);
+    }
+
+    if (path === '/api/kubur-search/info' && method === 'GET') {
+      return await handleKuburSearchInfo(request, env, corsHeaders);
+    }
+
+    if (path === '/api/kubur-search/coverage' && method === 'GET') {
+      return await handleKuburSearchCoverage(request, env, corsHeaders);
     }
 
     // Phase 19: Community Engagement & Memorial Features
@@ -20379,6 +20401,160 @@ async function handleKuburSGSearch(request, env, cors) {
     }, 200, cors);
   } catch (error) {
     return jsonResponse({ success: false, error: 'Search failed', message: error.message }, 500, cors);
+  }
+}
+
+// ── Kubur Search (kubursearch.com) Handler Functions ──
+
+/**
+ * GET /api/kubur-search/info
+ * Returns information about the Kubur Search platform.
+ */
+async function handleKuburSearchInfo(request, env, cors) {
+  try {
+    const connector = new KuburSearchConnector();
+    const info = connector.getSourceInfo();
+
+    return jsonResponse({
+      success: true,
+      ...info,
+      sources: connector.listSources()
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get info', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/kubur-search/cemeteries
+ * Lists all cemeteries covered by Kubur Search.
+ */
+async function handleKuburSearchCemeteries(request, env, cors) {
+  try {
+    const connector = new KuburSearchConnector();
+    const results = await connector.request({}, env);
+
+    return jsonResponse({
+      success: true,
+      total: results.cemeteryRecords.length,
+      cemeteries: results.cemeteryRecords,
+      attribution: 'Kubur Search — kubursearch.com'
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to list cemeteries', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/kubur-search/sources
+ * Lists all data sources within the Kubur Search connector.
+ */
+async function handleKuburSearchSources(request, env, cors) {
+  try {
+    const connector = new KuburSearchConnector();
+    const sources = connector.listSources();
+    const sourceInfo = connector.getSourceInfo();
+
+    return jsonResponse({
+      success: true,
+      ...sourceInfo,
+      totalSources: sources.length,
+      sources
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to list sources', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET/POST /api/kubur-search/search
+ * Search Kubur Search and return deep links to kubursearch.com.
+ *
+ * GET: ?q=&cemetery=&block=&plot=
+ * POST: { query, cemetery, block, plot }
+ */
+async function handleKuburSearchSearch(request, env, cors) {
+  try {
+    let params;
+    if (request.method === 'POST') {
+      const body = await request.json();
+      params = {
+        q: body.query || body.q || '',
+        cemetery: body.cemetery || '',
+        block: body.block || '',
+        plot: body.plot || ''
+      };
+    } else {
+      const url = new URL(request.url);
+      params = {
+        q: url.searchParams.get('q') || '',
+        cemetery: url.searchParams.get('cemetery') || '',
+        block: url.searchParams.get('block') || '',
+        plot: url.searchParams.get('plot') || ''
+      };
+    }
+
+    const connector = new KuburSearchConnector();
+    const queryObj = {
+      search: params.q,
+      cemetery: params.cemetery,
+      block: params.block,
+      plot: params.plot
+    };
+
+    const results = await connector.request(queryObj, env);
+
+    return jsonResponse({
+      success: true,
+      query: params.q || null,
+      filters: {
+        cemetery: params.cemetery || null,
+        block: params.block || null,
+        plot: params.plot || null
+      },
+      searchLinks: results.searchLinks,
+      cemeteries: results.cemeteryRecords,
+      total: results.totalCount,
+      sourcesQueried: results.sourcesQueried,
+      attribution: results.attribution,
+      note: results.note,
+      website: 'https://kubursearch.com'
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Search failed', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/kubur-search/coverage
+ * Returns coverage status for each cemetery.
+ */
+async function handleKuburSearchCoverage(request, env, cors) {
+  try {
+    const connector = new KuburSearchConnector();
+
+    // Get coverage for all known cemeteries
+    const knownCemeteries = [
+      'Pusara Aman',
+      'Pusara Abadi',
+      'Choa Chu Kang Muslim',
+      'Jalan Kubor'
+    ];
+
+    const coverage = knownCemeteries.map(function(name) {
+      const c = connector.getCemeteryCoverage(name);
+      return c || { name: name, coverageStatus: 'unknown' };
+    });
+
+    return jsonResponse({
+      success: true,
+      totalCemeteries: coverage.length,
+      coverage,
+      attribution: 'Kubur Search — kubursearch.com',
+      coverageMapUrl: 'https://kubursearch.com/coverage'
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get coverage', message: error.message }, 500, cors);
   }
 }
 

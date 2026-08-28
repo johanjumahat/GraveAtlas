@@ -146,9 +146,11 @@
 
 35. **Add — AI Photo Quality Assessment & Enhancement** ✅ Photo quality scoring system for cemetery/headstone photos. Evaluates 6 dimensions (resolution, brightness, contrast, sharpness, noise, GPS), scores 0-100 with letter grade (A-F), predicts OCR readiness (high/medium/low), identifies issues with severity levels, and generates actionable enhancement recommendations (brightness, contrast, sharpness, denoise, upscale, crop, straighten) with specific tools (Snapseed, Lightroom, Remini, Upscayl). Batch assessment for up to 20 photos. 4 new endpoints, 1 new model (PhotoAssessment with Issue + EnhancementSuggestion inner classes), 4 API client methods, 3 new suggested prompts. v7.2.51.
 
+36. **Add — Kubur Search Connector (kubursearch.com)** ✅ New connector integrating with kubursearch.com — Singapore's largest Muslim grave search platform (80,000+ records). Deep-link integration since no public API. 5 endpoints (info, cemeteries, sources, search, coverage), 1 new model (KuburSearchResult), 5 API client methods, 2 new suggested prompts. v7.2.53.
+
 ## Architecture
 
-- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 221 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
+- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 227 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
 - **Android:** 18+ screens with navigation host, external maps handoff (geo: intent), offline support
 - **Data:** GitHub repository (graveatlas-data) with JSON schemas
 - **Auth:** Google Sign-In with ID token verification, session tokens, ban system
@@ -156,7 +158,7 @@
 - **Timeline:** Chronological event visualization with decade grouping, backend endpoint
 - **External Sources:** OpenStreetMap (Overpass API), Wikidata (SPARQL), Singapore Government Open Data (data.gov.sg)
 
-## Test Suite (3939 tests)
+## Test Suite (4080 tests)
 
 | Test File | Tests | Area |
 |---|---|---|

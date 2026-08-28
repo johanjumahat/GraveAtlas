@@ -655,6 +655,48 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.53] — 2026-08-28
+
+### Phase 21.6: Kubur Search Connector (kubursearch.com)
+
+New connector integrating with kubursearch.com — Singapore's largest
+Muslim grave search platform with 80,000+ records across Pusara Aman
+and Pusara Abadi cemeteries, founded by Ramzul Ihsan.
+
+Since kubursearch.com has no public API, this connector provides
+deep-link integration: GraveAtlas constructs search URLs and returns
+click-through links to kubursearch.com for viewing actual records.
+
+**Connector Features:**
+- Deep-link search by name, cemetery, block, plot
+- Cemetery coverage metadata (4 cemeteries with status)
+- Exhumed blocks tracking (Choa Chu Kang)
+- Makam (historical graves) section
+- Cemetery stories section
+- Coverage map link
+- Report grave link
+- Attribution: "Kubur Search — kubursearch.com"
+
+**Covered Cemeteries:**
+- Pusara Aman Muslim Cemetery (40,000+ records, full coverage)
+- Pusara Abadi Muslim Cemetery (40,000+ records, full coverage)
+- Choa Chu Kang Muslim Cemetery (partial, exhumed blocks)
+- Jalan Kubor Cemetery (heritage, partial)
+
+**New Backend Endpoints (5):**
+- GET /api/kubur-search/info — platform info
+- GET /api/kubur-search/cemeteries — covered cemeteries
+- GET /api/kubur-search/sources — data sources
+- GET/POST /api/kubur-search/search — deep-link search
+- GET /api/kubur-search/coverage — coverage status
+
+**New Model:** KuburSearchResult (SearchLink + CemeteryCoverage)
+**API client:** 5 new methods
+**AI system prompt:** Updated with Kubur Search endpoints
+**2 new suggested prompts**
+**New tests:** 81 (phase21.6-kubur-search-connector.test.js)
+
+
 ## [7.2.51] — 2026-08-28
 
 ### Phase 21: AI Photo Quality Assessment & Enhancement

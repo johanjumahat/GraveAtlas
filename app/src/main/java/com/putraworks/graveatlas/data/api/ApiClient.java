@@ -35,6 +35,7 @@ import com.putraworks.graveatlas.data.model.Tribute;
 import com.putraworks.graveatlas.data.model.CommunityFeedItem;
 import com.putraworks.graveatlas.data.model.HeadstoneAnalysis;
 import com.putraworks.graveatlas.data.model.PhotoAssessment;
+import com.putraworks.graveatlas.data.model.KuburSearchResult;
 import com.putraworks.graveatlas.data.model.GlobalHealthOverview;
 import com.putraworks.graveatlas.data.model.CemeteryRecommendations;
 import com.putraworks.graveatlas.data.model.GlobalRecommendations;
@@ -107,6 +108,7 @@ import com.putraworks.graveatlas.data.model.Tribute;
 import com.putraworks.graveatlas.data.model.CommunityFeedItem;
 import com.putraworks.graveatlas.data.model.HeadstoneAnalysis;
 import com.putraworks.graveatlas.data.model.PhotoAssessment;
+import com.putraworks.graveatlas.data.model.KuburSearchResult;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -1897,6 +1899,168 @@ public class ApiClient {
     }
 
     // ── Kubur SG Connector — Singapore Muslim Community Burial Records ──
+
+    // ── Kubur Search Connector (kubursearch.com) ──
+
+    /**
+     * Get Kubur Search platform info.
+     * GET /api/kubur-search/info
+     */
+    public void getKuburSearchInfo(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder()
+            .url(baseUrl + "/api/kubur-search/info")
+            .get()
+            .build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse info.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * List cemeteries covered by Kubur Search.
+     * GET /api/kubur-search/cemeteries
+     */
+    public void listKuburSearchCemeteries(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder()
+            .url(baseUrl + "/api/kubur-search/cemeteries")
+            .get()
+            .build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse cemeteries.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * List Kubur Search data sources.
+     * GET /api/kubur-search/sources
+     */
+    public void listKuburSearchSources(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder()
+            .url(baseUrl + "/api/kubur-search/sources")
+            .get()
+            .build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse sources.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Search Kubur Search and get deep links to kubursearch.com.
+     * GET/POST /api/kubur-search/search
+     */
+    public void searchKuburSearch(String query, String cemetery, String block, String plot,
+            final ApiCallback<JSONObject> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            if (query != null) body.put("query", query);
+            if (cemetery != null) body.put("cemetery", cemetery);
+            if (block != null) body.put("block", block);
+            if (plot != null) body.put("plot", plot);
+        } catch (Exception e) { return; }
+
+        RequestBody rb = RequestBody.create(body.toString(), JSON);
+        Request request = new Request.Builder()
+            .url(baseUrl + "/api/kubur-search/search")
+            .post(rb)
+            .build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String respBody = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(respBody));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse search results.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get coverage status for Kubur Search cemeteries.
+     * GET /api/kubur-search/coverage
+     */
+    public void getKuburSearchCoverage(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder()
+            .url(baseUrl + "/api/kubur-search/coverage")
+            .get()
+            .build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse coverage.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
 
     /**
      * Search Kubur SG burial records and cemeteries.
