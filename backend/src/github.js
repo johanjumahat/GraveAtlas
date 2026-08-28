@@ -268,6 +268,81 @@ async function readFile(path, env) {
 }
 
 /**
+ * Write raw base64 binary content to a file in the GitHub repository.
+ * Used for image uploads (photos) where content is already base64-encoded.
+ */
+async function writeBinaryFile(path, base64Content, env, commitMessage) {
+  path = prefixPath(path);
+  const token = await getToken(env);
+  const ref = getRefParam(env);
+  const base = getRepoUrl(env);
+  const url = `${base}/${encodePath(path)}${ref}`;
+
+  let sha = null;
+  try {
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': 'GraveAtlas-Worker', 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json' },
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      sha = data.sha;
+    }
+  } catch (e) { /* file doesn't exist yet */ }
+
+  const body = {
+    message: commitMessage || `Write ${path}`,
+    content: base64Content,
+    branch: env.GITHUB_BRANCH || 'main',
+  };
+  if (sha) body.sha = sha;
+
+  const resp = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'User-Agent': 'GraveAtlas-Worker',
+      'Authorization': `token ${token}`,
+      'Accept': 'application/vnd.github+json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!resp.ok) {
+    const remaining = resp.headers.get('X-RateLimit-Remaining');
+    const reset = resp.headers.get('X-RateLimit-Reset');
+    if (resp.status === 403 && remaining === '0') {
+      const retryAfter = reset ? Math.max(1, parseInt(reset, 10) - Math.floor(Date.now() / 1000)) : 60;
+      throw new Error(`GitHub API error: 403 (rate limited, retry after ${retryAfter}s)`);
+    }
+    throw new Error(`GitHub API error: ${resp.status}`);
+  }
+
+  return resp.json();
+}
+
+/**
+ * Read raw binary content from the GitHub repository.
+ * Returns the raw base64 string from the GitHub Contents API.
+ */
+async function readBinaryFile(path, env) {
+  path = prefixPath(path);
+  const token = await getToken(env);
+  const ref = getRefParam(env);
+  const base = getRepoUrl(env);
+  const url = `${base}/${encodePath(path)}${ref}`;
+
+  const resp = await fetch(url, {
+    headers: { 'User-Agent': 'GraveAtlas-Worker', 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json' },
+  });
+
+  if (!resp.ok) return null;
+
+  const data = await resp.json();
+  return data.content; // raw base64 string
+}
+
+
+/**
  * List files in a directory.
  */
 async function listFiles(dirPath, env) {
@@ -531,4 +606,6 @@ export {
   moveFile,
   sanitizePathSegment,
   buildSafePath,
+  writeBinaryFile,
+  readBinaryFile,
 };

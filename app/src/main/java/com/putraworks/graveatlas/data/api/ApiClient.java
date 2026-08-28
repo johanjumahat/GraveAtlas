@@ -2109,6 +2109,55 @@ public class ApiClient {
         });
     }
 
+    /**
+     * Upload a photo (base64 image data) to the backend.
+     * The image is stored in the GitHub data repo and a photo contribution is created.
+     * POST /api/photos/upload
+     */
+    public void uploadPhoto(String targetId, String targetType, String imageData,
+                            String rights, String description,
+                            final ApiCallback<JSONObject> callback) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("targetId", targetId);
+            body.put("targetType", targetType);
+            body.put("imageData", imageData);
+            body.put("rights", rights != null ? rights : "OWN_WORK");
+            if (description != null) body.put("description", description);
+
+            RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+            Request.Builder reqBuilder = new Request.Builder()
+                    .url(baseUrl + "/api/photos/upload")
+                    .post(requestBody);
+            String auth = getAuthHeader();
+            if (auth != null) reqBuilder.header("Authorization", auth);
+            Request request = reqBuilder.build();
+
+            client.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+                }
+
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) {
+                        try {
+                            String b = response.body() != null ? response.body().string() : "{}";
+                            callback.onSuccess(new JSONObject(b));
+                        } catch (Exception e) {
+                            callback.onError("Failed to parse upload response.");
+                        }
+                    } else {
+                        callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                    }
+                }
+            });
+        } catch (Exception e) {
+            callback.onError("Failed: " + e.getMessage());
+        }
+    }
+
     // ── Phase 21: AI Photo Quality Assessment & Enhancement ──
 
     /**

@@ -1,16 +1,24 @@
 package com.putraworks.graveatlas.ui.addgrave;
 
+import android.content.ContentResolver;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.net.Uri;
 import android.os.Bundle;
+import android.util.Base64;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
@@ -23,22 +31,31 @@ import com.putraworks.graveatlas.data.model.SubmissionResponse;
 import com.putraworks.graveatlas.auth.LoginActivity;
 import com.putraworks.graveatlas.auth.SecureStorage;
 
+import org.json.JSONObject;
+
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+
 /**
  * Add grave screen — form for submitting new grave records.
- * Includes a review step before submission and offline support.
+ * Includes optional photo upload, review step, and offline support.
  * Submissions enter "pending" state for moderator review.
  */
 public class AddGraveFragment extends Fragment {
 
     private EditText nameField, birthDateField, deathDateField, cemeteryField,
             sectionField, plotField, latField, lonField, notesField;
-    private Button submitBtn, reviewBtn, confirmBtn, cancelBtn;
+    private Button submitBtn, reviewBtn, confirmBtn, cancelBtn, addPhotoBtn;
+    private ImageView photoPreview;
+    private TextView photoLabel;
     private ProgressBar progressBar;
     private TextView statusLabel;
     private LinearLayout formLayout, reviewLayout;
     private ApiClient apiClient;
     private OfflineSubmissionManager offlineManager;
     private GraveSubmission pendingSubmission;
+    private Uri selectedPhotoUri;
+    private ActivityResultLauncher<String> photoPicker;
 
     @Nullable
     @Override
@@ -49,6 +66,19 @@ public class AddGraveFragment extends Fragment {
 
         apiClient = new ApiClient();
         offlineManager = new OfflineSubmissionManager(getContext(), apiClient);
+
+        // Register photo picker launcher
+        photoPicker = registerForActivityResult(
+                new ActivityResultContracts.GetContent(),
+                uri -> {
+                    if (uri != null) {
+                        selectedPhotoUri = uri;
+                        photoPreview.setImageURI(uri);
+                        photoPreview.setVisibility(View.VISIBLE);
+                        photoLabel.setText("Photo selected");
+                        addPhotoBtn.setText("Change Photo");
+                    }
+                });
 
         TextView title = new TextView(getContext());
         title.setText("Add a Grave");
@@ -70,6 +100,27 @@ public class AddGraveFragment extends Fragment {
         latField = createField(formLayout, "Latitude (-90 to 90)", "1.3521");
         lonField = createField(formLayout, "Longitude (-180 to 180)", "103.8198");
         notesField = createField(formLayout, "Notes", "");
+
+        // Photo picker section
+        photoLabel = new TextView(getContext());
+        photoLabel.setText("Add a headstone or cemetery photo (optional)");
+        photoLabel.setTextSize(13);
+        photoLabel.setPadding(0, 16, 0, 4);
+        formLayout.addView(photoLabel);
+
+        addPhotoBtn = new Button(getContext());
+        addPhotoBtn.setText("Choose Photo");
+        addPhotoBtn.setAllCaps(false);
+        addPhotoBtn.setOnClickListener(v -> photoPicker.launch("image/*"));
+        formLayout.addView(addPhotoBtn);
+
+        photoPreview = new ImageView(getContext());
+        photoPreview.setVisibility(View.GONE);
+        photoPreview.setAdjustViewBounds(true);
+        photoPreview.setMaxHeight(400);
+        photoPreview.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        photoPreview.setPadding(0, 8, 0, 8);
+        formLayout.addView(photoPreview);
 
         TextView note = new TextView(getContext());
         note.setText("\n* Required field. Submissions are reviewed by moderators before publishing.\nYour submission will enter a pending state.");
@@ -178,6 +229,9 @@ public class AddGraveFragment extends Fragment {
             review.append("Coordinates: ").append(submission.latitude).append(", ").append(submission.longitude).append("\n");
         }
         review.append("Notes: ").append(submission.notes != null ? submission.notes : "—");
+        if (selectedPhotoUri != null) {
+            review.append("\nPhoto: Attached");
+        }
 
         TextView reviewContent = reviewLayout.findViewById(android.R.id.text1);
         reviewContent.setText(review.toString());
@@ -245,42 +299,155 @@ public class AddGraveFragment extends Fragment {
         apiClient.submitGrave(pendingSubmission, new ApiClient.ApiCallback<SubmissionResponse>() {
             @Override
             public void onSuccess(SubmissionResponse result) {
-                if (getActivity() != null) {
+                if (getActivity() == null) return;
+
+                // If no photo, done
+                if (selectedPhotoUri == null) {
+                    getActivity().runOnUiThread(() -> onSubmissionComplete(result.submissionId, null));
+                    return;
+                }
+
+                // Upload photo after grave submission succeeds
+                String imageData = uriToBase64(selectedPhotoUri);
+                if (imageData == null) {
                     getActivity().runOnUiThread(() -> {
                         progressBar.setVisibility(View.GONE);
                         confirmBtn.setEnabled(true);
                         cancelBtn.setEnabled(true);
-                        statusLabel.setText("✓ Submitted! ID: " + result.submissionId + "\nStatus: pending review");
+                        statusLabel.setText("Grave submitted (ID: " + result.submissionId + ")\nPhoto upload failed: could not read image");
                         reviewLayout.setVisibility(View.GONE);
                         formLayout.setVisibility(View.VISIBLE);
                         clearForm();
                         pendingSubmission = null;
                     });
+                    return;
                 }
+
+                statusLabel.setText("Grave submitted. Uploading photo...");
+                apiClient.uploadPhoto(result.submissionId, "grave", imageData, "OWN_WORK", null,
+                        new ApiClient.ApiCallback<JSONObject>() {
+                            @Override
+                            public void onSuccess(JSONObject response) {
+                                if (getActivity() != null) {
+                                    getActivity().runOnUiThread(() -> {
+                                        String photoId = response.optJSONObject("photo") != null
+                                                ? response.optJSONObject("photo").optString("id", "?") : "?";
+                                        onSubmissionComplete(result.submissionId, photoId);
+                                    });
+                                }
+                            }
+
+                            @Override
+                            public void onError(String error) {
+                                if (getActivity() != null) {
+                                    getActivity().runOnUiThread(() -> {
+                                        progressBar.setVisibility(View.GONE);
+                                        confirmBtn.setEnabled(true);
+                                        cancelBtn.setEnabled(true);
+                                        statusLabel.setText("Grave submitted (ID: " + result.submissionId + ")\nPhoto upload failed: " + error);
+                                        reviewLayout.setVisibility(View.GONE);
+                                        formLayout.setVisibility(View.VISIBLE);
+                                        clearForm();
+                                        pendingSubmission = null;
+                                    });
+                                }
+                            }
+                        });
             }
 
             @Override
             public void onError(String error) {
-                if (getActivity() != null) {
-                    getActivity().runOnUiThread(() -> {
-                        progressBar.setVisibility(View.GONE);
-                        confirmBtn.setEnabled(true);
-                        cancelBtn.setEnabled(true);
+                if (getActivity() == null) return;
+                getActivity().runOnUiThread(() -> {
+                    progressBar.setVisibility(View.GONE);
+                    confirmBtn.setEnabled(true);
+                    cancelBtn.setEnabled(true);
 
-                        if (ApiErrorHandler.isOfflineError(error)) {
-                            // Save for offline retry
-                            String localId = offlineManager.savePending(pendingSubmission);
-                            statusLabel.setText("You're offline. Your submission has been saved and will be sent when you're connected.\n\nLocal ID: " + localId);
-                            reviewLayout.setVisibility(View.GONE);
-                            formLayout.setVisibility(View.VISIBLE);
-                            clearForm();
-                        } else {
-                            statusLabel.setText(error);
-                        }
-                    });
-                }
+                    if (ApiErrorHandler.isOfflineError(error)) {
+                        // Save for offline retry
+                        String localId = offlineManager.savePending(pendingSubmission);
+                        statusLabel.setText("You're offline. Your submission has been saved and will be sent when you're connected.\n\nLocal ID: " + localId);
+                        reviewLayout.setVisibility(View.GONE);
+                        formLayout.setVisibility(View.VISIBLE);
+                        clearForm();
+                    } else {
+                        statusLabel.setText(error);
+                    }
+                });
             }
         });
+    }
+
+    private void onSubmissionComplete(String submissionId, String photoId) {
+        progressBar.setVisibility(View.GONE);
+        confirmBtn.setEnabled(true);
+        cancelBtn.setEnabled(true);
+        StringBuilder msg = new StringBuilder();
+        msg.append("Submitted! ID: ").append(submissionId).append("\nStatus: pending review");
+        if (photoId != null) {
+            msg.append("\nPhoto uploaded (ID: ").append(photoId).append(")");
+        }
+        statusLabel.setText(msg.toString());
+        reviewLayout.setVisibility(View.GONE);
+        formLayout.setVisibility(View.VISIBLE);
+        clearForm();
+        pendingSubmission = null;
+        selectedPhotoUri = null;
+        photoPreview.setVisibility(View.GONE);
+        photoLabel.setText("Add a headstone or cemetery photo (optional)");
+        addPhotoBtn.setText("Choose Photo");
+    }
+
+    /**
+     * Convert a content URI to a compressed base64 JPEG string.
+     * Downscaled to max 1024px, JPEG quality 80.
+     */
+    private String uriToBase64(Uri uri) {
+        try {
+            ContentResolver resolver = getContext().getContentResolver();
+            InputStream is = resolver.openInputStream(uri);
+            if (is == null) return null;
+
+            // Decode bounds first to check dimensions
+            BitmapFactory.Options opts = new BitmapFactory.Options();
+            opts.inJustDecodeBounds = true;
+            BitmapFactory.decodeStream(is, null, opts);
+            is.close();
+
+            // Calculate sample size to downscale large images
+            int maxDim = Math.max(opts.outWidth, opts.outHeight);
+            int sampleSize = 1;
+            while (maxDim / sampleSize > 1024) {
+                sampleSize *= 2;
+            }
+
+            // Decode actual bitmap at reduced size
+            opts.inJustDecodeBounds = false;
+            opts.inSampleSize = sampleSize;
+            is = resolver.openInputStream(uri);
+            Bitmap bitmap = BitmapFactory.decodeStream(is, null, opts);
+            is.close();
+
+            if (bitmap == null) return null;
+
+            // Further scale if still too large
+            int bmpMaxDim = Math.max(bitmap.getWidth(), bitmap.getHeight());
+            if (bmpMaxDim > 1024) {
+                float scale = 1024f / bmpMaxDim;
+                int newW = Math.round(bitmap.getWidth() * scale);
+                int newH = Math.round(bitmap.getHeight() * scale);
+                bitmap = Bitmap.createScaledBitmap(bitmap, newW, newH, true);
+            }
+
+            // Compress to JPEG and base64 encode
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 80, baos);
+            byte[] bytes = baos.toByteArray();
+            bitmap.recycle();
+            return "data:image/jpeg;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private void clearForm() {

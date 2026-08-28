@@ -16,7 +16,7 @@
  * Phase 2: Full GitHub integration with moderation workflow.
  */
 
-import { getToken, writeFile, readFile, listFiles, deleteFile, sanitizePathSegment } from './github.js';
+import { getToken, writeFile, readFile, listFiles, deleteFile, sanitizePathSegment, writeBinaryFile, readBinaryFile } from './github.js';
 import * as Phase6A from './phase6a.js';
 import * as Phase4A from './phase4a.js';
 import * as Phase7A from './phase7a.js';
@@ -1344,6 +1344,17 @@ async function handleRequest(request, env, ctx) {
     // Photo contributions
     if (path === '/api/photos' && method === 'POST') {
       return await handleSubmitPhoto(request, env, corsHeaders);
+    }
+
+    // Upload photo (base64 image → GitHub repo storage)
+    if (path === '/api/photos/upload' && method === 'POST') {
+      return await handlePhotoUpload(request, env, corsHeaders);
+    }
+
+    // Serve photo image by photo ID
+    const photoImageMatch = path.match(/^\/api\/photos\/([^/]+)\/image$/);
+    if (photoImageMatch && method === 'GET') {
+      return await handleGetPhotoImage(photoImageMatch[1], request, env, corsHeaders);
     }
 
 
@@ -16029,6 +16040,140 @@ async function handleSubmitPhoto(request, env, cors) {
     success: true,
     photo: { id: photo.id, status: photo.status, rights: photo.rights, createdAt: photo.createdAt }
   }, 201, cors);
+}
+
+/**
+ * Upload a photo as base64 image data.
+ * Stores the image in the GitHub data repo and creates a photo contribution record.
+ * POST /api/photos/upload
+ * Body: { targetId, targetType, imageData (base64), rights, description? }
+ */
+async function handlePhotoUpload(request, env, cors) {
+  const auth = requireGoogleAuth(request, env);
+  if (!auth.authenticated) return jsonResponse({ success: false, error: auth.error }, 401, cors);
+  const userId = auth.userId;
+
+  const user = await Phase6A.getUser(env, userId);
+  if (!user) return jsonResponse({ success: false, error: 'User not registered' }, 401, cors);
+  if (user.accountStatus === 'SUSPENDED') return jsonResponse({ success: false, error: 'Account suspended' }, 403, cors);
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ success: false, error: 'Invalid JSON' }, 400, cors);
+  }
+
+  // Validate required fields
+  if (!body.targetId || typeof body.targetId !== 'string') {
+    return jsonResponse({ success: false, error: 'targetId is required' }, 400, cors);
+  }
+  if (!body.targetType || !['cemetery', 'grave', 'memorial'].includes(body.targetType)) {
+    return jsonResponse({ success: false, error: 'targetType must be cemetery, grave, or memorial' }, 400, cors);
+  }
+  if (!body.imageData || typeof body.imageData !== 'string') {
+    return jsonResponse({ success: false, error: 'imageData (base64) is required' }, 400, cors);
+  }
+
+  // Strip data URI prefix if present (data:image/jpeg;base64,...)
+  const dataUriMatch = body.imageData.match(/^data:image\/(\w+);base64,(.*)$/);
+  let base64Data, extension;
+  if (dataUriMatch) {
+    extension = dataUriMatch[1] === 'jpeg' ? 'jpg' : dataUriMatch[1];
+    base64Data = dataUriMatch[2];
+  } else {
+    extension = 'jpg';
+    base64Data = body.imageData;
+  }
+
+  // Size check: max 5MB decoded
+  const sizeBytes = Math.ceil(base64Data.length * 3 / 4);
+  if (sizeBytes > 5 * 1024 * 1024) {
+    return jsonResponse({ success: false, error: 'Image too large (max 5MB)' }, 400, cors);
+  }
+
+  // Rate limit
+  const rl = Phase6A.checkUserRateLimit(userId);
+  if (!rl.allowed) return jsonResponse({ success: false, error: 'Rate limit exceeded' }, 429, cors);
+
+  // Generate photo ID and commit image to GitHub
+  const photoId = Phase6A.generatePhotoId();
+  const filePath = `photos/${photoId}.${extension}`;
+
+  try {
+    await writeBinaryFile(filePath, base64Data, env, `Upload photo ${photoId} for ${body.targetType} ${body.targetId}`);
+  } catch (e) {
+    return jsonResponse({ success: false, error: `Failed to store image: ${e.message}` }, 500, cors);
+  }
+
+  // Build the photo URL (served via Worker)
+  const origin = new URL(request.url).origin;
+  const photoUrl = `${origin}/api/photos/${photoId}/image`;
+
+  // Validate image rights
+  const rightsError = Phase6A.validateImageRights(body.rights);
+  if (rightsError) return jsonResponse({ success: false, error: rightsError }, 400, cors);
+
+  // Create photo contribution record
+  const photo = await Phase6A.createPhotoContribution(
+    env, userId, body.targetId, body.targetType, photoUrl, body.rights || 'OWN_WORK', body.description, body.sourceRef
+  );
+
+  await Phase6A.createContributionAuditEvent(env, Phase6A.AUDIT_ACTIONS.PHOTO_SUBMITTED, userId, photo.id, {
+    targetId: body.targetId, targetType: body.targetType, rights: body.rights || 'OWN_WORK'
+  });
+
+  await logSubmissionAttempt(env, {
+    userId,
+    googleSub: auth.googleSub,
+    contributionId: photo.id,
+    contributionType: 'photo',
+    clientIp: getClientIp(request),
+    userAgent: request.headers.get('User-Agent') || '',
+    success: true,
+  });
+
+  return jsonResponse({
+    success: true,
+    photo: { id: photo.id, status: photo.status, rights: photo.rights, photoUrl, createdAt: photo.createdAt }
+  }, 201, cors);
+}
+
+/**
+ * Serve a photo image by photo contribution ID.
+ * GET /api/photos/{photoId}/image
+ * Reads the image from the GitHub data repo and returns it as binary.
+ */
+async function handleGetPhotoImage(photoId, request, env, cors) {
+  // Photo IDs are sanitized: only alphanumeric + underscore
+  if (!/^[a-zA-Z0-9_]+$/.test(photoId)) {
+    return jsonResponse({ error: 'Invalid photo ID' }, 400, cors);
+  }
+
+  // Try common image extensions
+  for (const ext of ['jpg', 'jpeg', 'png', 'webp', 'gif']) {
+    try {
+      const base64Content = await readBinaryFile(`photos/${photoId}.${ext}`, env);
+      if (base64Content) {
+        const contentType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`;
+        // Decode base64 to binary
+        const binary = atob(base64Content.replace(/\n/g, ''));
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        return new Response(bytes, {
+          headers: {
+            'Content-Type': contentType,
+            'Cache-Control': 'public, max-age=86400',
+            ...cors,
+          },
+        });
+      }
+    } catch (e) { /* try next extension */ }
+  }
+
+  return jsonResponse({ error: 'Image not found' }, 404, cors);
 }
 
 // ── Phase 7A: Advanced Search & Global Discovery Handlers ──
