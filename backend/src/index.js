@@ -1011,6 +1011,31 @@ async function handleRequest(request, env, ctx) {
 
     if (path === '/api/kubur-search/coverage' && method === 'GET') {
       return await handleKuburSearchCoverage(request, env, corsHeaders);
+    // Phase 22: AI Inscription Translation & Cross-Language Search
+    if (path === "/api/translation/info" && method === "GET") {
+      return await handleTranslationInfo(request, env, corsHeaders);
+    }
+    if (path === "/api/translation/languages" && method === "GET") {
+      return await handleTranslationLanguages(request, env, corsHeaders);
+    }
+    if (path === "/api/translation/analyze" && method === "POST") {
+      return await handleTranslationAnalyze(request, env, corsHeaders);
+    }
+    if (path === "/api/translation/translate" && method === "POST") {
+      return await handleTranslationTranslate(request, env, corsHeaders);
+    }
+    if (path === "/api/translation/detect" && method === "POST") {
+      return await handleTranslationDetect(request, env, corsHeaders);
+    }
+    if (path === "/api/translation/transliterate" && method === "POST") {
+      return await handleTranslationTransliterate(request, env, corsHeaders);
+    }
+    if (path === "/api/translation/notations" && method === "POST") {
+      return await handleTranslationNotations(request, env, corsHeaders);
+    }
+    if (path === "/api/translation/cross-search" && (method === "GET" || method === "POST")) {
+      return await handleTranslationCrossSearch(request, env, corsHeaders);
+    }
     }
 
     // Phase 19: Community Engagement & Memorial Features
@@ -22145,4 +22170,235 @@ function generateEnhancementSuggestions(issues, photoType) {
   suggestions.sort((a, b) => a.step - b.step);
 
   return suggestions;
+}
+
+// ── Phase 22: AI Inscription Translation & Cross-Language Search ──
+
+/**
+ * GET /api/translation/info
+ * Returns info about the inscription translation system.
+ */
+async function handleTranslationInfo(request, env, cors) {
+  try {
+    const { getTranslationInfo, getSupportedLanguages } = await import('./translation/inscription-translator.js');
+    const info = getTranslationInfo();
+    const languages = getSupportedLanguages();
+    return jsonResponse({
+      success: true,
+      ...info,
+      languages
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get translation info', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/translation/languages
+ * Returns list of supported languages.
+ */
+async function handleTranslationLanguages(request, env, cors) {
+  try {
+    const { getSupportedLanguages } = await import('./translation/inscription-translator.js');
+    const languages = getSupportedLanguages();
+    return jsonResponse({
+      success: true,
+      totalLanguages: languages.length,
+      languages
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get languages', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/translation/analyze
+ * Full inscription analysis: detect script, translate, transliterate, identify notations.
+ * Body: { text: string, targetLanguage?: string }
+ */
+async function handleTranslationAnalyze(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { text, targetLanguage } = body;
+
+    if (!text || typeof text !== 'string') {
+      return jsonResponse({ success: false, error: 'text is required' }, 400, cors);
+    }
+
+    const { analyzeInscription } = await import('./translation/inscription-translator.js');
+    const result = analyzeInscription(text, targetLanguage || 'English');
+
+    return jsonResponse({
+      success: true,
+      ...result,
+      attribution: 'GraveAtlas — AI Inscription Translation'
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Analysis failed', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/translation/translate
+ * Translate inscription text.
+ * Body: { text: string, sourceLanguage?: string, targetLanguage?: string }
+ */
+async function handleTranslationTranslate(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { text, sourceLanguage, targetLanguage } = body;
+
+    if (!text || typeof text !== 'string') {
+      return jsonResponse({ success: false, error: 'text is required' }, 400, cors);
+    }
+
+    const { translateInscription, detectScript } = await import('./translation/inscription-translator.js');
+
+    // Auto-detect source language if not provided
+    const scriptInfo = sourceLanguage ? { language: sourceLanguage } : detectScript(text);
+    const translation = translateInscription(text, scriptInfo.language);
+
+    return jsonResponse({
+      success: true,
+      originalText: translation.originalText,
+      sourceLanguage: scriptInfo.language,
+      targetLanguage: targetLanguage || 'English',
+      translatedText: translation.translatedText,
+      segments: translation.translatedSegments,
+      untranslated: translation.untranslated,
+      note: translation.translatedText
+        ? 'Pattern-based translation. For full text translation, AI translation service recommended.'
+        : 'No pattern matches found. For full translation, AI translation service recommended.',
+      attribution: 'GraveAtlas — AI Inscription Translation'
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Translation failed', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/translation/detect
+ * Detect the script and language of inscription text.
+ * Body: { text: string }
+ */
+async function handleTranslationDetect(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { text } = body;
+
+    if (!text || typeof text !== 'string') {
+      return jsonResponse({ success: false, error: 'text is required' }, 400, cors);
+    }
+
+    const { detectScript } = await import('./translation/inscription-translator.js');
+    const result = detectScript(text);
+
+    return jsonResponse({
+      success: true,
+      text,
+      script: result.script,
+      language: result.language,
+      confidence: result.confidence,
+      detectedChars: result.detectedChars,
+      attribution: 'GraveAtlas — AI Inscription Translation'
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Detection failed', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/translation/transliterate
+ * Transliterate non-Latin text to Latin script.
+ * Body: { text: string, script: string }
+ */
+async function handleTranslationTransliterate(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { text, script } = body;
+
+    if (!text || typeof text !== 'string') {
+      return jsonResponse({ success: false, error: 'text is required' }, 400, cors);
+    }
+
+    const { transliterate, detectScript } = await import('./translation/inscription-translator.js');
+    const scriptToUse = script || detectScript(text).script;
+    const result = transliterate(text, scriptToUse);
+
+    return jsonResponse({
+      success: true,
+      originalText: text,
+      script: scriptToUse,
+      transliteratedText: result,
+      attribution: 'GraveAtlas — AI Inscription Translation'
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Transliteration failed', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/translation/notations
+ * Identify cultural/religious notations in inscription text.
+ * Body: { text: string }
+ */
+async function handleTranslationNotations(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { text } = body;
+
+    if (!text || typeof text !== 'string') {
+      return jsonResponse({ success: false, error: 'text is required' }, 400, cors);
+    }
+
+    const { identifyNotations } = await import('./translation/inscription-translator.js');
+    const notations = identifyNotations(text);
+
+    return jsonResponse({
+      success: true,
+      text,
+      notationsFound: notations.length,
+      notations,
+      attribution: 'GraveAtlas — AI Inscription Translation'
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Notation identification failed', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET/POST /api/translation/cross-search
+ * Expand a search query with cross-language name equivalents.
+ * GET: ?q=name  POST: { query: "name" }
+ */
+async function handleTranslationCrossSearch(request, env, cors) {
+  try {
+    let query;
+    if (request.method === 'POST') {
+      const body = await request.json();
+      query = body.query || body.q;
+    } else {
+      const url = new URL(request.url);
+      query = url.searchParams.get('q') || url.searchParams.get('query');
+    }
+
+    if (!query) {
+      return jsonResponse({ success: false, error: 'query is required' }, 400, cors);
+    }
+
+    const { expandCrossLanguageSearch } = await import('./translation/inscription-translator.js');
+    const result = expandCrossLanguageSearch(query);
+
+    return jsonResponse({
+      success: true,
+      originalQuery: result.originalQuery,
+      expandedQueries: result.expandedQueries,
+      totalExpanded: result.expandedQueries.length,
+      languages: result.languages,
+      equivalents: result.equivalents,
+      attribution: 'GraveAtlas — AI Inscription Translation'
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Cross-language search failed', message: error.message }, 500, cors);
+  }
 }

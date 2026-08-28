@@ -36,6 +36,7 @@ import com.putraworks.graveatlas.data.model.CommunityFeedItem;
 import com.putraworks.graveatlas.data.model.HeadstoneAnalysis;
 import com.putraworks.graveatlas.data.model.PhotoAssessment;
 import com.putraworks.graveatlas.data.model.KuburSearchResult;
+import com.putraworks.graveatlas.data.model.InscriptionTranslationResult;
 import com.putraworks.graveatlas.data.model.GlobalHealthOverview;
 import com.putraworks.graveatlas.data.model.CemeteryRecommendations;
 import com.putraworks.graveatlas.data.model.GlobalRecommendations;
@@ -6321,6 +6322,301 @@ public class ApiClient {
                 }
             }
         });
+    }
+
+
+    // ── Phase 22: AI Inscription Translation & Cross-Language Search ──
+
+    /**
+     * Get translation system info.
+     * GET /api/translation/info
+     */
+    public void getTranslationInfo(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder()
+            .url(baseUrl + "/api/translation/info")
+            .get()
+            .build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse translation info.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get supported languages.
+     * GET /api/translation/languages
+     */
+    public void getTranslationLanguages(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder()
+            .url(baseUrl + "/api/translation/languages")
+            .get()
+            .build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse languages.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Analyze an inscription (detect script, translate, transliterate, identify notations).
+     * POST /api/translation/analyze
+     */
+    public void analyzeInscription(String text, String targetLanguage, final ApiCallback<JSONObject> callback) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("text", text);
+            if (targetLanguage != null) body.put("targetLanguage", targetLanguage);
+
+            RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+            Request request = new Request.Builder()
+                .url(baseUrl + "/api/translation/analyze")
+                .post(requestBody)
+                .build();
+            client.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+                }
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) {
+                        try {
+                            String respBody = response.body() != null ? response.body().string() : "{}";
+                            callback.onSuccess(new JSONObject(respBody));
+                        } catch (Exception e) {
+                            callback.onError("Failed to parse analysis result.");
+                        }
+                    } else {
+                        callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                    }
+                }
+            });
+        } catch (Exception e) {
+            callback.onError("Failed to build request: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Translate inscription text.
+     * POST /api/translation/translate
+     */
+    public void translateInscription(String text, String sourceLanguage, String targetLanguage, final ApiCallback<JSONObject> callback) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("text", text);
+            if (sourceLanguage != null) body.put("sourceLanguage", sourceLanguage);
+            if (targetLanguage != null) body.put("targetLanguage", targetLanguage);
+
+            RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+            Request request = new Request.Builder()
+                .url(baseUrl + "/api/translation/translate")
+                .post(requestBody)
+                .build();
+            client.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+                }
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) {
+                        try {
+                            String respBody = response.body() != null ? response.body().string() : "{}";
+                            callback.onSuccess(new JSONObject(respBody));
+                        } catch (Exception e) {
+                            callback.onError("Failed to parse translation.");
+                        }
+                    } else {
+                        callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                    }
+                }
+            });
+        } catch (Exception e) {
+            callback.onError("Failed to build request: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Detect script and language of inscription text.
+     * POST /api/translation/detect
+     */
+    public void detectScript(String text, final ApiCallback<JSONObject> callback) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("text", text);
+
+            RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+            Request request = new Request.Builder()
+                .url(baseUrl + "/api/translation/detect")
+                .post(requestBody)
+                .build();
+            client.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+                }
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) {
+                        try {
+                            String respBody = response.body() != null ? response.body().string() : "{}";
+                            callback.onSuccess(new JSONObject(respBody));
+                        } catch (Exception e) {
+                            callback.onError("Failed to parse detection result.");
+                        }
+                    } else {
+                        callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                    }
+                }
+            });
+        } catch (Exception e) {
+            callback.onError("Failed to build request: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Transliterate non-Latin text to Latin script.
+     * POST /api/translation/transliterate
+     */
+    public void transliterateText(String text, String script, final ApiCallback<JSONObject> callback) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("text", text);
+            if (script != null) body.put("script", script);
+
+            RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+            Request request = new Request.Builder()
+                .url(baseUrl + "/api/translation/transliterate")
+                .post(requestBody)
+                .build();
+            client.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+                }
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) {
+                        try {
+                            String respBody = response.body() != null ? response.body().string() : "{}";
+                            callback.onSuccess(new JSONObject(respBody));
+                        } catch (Exception e) {
+                            callback.onError("Failed to parse transliteration.");
+                        }
+                    } else {
+                        callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                    }
+                }
+            });
+        } catch (Exception e) {
+            callback.onError("Failed to build request: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Identify cultural/religious notations in inscription text.
+     * POST /api/translation/notations
+     */
+    public void identifyNotations(String text, final ApiCallback<JSONObject> callback) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("text", text);
+
+            RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+            Request request = new Request.Builder()
+                .url(baseUrl + "/api/translation/notations")
+                .post(requestBody)
+                .build();
+            client.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+                }
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) {
+                        try {
+                            String respBody = response.body() != null ? response.body().string() : "{}";
+                            callback.onSuccess(new JSONObject(respBody));
+                        } catch (Exception e) {
+                            callback.onError("Failed to parse notations.");
+                        }
+                    } else {
+                        callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                    }
+                }
+            });
+        } catch (Exception e) {
+            callback.onError("Failed to build request: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Cross-language search expansion.
+     * GET/POST /api/translation/cross-search
+     */
+    public void crossLanguageSearch(String query, final ApiCallback<JSONObject> callback) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("query", query);
+
+            RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+            Request request = new Request.Builder()
+                .url(baseUrl + "/api/translation/cross-search")
+                .post(requestBody)
+                .build();
+            client.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+                }
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) {
+                        try {
+                            String respBody = response.body() != null ? response.body().string() : "{}";
+                            callback.onSuccess(new JSONObject(respBody));
+                        } catch (Exception e) {
+                            callback.onError("Failed to parse cross-language search.");
+                        }
+                    } else {
+                        callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                    }
+                }
+            });
+        } catch (Exception e) {
+            callback.onError("Failed to build request: " + e.getMessage());
+        }
     }
 
     public interface ApiCallback<T> {

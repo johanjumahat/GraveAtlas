@@ -655,6 +655,73 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.54] — 2026-08-28
+
+### Phase 22: AI Inscription Translation & Cross-Language Search
+
+Inscription translation system for headstone texts in 8 languages.
+Detects script via Unicode block analysis, translates common epitaph
+phrases, transliterates non-Latin scripts, identifies cultural/religious
+notations, and expands name searches across languages.
+
+**Supported Languages (8):**
+- Chinese (CJK) — transliteration available
+- Arabic — transliteration available
+- Tamil — pattern translation
+- Malay (Latin/Jawi) — transliteration available
+- Hebrew — transliteration available
+- Japanese (CJK/Kana) — pattern translation
+- Korean (Hangul) — transliteration available
+- English (Latin)
+
+**Script Detection:**
+- Unicode block analysis for 8 scripts
+- Confidence scoring (0-100)
+- Multi-script text handling (e.g., Japanese = CJK + Kana)
+- Jawi (Arabic-script Malay) detection via specific characters
+
+**Pattern-Based Translation:**
+- Chinese: 15 epitaph phrases (先考, 先妣, 之墓, 永遠懷念, etc.)
+- Arabic: 10 epitaph phrases (المرحوم, رحمه الله, بسم الله, etc.)
+- Japanese: 6 epitaph phrases (戒名, 俗名, �享年, etc.)
+- Tamil: 3 epitaph phrases (நினைவாக, பிறந்த, இறந்த)
+
+**Transliteration:**
+- Arabic → Latin (28 character mappings)
+- Hebrew → Latin (22 character mappings)
+- Korean → Latin (common surnames: Kim, Lee, Park, etc.)
+
+**Cultural/Religious Notations (40+):**
+- Islamic: almarhum, almarhumah, rahmatullah, bismillah, etc.
+- Chinese: 先考, 先妣, 显考, 之墓, 生于, 卒于, etc.
+- Japanese: 戒名, 俗名, 命日, 没年月日, etc.
+- Jewish: פ״נ, תנצבה, etc.
+- Christian: In Memory of, RIP, Requiescat in Pace
+- Tamil: நினைவாக, பிறந்த, இறந்த
+
+**Cross-Language Name Search:**
+- Arabic ↔ English (Ahmad ↔ أحمد, Muhammad ↔ محمد, etc.)
+- Chinese ↔ English (Tan ↔ 陈, Lee ↔ 李, Lim ↔ 林, etc.)
+- Tamil ↔ English (Murugan ↔ முருகன், Devi ↔ தேவி, etc.)
+
+**New Backend Endpoints (8):**
+- GET /api/translation/info — system info
+- GET /api/translation/languages — supported languages
+- POST /api/translation/analyze — full inscription analysis
+- POST /api/translation/translate — inscription translation
+- POST /api/translation/detect — script/language detection
+- POST /api/translation/transliterate — non-Latin to Latin
+- POST /api/translation/notations — cultural notation identification
+- GET/POST /api/translation/cross-search — cross-language name expansion
+
+**New Module:** backend/src/translation/inscription-translator.js
+**New Model:** InscriptionTranslationResult (3 inner classes)
+**API client:** 9 new methods
+**AI system prompt:** Updated with translation endpoints
+**2 new suggested prompts**
+**New tests:** 106 (phase22.test.js)
+
+
 ## [7.2.53] — 2026-08-28
 
 ### Phase 21.6: Kubur Search Connector (kubursearch.com)

@@ -1,10 +1,10 @@
 # GraveAtlas — Project Status
 
-**Current Version:** 7.2.42 (build 174)
-**Last Updated:** 2026-08-19
+**Current Version:** 7.2.54 (build 192)
+**Last Updated:** 2026-08-28
 **Status:** Active — all PRs merged, CI green
 
-## Recent Changes (v7.2.42)
+## Recent Changes (v7.2.54)
 
 ### UI Fixes (PR #50 — merged)
 - Removed duplicate AI input box from home screen
@@ -57,6 +57,11 @@
 | 16.32. AI Deduplication Intelligence & Conflict Resolution | ✅ COMPLETE | 100% |
 | 18. Multi-Country Open Data Connectors | ✅ COMPLETE | 100% |
 | 19. Community Engagement & Memorial Features | ✅ COMPLETE | 100% |
+| 20. AI Headstone Image Intelligence | ✅ COMPLETE | 100% |
+| 21. AI Photo Quality Assessment | ✅ COMPLETE | 100% |
+| 21.5. Kubur SG Connector | ✅ COMPLETE | 100% |
+| 21.6. Kubur Search Connector | ✅ COMPLETE | 100% |
+| 22. AI Inscription Translation & Cross-Language Search | ✅ COMPLETE | 100% |
 
 ### Earlier (v7.2.41)
 - R8 minification enabled (APK ~7.9MB, down from larger)
