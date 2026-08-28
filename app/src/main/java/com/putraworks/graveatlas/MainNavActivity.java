@@ -35,6 +35,21 @@ import com.putraworks.graveatlas.ui.timeline.TimelineFragment;
 import com.putraworks.graveatlas.ui.settings.SettingsFragment;
 import com.putraworks.graveatlas.ui.gravedetail.GraveDetailFragment;
 import com.putraworks.graveatlas.utils.ShareUtils;
+import com.putraworks.graveatlas.ui.tributes.TributesFragment;
+import com.putraworks.graveatlas.ui.community.CommunityFragment;
+import com.putraworks.graveatlas.ui.notifications.NotificationsFragment;
+import com.putraworks.graveatlas.ui.analytics.AnalyticsFragment;
+import com.putraworks.graveatlas.ui.intelligent.IntelligentSearchFragment;
+import com.putraworks.graveatlas.ui.genealogy.GenealogyFragment;
+import com.putraworks.graveatlas.ui.translation.TranslationFragment;
+import com.putraworks.graveatlas.ui.memorial.MemorialFragment;
+import com.putraworks.graveatlas.ui.reports.ReportsFragment;
+import com.putraworks.graveatlas.ui.watchlist.WatchlistFragment;
+import com.putraworks.graveatlas.ui.export.ExportFragment;
+import com.putraworks.graveatlas.ui.provenance.ProvenanceFragment;
+import com.putraworks.graveatlas.ui.enrichment.EnrichmentFragment;
+import com.putraworks.graveatlas.ui.aiheadstone.AIHeadstoneFragment;
+import com.putraworks.graveatlas.ui.sources.SourceVerificationFragment;
 
 /**
  * GraveAtlas — Main Activity with bottom navigation (NurOne-style).
@@ -196,6 +211,96 @@ public class MainNavActivity extends AppCompatActivity {
                 });
             } catch (Exception e) { /* ID not in layout yet — skip */ }
         }
+
+
+        // === Phase 17: Feature Parity — 15 new feature fragments ===
+
+        // Community section
+        try {
+            sheetView.findViewById(R.id.moreTributes).setOnClickListener(v -> {
+                dialog.dismiss();
+                loadFragment(new TributesFragment());
+                selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.moreCommunity).setOnClickListener(v -> {
+                dialog.dismiss();
+                loadFragment(new CommunityFragment());
+                selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.moreNotifications).setOnClickListener(v -> {
+                dialog.dismiss();
+                loadFragment(new NotificationsFragment());
+                selectHomeTabSilently();
+            });
+        } catch (Exception e) { /* IDs not in layout yet */ }
+
+        // Research section
+        try {
+            sheetView.findViewById(R.id.moreIntelligentSearch).setOnClickListener(v -> {
+                dialog.dismiss();
+                loadFragment(new IntelligentSearchFragment());
+                selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.moreGenealogy).setOnClickListener(v -> {
+                dialog.dismiss();
+                loadFragment(new GenealogyFragment());
+                selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.moreTranslation).setOnClickListener(v -> {
+                dialog.dismiss();
+                loadFragment(new TranslationFragment());
+                selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.moreMemorial).setOnClickListener(v -> {
+                dialog.dismiss();
+                loadFragment(new MemorialFragment());
+                selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.moreEnrichment).setOnClickListener(v -> {
+                dialog.dismiss();
+                loadFragment(new EnrichmentFragment());
+                selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.moreAIHeadstone).setOnClickListener(v -> {
+                dialog.dismiss();
+                loadFragment(new AIHeadstoneFragment());
+                selectHomeTabSilently();
+            });
+        } catch (Exception e) { /* IDs not in layout yet */ }
+
+        // Data & Quality section
+        try {
+            sheetView.findViewById(R.id.moreAnalytics).setOnClickListener(v -> {
+                dialog.dismiss();
+                loadFragment(new AnalyticsFragment());
+                selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.moreReports).setOnClickListener(v -> {
+                dialog.dismiss();
+                loadFragment(new ReportsFragment());
+                selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.moreWatchlist).setOnClickListener(v -> {
+                dialog.dismiss();
+                loadFragment(new WatchlistFragment());
+                selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.moreExport).setOnClickListener(v -> {
+                dialog.dismiss();
+                loadFragment(new ExportFragment());
+                selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.moreProvenance).setOnClickListener(v -> {
+                dialog.dismiss();
+                loadFragment(new ProvenanceFragment());
+                selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.moreSourceVerify).setOnClickListener(v -> {
+                dialog.dismiss();
+                loadFragment(new SourceVerificationFragment());
+                selectHomeTabSilently();
+            });
+        } catch (Exception e) { /* IDs not in layout yet */ }
 
         dialog.show();
     }

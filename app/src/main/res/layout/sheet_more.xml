@@ -443,6 +443,590 @@
     </LinearLayout>
 
 
+
+    <!-- Divider -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/divider_dark"
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="12dp" />
+
+    <!-- Section: Community -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="COMMUNITY"
+        android:clickable="false"
+        android:focusable="false"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:textColor="@color/text_muted_dark"
+        android:letterSpacing="0.1"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Row: Tributes, Community, Notifications -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="4dp">
+
+        <LinearLayout
+            android:id="@+id/moreTributes"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_more_about"
+                android:background="@android:color/transparent"
+                app:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Tributes"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/moreCommunity"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_more_mine"
+                android:background="@android:color/transparent"
+                app:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Community"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/moreNotifications"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_more_about"
+                android:background="@android:color/transparent"
+                app:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Alerts"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Divider -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/divider_dark"
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="12dp" />
+
+    <!-- Section: Research -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="RESEARCH"
+        android:clickable="false"
+        android:focusable="false"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:textColor="@color/text_muted_dark"
+        android:letterSpacing="0.1"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Row: Intelligent Search, Genealogy, Translation -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="4dp">
+
+        <LinearLayout
+            android:id="@+id/moreIntelligentSearch"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_nav_search"
+                android:background="@android:color/transparent"
+                app:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Smart Search"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/moreGenealogy"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_more_cemetery"
+                android:background="@android:color/transparent"
+                app:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Genealogy"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/moreTranslation"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_more_about"
+                android:background="@android:color/transparent"
+                app:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Translate"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Row: Memorial, Enrichment, AI Headstone -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="4dp">
+
+        <LinearLayout
+            android:id="@+id/moreMemorial"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_more_about"
+                android:background="@android:color/transparent"
+                app:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Memorial"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/moreEnrichment"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_more_settings"
+                android:background="@android:color/transparent"
+                app:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Enrichment"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/moreAIHeadstone"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_more_about"
+                android:background="@android:color/transparent"
+                app:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="AI Headstone"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Divider -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/divider_dark"
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="12dp" />
+
+    <!-- Section: Data & Quality -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="DATA &amp; QUALITY"
+        android:clickable="false"
+        android:focusable="false"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:textColor="@color/text_muted_dark"
+        android:letterSpacing="0.1"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Row: Analytics, Reports, Watchlist -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="4dp">
+
+        <LinearLayout
+            android:id="@+id/moreAnalytics"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_more_settings"
+                android:background="@android:color/transparent"
+                app:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Analytics"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/moreReports"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_more_about"
+                android:background="@android:color/transparent"
+                app:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Reports"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/moreWatchlist"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_more_mine"
+                android:background="@android:color/transparent"
+                app:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Watchlist"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Row: Export, Provenance, Source Verify -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="4dp">
+
+        <LinearLayout
+            android:id="@+id/moreExport"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_more_settings"
+                android:background="@android:color/transparent"
+                app:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Export"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/moreProvenance"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_more_about"
+                android:background="@android:color/transparent"
+                app:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Provenance"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/moreSourceVerify"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_more_settings"
+                android:background="@android:color/transparent"
+                app:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Source Check"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
+    </LinearLayout>
+
     <!-- Divider -->
     <View
         android:layout_width="match_parent"
