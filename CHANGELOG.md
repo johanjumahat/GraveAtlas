@@ -655,6 +655,53 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.55] — 2026-08-28
+
+### Phase 23: AI Genealogy & Family Tree Builder
+
+Builds family trees from grave records by detecting relationships
+(spouse, parent-child, sibling) using surname matching, date
+proximity, cemetery/section/plot proximity, and inscription clues.
+
+**Relationship Detection (3 types):**
+- Spouse: same surname, adjacent plots, inscription mentions wife/husband/beloved
+- Parent-Child: surname match, birth year alignment (15-60 year gap), inscription "son/daughter of"
+- Sibling: same surname, close birth years, inscription mentions brother/sister
+
+**Detection Signals:**
+- Surname extraction (Western last-word, Chinese first-char, Malay bin/binte)
+- Birth/death year proximity analysis
+- Cemetery, section, and plot proximity
+- Inscription keyword analysis (wife, husband, son of, daughter of, brother, sister)
+- Name similarity (Levenshtein distance)
+- Birth year gap penalties (large gap reduces spouse, close years reduce parent-child)
+
+**Tree Building:**
+- Node extraction (id, name, surname, given name, birth/death years, cemetery, plot)
+- Edge detection with confidence scoring (0-100)
+- Connected component analysis (family grouping)
+- Configurable thresholds (minConfidence, maxRelationships)
+
+**Surname Analysis:**
+- Groups records by surname
+- Identifies family clusters (2+ members with same surname)
+- Sorts by cluster size
+
+**New Backend Endpoints (5):**
+- GET /api/genealogy/info — system info
+- POST /api/genealogy/build-tree — build family tree from records
+- POST /api/genealogy/relationships — detect relationships for target record
+- POST /api/genealogy/confirm — create relationship confirmation request
+- POST /api/genealogy/surname-analysis — find surname family clusters
+
+**New Module:** backend/src/genealogy/family-tree-builder.js
+**New Model:** FamilyTreeResult (3 inner classes: TreeNode, TreeEdge, TreeStats)
+**API client:** 5 new methods
+**AI system prompt:** Updated with genealogy endpoints
+**2 new suggested prompts**
+**New tests:** 67 (phase23.test.js)
+
+
 ## [7.2.54] — 2026-08-28
 
 ### Phase 22: AI Inscription Translation & Cross-Language Search

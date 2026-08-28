@@ -1036,6 +1036,22 @@ async function handleRequest(request, env, ctx) {
     if (path === "/api/translation/cross-search" && (method === "GET" || method === "POST")) {
       return await handleTranslationCrossSearch(request, env, corsHeaders);
     }
+    // Phase 23: AI Genealogy & Family Tree Builder
+    if (path === "/api/genealogy/info" && method === "GET") {
+      return await handleGenealogyInfo(request, env, corsHeaders);
+    }
+    if (path === "/api/genealogy/build-tree" && method === "POST") {
+      return await handleGenealogyBuildTree(request, env, corsHeaders);
+    }
+    if (path === "/api/genealogy/relationships" && method === "POST") {
+      return await handleGenealogyRelationships(request, env, corsHeaders);
+    }
+    if (path === "/api/genealogy/confirm" && method === "POST") {
+      return await handleGenealogyConfirm(request, env, corsHeaders);
+    }
+    if (path === "/api/genealogy/surname-analysis" && method === "POST") {
+      return await handleGenealogySurnameAnalysis(request, env, corsHeaders);
+    }
     }
 
     // Phase 19: Community Engagement & Memorial Features
@@ -22400,5 +22416,160 @@ async function handleTranslationCrossSearch(request, env, cors) {
     }, 200, cors);
   } catch (error) {
     return jsonResponse({ success: false, error: 'Cross-language search failed', message: error.message }, 500, cors);
+  }
+}
+
+// ── Phase 23: AI Genealogy & Family Tree Builder ──
+
+/**
+ * GET /api/genealogy/info
+ */
+async function handleGenealogyInfo(request, env, cors) {
+  try {
+    const { getGenealogyInfo } = await import('./genealogy/family-tree-builder.js');
+    const info = getGenealogyInfo();
+    return jsonResponse({ success: true, ...info }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get genealogy info', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/genealogy/build-tree
+ * Build a family tree from a set of records.
+ * Body: { records: [...], options?: { maxRelationships, minConfidence } }
+ */
+async function handleGenealogyBuildTree(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { records, options } = body;
+
+    if (!records || !Array.isArray(records) || records.length < 2) {
+      return jsonResponse({ success: false, error: 'At least 2 records are required' }, 400, cors);
+    }
+
+    const { buildFamilyTree } = await import('./genealogy/family-tree-builder.js');
+    const tree = buildFamilyTree(records, options || {});
+
+    return jsonResponse({ success: true, ...tree, attribution: 'GraveAtlas — AI Genealogy System' }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to build family tree', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/genealogy/relationships
+ * Detect relationships between a specific record and a set of candidates.
+ * Body: { target: {...record}, candidates: [...records], minConfidence?: number }
+ */
+async function handleGenealogyRelationships(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { target, candidates, minConfidence } = body;
+
+    if (!target) {
+      return jsonResponse({ success: false, error: 'target record is required' }, 400, cors);
+    }
+    if (!candidates || !Array.isArray(candidates)) {
+      return jsonResponse({ success: false, error: 'candidates array is required' }, 400, cors);
+    }
+
+    const { detectSpouse, detectParentChild, detectSibling } = await import('./genealogy/family-tree-builder.js');
+    const threshold = minConfidence || 40;
+    const relationships = [];
+
+    for (const c of candidates) {
+      let rel = detectSpouse(target, c);
+      if (rel && rel.confidence >= threshold) relationships.push(rel);
+      rel = detectParentChild(target, c);
+      if (rel && rel.confidence >= threshold) relationships.push(rel);
+      rel = detectParentChild(c, target);
+      if (rel && rel.confidence >= threshold) relationships.push(rel);
+      rel = detectSibling(target, c);
+      if (rel && rel.confidence >= threshold) relationships.push(rel);
+    }
+
+    relationships.sort((a, b) => b.confidence - a.confidence);
+
+    return jsonResponse({
+      success: true,
+      target: target.id || target.name,
+      totalRelationships: relationships.length,
+      relationships,
+      attribution: 'GraveAtlas — AI Genealogy System'
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to detect relationships', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/genealogy/confirm
+ * Generate a confirmation request for a detected relationship.
+ * Body: { relationship: {...} }
+ */
+async function handleGenealogyConfirm(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { relationship } = body;
+
+    if (!relationship) {
+      return jsonResponse({ success: false, error: 'relationship is required' }, 400, cors);
+    }
+
+    const { createConfirmationRequest } = await import('./genealogy/family-tree-builder.js');
+    const confirmation = createConfirmationRequest(relationship);
+
+    return jsonResponse({ success: true, ...confirmation, attribution: 'GraveAtlas — AI Genealogy System' }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to create confirmation', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/genealogy/surname-analysis
+ * Analyze surnames in a set of records to find family clusters.
+ * Body: { records: [...] }
+ */
+async function handleGenealogySurnameAnalysis(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { records } = body;
+
+    if (!records || !Array.isArray(records)) {
+      return jsonResponse({ success: false, error: 'records array is required' }, 400, cors);
+    }
+
+    const { extractSurname } = await import('./genealogy/family-tree-builder.js');
+    const surnameGroups = {};
+
+    for (const r of records) {
+      const sn = extractSurname(r.name || '').toLowerCase();
+      if (!sn) continue;
+      if (!surnameGroups[sn]) surnameGroups[sn] = [];
+      surnameGroups[sn].push({
+        id: r.id || r.name,
+        name: r.name,
+        birthYear: (r.birthDate || r.dateOfBirth || '').match(/(\d{4})/)?.[1] || null,
+        deathYear: (r.deathDate || r.dateOfDeath || '').match(/(\d{4})/)?.[1] || null,
+      });
+    }
+
+    // Sort by group size, only keep groups with 2+
+    const clusters = Object.entries(surnameGroups)
+      .filter(([_, members]) => members.length >= 2)
+      .sort((a, b) => b[1].length - a[1].length)
+      .map(([surname, members]) => ({ surname, memberCount: members.length, members }));
+
+    return jsonResponse({
+      success: true,
+      totalRecords: records.length,
+      totalSurnames: Object.keys(surnameGroups).length,
+      familyClusters: clusters.length,
+      clusters,
+      attribution: 'GraveAtlas — AI Genealogy System'
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Surname analysis failed', message: error.message }, 500, cors);
   }
 }

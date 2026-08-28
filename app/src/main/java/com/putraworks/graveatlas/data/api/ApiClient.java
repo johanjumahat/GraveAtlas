@@ -37,6 +37,7 @@ import com.putraworks.graveatlas.data.model.HeadstoneAnalysis;
 import com.putraworks.graveatlas.data.model.PhotoAssessment;
 import com.putraworks.graveatlas.data.model.KuburSearchResult;
 import com.putraworks.graveatlas.data.model.InscriptionTranslationResult;
+import com.putraworks.graveatlas.data.model.FamilyTreeResult;
 import com.putraworks.graveatlas.data.model.GlobalHealthOverview;
 import com.putraworks.graveatlas.data.model.CemeteryRecommendations;
 import com.putraworks.graveatlas.data.model.GlobalRecommendations;
@@ -6608,6 +6609,194 @@ public class ApiClient {
                             callback.onSuccess(new JSONObject(respBody));
                         } catch (Exception e) {
                             callback.onError("Failed to parse cross-language search.");
+                        }
+                    } else {
+                        callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                    }
+                }
+            });
+        } catch (Exception e) {
+            callback.onError("Failed to build request: " + e.getMessage());
+        }
+    }
+
+
+    // ── Phase 23: AI Genealogy & Family Tree Builder ──
+
+    /**
+     * Get genealogy system info.
+     * GET /api/genealogy/info
+     */
+    public void getGenealogyInfo(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder()
+            .url(baseUrl + "/api/genealogy/info")
+            .get()
+            .build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse genealogy info.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Build a family tree from records.
+     * POST /api/genealogy/build-tree
+     */
+    public void buildFamilyTree(JSONArray records, JSONObject options, final ApiCallback<JSONObject> callback) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("records", records);
+            if (options != null) body.put("options", options);
+
+            RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+            Request request = new Request.Builder()
+                .url(baseUrl + "/api/genealogy/build-tree")
+                .post(requestBody)
+                .build();
+            client.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+                }
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) {
+                        try {
+                            String respBody = response.body() != null ? response.body().string() : "{}";
+                            callback.onSuccess(new JSONObject(respBody));
+                        } catch (Exception e) {
+                            callback.onError("Failed to parse family tree.");
+                        }
+                    } else {
+                        callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                    }
+                }
+            });
+        } catch (Exception e) {
+            callback.onError("Failed to build request: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Detect relationships for a target record.
+     * POST /api/genealogy/relationships
+     */
+    public void detectRelationships(JSONObject target, JSONArray candidates, int minConfidence, final ApiCallback<JSONObject> callback) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("target", target);
+            body.put("candidates", candidates);
+            if (minConfidence > 0) body.put("minConfidence", minConfidence);
+
+            RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+            Request request = new Request.Builder()
+                .url(baseUrl + "/api/genealogy/relationships")
+                .post(requestBody)
+                .build();
+            client.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+                }
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) {
+                        try {
+                            String respBody = response.body() != null ? response.body().string() : "{}";
+                            callback.onSuccess(new JSONObject(respBody));
+                        } catch (Exception e) {
+                            callback.onError("Failed to parse relationships.");
+                        }
+                    } else {
+                        callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                    }
+                }
+            });
+        } catch (Exception e) {
+            callback.onError("Failed to build request: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Create relationship confirmation request.
+     * POST /api/genealogy/confirm
+     */
+    public void confirmRelationship(JSONObject relationship, final ApiCallback<JSONObject> callback) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("relationship", relationship);
+
+            RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+            Request request = new Request.Builder()
+                .url(baseUrl + "/api/genealogy/confirm")
+                .post(requestBody)
+                .build();
+            client.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+                }
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) {
+                        try {
+                            String respBody = response.body() != null ? response.body().string() : "{}";
+                            callback.onSuccess(new JSONObject(respBody));
+                        } catch (Exception e) {
+                            callback.onError("Failed to parse confirmation.");
+                        }
+                    } else {
+                        callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                    }
+                }
+            });
+        } catch (Exception e) {
+            callback.onError("Failed to build request: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Analyze surnames for family clusters.
+     * POST /api/genealogy/surname-analysis
+     */
+    public void analyzeSurnames(JSONArray records, final ApiCallback<JSONObject> callback) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("records", records);
+
+            RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+            Request request = new Request.Builder()
+                .url(baseUrl + "/api/genealogy/surname-analysis")
+                .post(requestBody)
+                .build();
+            client.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+                }
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) {
+                        try {
+                            String respBody = response.body() != null ? response.body().string() : "{}";
+                            callback.onSuccess(new JSONObject(respBody));
+                        } catch (Exception e) {
+                            callback.onError("Failed to parse surname analysis.");
                         }
                     } else {
                         callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
