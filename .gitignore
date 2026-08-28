@@ -42,3 +42,4 @@ backend/.wrangler/
 
 # Downloaded artifacts
 downloads/
+logs.txt
