@@ -910,6 +910,31 @@ async function handleRequest(request, env, ctx) {
       return await handleLinkageGraph(request, env, corsHeaders);
     }
 
+    // Phase 16.31: AI Data Enrichment & Auto-Completion Engine
+    if (path.startsWith('/api/enrichment/suggestions/') && method === 'GET') {
+      const id = path.split('/').pop();
+      return await handleEnrichmentSuggestions(id, request, env, corsHeaders);
+    }
+
+    if (path === '/api/enrichment/batch' && method === 'POST') {
+      return await handleBatchEnrichment(request, env, corsHeaders);
+    }
+
+    if (path === '/api/enrichment/gaps' && method === 'GET') {
+      return await handleEnrichmentGaps(request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/enrichment/infer/') && method === 'GET') {
+      const parts = path.split('/');
+      const recordId = parts[4];
+      const field = parts[5];
+      return await handleInferField(recordId, field, request, env, corsHeaders);
+    }
+
+    if (path === '/api/enrichment/priorities' && method === 'GET') {
+      return await handleEnrichmentPriorities(request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -18547,5 +18572,552 @@ async function handleLinkageGraph(request, env, cors) {
     }, 200, cors);
   } catch (error) {
     return jsonResponse({ success: false, error: 'Failed to build linkage graph', message: error.message }, 500, cors);
+  }
+}
+
+// ── Phase 16.31: AI Data Enrichment & Auto-Completion Engine Handlers ──
+
+/**
+ * Helper: Infer birth year from death year and age-at-death
+ */
+function inferBirthYear(deathYear, ageAtDeath) {
+  if (deathYear && ageAtDeath != null) return deathYear - ageAtDeath;
+  return null;
+}
+
+/**
+ * Helper: Infer death year from birth year and age-at-death
+ */
+function inferDeathYear(birthYear, ageAtDeath) {
+  if (birthYear && ageAtDeath != null) return birthYear + ageAtDeath;
+  return null;
+}
+
+/**
+ * Helper: Infer cemetery from GPS coordinates by nearest cemetery
+ */
+function inferCemeteryFromCoords(lat, lon, cemeteries) {
+  if (!lat || !lon || !cemeteries || cemeteries.length === 0) return null;
+  let nearest = null;
+  let minDist = Infinity;
+  for (const c of cemeteries) {
+    if (!c.latitude || !c.longitude) continue;
+    const dist = haversine(lat, lon, c.latitude, c.longitude);
+    if (dist < minDist) { minDist = dist; nearest = c; }
+  }
+  return nearest && minDist < 5000 ? { cemeteryId: nearest.id, cemeteryName: nearest.name, distance: Math.round(minDist) } : null;
+}
+
+/**
+ * Helper: Find most common value for a field in a set of records
+ */
+function mostCommonValue(records, field) {
+  const counts = {};
+  for (const r of records) {
+    const v = r[field];
+    if (v != null && v !== '') {
+      counts[v] = (counts[v] || 0) + 1;
+    }
+  }
+  let max = 0, result = null;
+  for (const [v, c] of Object.entries(counts)) {
+    if (c > max) { max = c; result = v; }
+  }
+  return result ? { value: result, count: max, confidence: Math.round(max / records.length * 100) } : null;
+}
+
+/**
+ * GET /api/enrichment/suggestions/:recordId
+ * Analyzes a single record and suggests completions for missing fields.
+ */
+async function handleEnrichmentSuggestions(recordId, request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, suggestions: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const allRecords = await loadAllRecords(env);
+    const record = allRecords.find(r => r.id === recordId && r.status === 'published');
+
+    if (!record) {
+      return jsonResponse({ success: false, error: 'Record not found' }, 404, cors);
+    }
+
+    const suggestions = [];
+    const sameCemetery = allRecords.filter(r => r.status === 'published' && r.cemeteryId === record.cemeteryId);
+
+    // Birth year from death year + age
+    if (!record.birthYear && !record.birthDate && record.deathYear && record.ageAtDeath) {
+      const inferred = inferBirthYear(record.deathYear, record.ageAtDeath);
+      if (inferred) {
+        suggestions.push({
+          field: 'birthYear',
+          suggestedValue: inferred,
+          confidence: 90,
+          source: 'inferred from death year and age at death',
+          reasoning: `Death year ${record.deathYear} minus age ${record.ageAtDeath} = birth year ${inferred}`
+        });
+      }
+    }
+
+    // Death year from birth year + age
+    if (!record.deathYear && !record.deathDate && record.birthYear && record.ageAtDeath) {
+      const inferred = inferDeathYear(record.birthYear, record.ageAtDeath);
+      if (inferred) {
+        suggestions.push({
+          field: 'deathYear',
+          suggestedValue: inferred,
+          confidence: 85,
+          source: 'inferred from birth year and age at death',
+          reasoning: `Birth year ${record.birthYear} plus age ${record.ageAtDeath} = death year ${inferred}`
+        });
+      }
+    }
+
+    // Cemetery from GPS coordinates
+    if (!record.cemeteryId && record.latitude && record.longitude) {
+      const cemeteriesWithCoords = sameCemetery.filter(r => r.cemeteryId && r.latitude && r.longitude)
+        .map(r => ({ id: r.cemeteryId, name: r.cemeteryName, latitude: r.latitude, longitude: r.longitude }));
+      const uniqueCems = [];
+      const seenIds = new Set();
+      for (const c of cemeteriesWithCoords) {
+        if (!seenIds.has(c.id)) { seenIds.add(c.id); uniqueCems.push(c); }
+      }
+      const inferred = inferCemeteryFromCoords(record.latitude, record.longitude, uniqueCems);
+      if (inferred) {
+        suggestions.push({
+          field: 'cemeteryId',
+          suggestedValue: inferred.cemeteryId,
+          suggestedName: inferred.cemeteryName,
+          confidence: Math.max(0, 100 - Math.floor(inferred.distance / 50)),
+          source: 'inferred from GPS coordinates',
+          reasoning: `Nearest cemetery is ${inferred.cemeteryName} (${inferred.distance}m away)`
+        });
+      }
+    }
+
+    // Confidence score from available data quality
+    if (record.confidenceScore == null || record.confidenceScore === 0) {
+      let score = 30;
+      if (record.verificationStatus === 'verified') score += 30;
+      if (record.sourceRefs && record.sourceRefs.length > 0) score += 15 * Math.min(record.sourceRefs.length, 2);
+      if (record.latitude && record.longitude) score += 10;
+      if (record.birthYear && record.deathYear) score += 10;
+      if (record.name || record.fullName) score += 5;
+      score = Math.min(score, 100);
+      suggestions.push({
+        field: 'confidenceScore',
+        suggestedValue: score,
+        confidence: 75,
+        source: 'computed from data completeness',
+        reasoning: `Based on verification status, source count, GPS availability, and date completeness`
+      });
+    }
+
+    // Verification status suggestion
+    if (!record.verificationStatus) {
+      if (record.sourceRefs && record.sourceRefs.length >= 2 && record.confidenceScore >= 75) {
+        suggestions.push({
+          field: 'verificationStatus',
+          suggestedValue: 'verified',
+          confidence: 80,
+          source: 'inferred from source count and confidence',
+          reasoning: 'Multiple sources and high confidence suggest verified status'
+        });
+      } else {
+        suggestions.push({
+          field: 'verificationStatus',
+          suggestedValue: 'unverified',
+          confidence: 60,
+          source: 'default (insufficient evidence for verified)',
+          reasoning: 'Lacks multiple sources or high confidence score'
+        });
+      }
+    }
+
+    // Section from plot pattern
+    if (!record.section && record.plot && sameCemetery.length > 0) {
+      const plotPattern = sameCemetery.filter(r => r.section && r.plot && r.plot.startsWith(record.plot.substring(0, 2)));
+      if (plotPattern.length > 0) {
+        const common = mostCommonValue(plotPattern, 'section');
+        if (common && common.confidence >= 50) {
+          suggestions.push({
+            field: 'section',
+            suggestedValue: common.value,
+            confidence: common.confidence,
+            source: 'inferred from plot number pattern in same cemetery',
+            reasoning: `${common.count} records with similar plot numbers are in section ${common.value}`
+          });
+        }
+      }
+    }
+
+    return jsonResponse({
+      success: true,
+      recordId,
+      recordName: record.name || record.fullName || 'Unknown',
+      currentCompleteness: calculateCompleteness(record),
+      suggestions,
+      suggestionCount: suggestions.length
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to generate enrichment suggestions', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * Helper: Calculate completeness percentage (0-100)
+ */
+function calculateCompleteness(record) {
+  const fields = ['name', 'birthYear', 'deathYear', 'cemeteryId', 'latitude', 'longitude',
+    'verificationStatus', 'confidenceScore', 'sourceRefs', 'section', 'plot'];
+  let filled = 0;
+  for (const f of fields) {
+    if (record[f] != null && record[f] !== '' && !(Array.isArray(record[f]) && record[f].length === 0)) {
+      filled++;
+    }
+  }
+  return Math.round(filled / fields.length * 100);
+}
+
+/**
+ * POST /api/enrichment/batch
+ * Analyzes multiple records and returns enrichment suggestions for all.
+ * Body: { recordIds: string[], maxPerRecord?: number }
+ */
+async function handleBatchEnrichment(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, results: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const body = await request.json();
+    const recordIds = body.recordIds || [];
+    const maxPerRecord = body.maxPerRecord || 10;
+
+    if (!Array.isArray(recordIds) || recordIds.length === 0) {
+      return jsonResponse({ success: false, error: 'recordIds array is required' }, 400, cors);
+    }
+
+    if (recordIds.length > 100) {
+      return jsonResponse({ success: false, error: 'Maximum 100 records per batch' }, 400, cors);
+    }
+
+    const allRecords = await loadAllRecords(env);
+    const results = [];
+
+    for (const recordId of recordIds) {
+      const record = allRecords.find(r => r.id === recordId && r.status === 'published');
+      if (!record) {
+        results.push({ recordId, error: 'Record not found' });
+        continue;
+      }
+
+      const sameCemetery = allRecords.filter(r => r.status === 'published' && r.cemeteryId === record.cemeteryId);
+      const suggestions = [];
+
+      // Birth year inference
+      if (!record.birthYear && record.deathYear && record.ageAtDeath) {
+        const inferred = inferBirthYear(record.deathYear, record.ageAtDeath);
+        if (inferred) suggestions.push({
+          field: 'birthYear', suggestedValue: inferred, confidence: 90,
+          source: 'inferred from death year and age'
+        });
+      }
+
+      // Death year inference
+      if (!record.deathYear && record.birthYear && record.ageAtDeath) {
+        const inferred = inferDeathYear(record.birthYear, record.ageAtDeath);
+        if (inferred) suggestions.push({
+          field: 'deathYear', suggestedValue: inferred, confidence: 85,
+          source: 'inferred from birth year and age'
+        });
+      }
+
+      // Confidence score computation
+      if (!record.confidenceScore) {
+        let score = 30;
+        if (record.verificationStatus === 'verified') score += 30;
+        if (record.sourceRefs && record.sourceRefs.length > 0) score += 15 * Math.min(record.sourceRefs.length, 2);
+        if (record.latitude && record.longitude) score += 10;
+        if (record.birthYear && record.deathYear) score += 10;
+        if (record.name) score += 5;
+        score = Math.min(score, 100);
+        suggestions.push({
+          field: 'confidenceScore', suggestedValue: score, confidence: 75,
+          source: 'computed from data completeness'
+        });
+      }
+
+      // Verification status
+      if (!record.verificationStatus) {
+        suggestions.push({
+          field: 'verificationStatus',
+          suggestedValue: record.sourceRefs && record.sourceRefs.length >= 2 ? 'verified' : 'unverified',
+          confidence: 60,
+          source: 'inferred from source count'
+        });
+      }
+
+      results.push({
+        recordId,
+        recordName: record.name || record.fullName || 'Unknown',
+        completeness: calculateCompleteness(record),
+        suggestions: suggestions.slice(0, maxPerRecord)
+      });
+    }
+
+    const totalSuggestions = results.reduce((s, r) => s + (r.suggestions ? r.suggestions.length : 0), 0);
+
+    return jsonResponse({
+      success: true,
+      processedCount: results.length,
+      totalSuggestions,
+      results
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to batch enrich', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/enrichment/gaps
+ * Identifies records with missing fields and returns summary statistics.
+ * Query params: cemeteryId (optional), field (optional filter)
+ */
+async function handleEnrichmentGaps(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, gaps: {}, message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const cemeteryId = url.searchParams.get('cemeteryId');
+    const fieldFilter = url.searchParams.get('field');
+
+    const allRecords = await loadAllRecords(env);
+    let records = allRecords.filter(r => r.status === 'published');
+    if (cemeteryId) {
+      records = records.filter(r => r.cemeteryId === cemeteryId || r.cemeteryName === cemeteryId);
+    }
+
+    const gapFields = ['birthYear', 'deathYear', 'cemeteryId', 'latitude', 'longitude',
+      'verificationStatus', 'confidenceScore', 'sourceRefs', 'section', 'plot', 'ageAtDeath'];
+
+    const gaps = {};
+    for (const field of gapFields) {
+      if (fieldFilter && field !== fieldFilter) continue;
+      const missing = records.filter(r => {
+        const v = r[field];
+        return v == null || v === '' || (Array.isArray(v) && v.length === 0);
+      });
+      if (missing.length > 0) {
+        gaps[field] = {
+          missingCount: missing.length,
+          totalRecords: records.length,
+          missingPercent: Math.round(missing.length / records.length * 100),
+          recordIds: missing.slice(0, 50).map(r => r.id)
+        };
+      }
+    }
+
+    const totalGaps = Object.values(gaps).reduce((s, g) => s + g.missingCount, 0);
+    const avgCompleteness = Math.round(
+      records.reduce((s, r) => s + calculateCompleteness(r), 0) / Math.max(records.length, 1)
+    );
+
+    return jsonResponse({
+      success: true,
+      totalRecords: records.length,
+      avgCompleteness,
+      totalGaps,
+      gapFields: Object.keys(gaps),
+      gaps
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to identify gaps', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/enrichment/infer/:recordId/:field
+ * Infers a single field value for a record with detailed reasoning.
+ */
+async function handleInferField(recordId, field, request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, suggestion: null, message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const allRecords = await loadAllRecords(env);
+    const record = allRecords.find(r => r.id === recordId && r.status === 'published');
+
+    if (!record) {
+      return jsonResponse({ success: false, error: 'Record not found' }, 404, cors);
+    }
+
+    // If field is already populated, don't suggest
+    const currentVal = record[field];
+    if (currentVal != null && currentVal !== '' && !(Array.isArray(currentVal) && currentVal.length === 0)) {
+      return jsonResponse({
+        success: true,
+        recordId,
+        field,
+        currentValue: currentVal,
+        suggestion: null,
+        message: 'Field already has a value'
+      }, 200, cors);
+    }
+
+    const sameCemetery = allRecords.filter(r => r.status === 'published' && r.cemeteryId === record.cemeteryId);
+    let suggestion = null;
+
+    switch (field) {
+      case 'birthYear':
+        if (record.deathYear && record.ageAtDeath) {
+          const inferred = inferBirthYear(record.deathYear, record.ageAtDeath);
+          suggestion = { value: inferred, confidence: 90, source: 'death year - age at death', reasoning: `${record.deathYear} - ${record.ageAtDeath} = ${inferred}` };
+        }
+        break;
+
+      case 'deathYear':
+        if (record.birthYear && record.ageAtDeath) {
+          const inferred = inferDeathYear(record.birthYear, record.ageAtDeath);
+          suggestion = { value: inferred, confidence: 85, source: 'birth year + age at death', reasoning: `${record.birthYear} + ${record.ageAtDeath} = ${inferred}` };
+        }
+        break;
+
+      case 'confidenceScore':
+        let score = 30;
+        if (record.verificationStatus === 'verified') score += 30;
+        if (record.sourceRefs && record.sourceRefs.length > 0) score += 15 * Math.min(record.sourceRefs.length, 2);
+        if (record.latitude && record.longitude) score += 10;
+        if (record.birthYear && record.deathYear) score += 10;
+        if (record.name) score += 5;
+        score = Math.min(score, 100);
+        suggestion = { value: score, confidence: 75, source: 'computed from data quality signals', reasoning: 'Weighted sum of verification, sources, GPS, dates, name' };
+        break;
+
+      case 'verificationStatus':
+        suggestion = {
+          value: (record.sourceRefs && record.sourceRefs.length >= 2) ? 'verified' : 'unverified',
+          confidence: 60,
+          source: 'inferred from source references',
+          reasoning: record.sourceRefs && record.sourceRefs.length >= 2 ? 'Multiple sources suggest verification' : 'Insufficient sources for verification'
+        };
+        break;
+
+      case 'cemeteryId':
+        if (record.latitude && record.longitude) {
+          const cemeteriesWithCoords = sameCemetery.filter(r => r.cemeteryId && r.latitude && r.longitude)
+            .map(r => ({ id: r.cemeteryId, name: r.cemeteryName, latitude: r.latitude, longitude: r.longitude }));
+          const uniqueCems = [];
+          const seenIds = new Set();
+          for (const c of cemeteriesWithCoords) {
+            if (!seenIds.has(c.id)) { seenIds.add(c.id); uniqueCems.push(c); }
+          }
+          const inferred = inferCemeteryFromCoords(record.latitude, record.longitude, uniqueCems);
+          if (inferred) {
+            suggestion = { value: inferred.cemeteryId, name: inferred.cemeteryName, confidence: Math.max(0, 100 - Math.floor(inferred.distance / 50)), source: 'GPS coordinates', reasoning: `Nearest cemetery: ${inferred.cemeteryName} (${inferred.distance}m)` };
+          }
+        }
+        break;
+
+      case 'section':
+        if (record.plot) {
+          const pattern = sameCemetery.filter(r => r.section && r.plot && r.plot.startsWith(record.plot.substring(0, 2)));
+          if (pattern.length > 0) {
+            const common = mostCommonValue(pattern, 'section');
+            if (common) suggestion = { value: common.value, confidence: common.confidence, source: 'plot number pattern', reasoning: `${common.count} records with similar plots in section ${common.value}` };
+          }
+        }
+        break;
+
+      default:
+        // Try statistical inference for other fields
+        if (sameCemetery.length > 10) {
+          const common = mostCommonValue(sameCemetery, field);
+          if (common && common.confidence >= 30) {
+            suggestion = { value: common.value, confidence: common.confidence, source: 'statistical inference from cemetery', reasoning: `${common.count} of ${sameCemetery.length} records share this value` };
+          }
+        }
+    }
+
+    return jsonResponse({
+      success: true,
+      recordId,
+      field,
+      currentValue: currentVal,
+      suggestion
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to infer field', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/enrichment/priorities
+ * Returns records ranked by enrichment priority (most missing fields + most impact).
+ * Query params: cemeteryId (optional), limit (default 50)
+ */
+async function handleEnrichmentPriorities(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, priorities: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const cemeteryId = url.searchParams.get('cemeteryId');
+    const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+
+    const allRecords = await loadAllRecords(env);
+    let records = allRecords.filter(r => r.status === 'published');
+    if (cemeteryId) {
+      records = records.filter(r => r.cemeteryId === cemeteryId || r.cemeteryName === cemeteryId);
+    }
+
+    const gapFields = ['birthYear', 'deathYear', 'latitude', 'longitude', 'verificationStatus', 'confidenceScore', 'sourceRefs', 'section', 'plot'];
+
+    const priorities = records.map(r => {
+      const missing = gapFields.filter(f => {
+        const v = r[f];
+        return v == null || v === '' || (Array.isArray(v) && v.length === 0);
+      });
+
+      // Impact score: missing critical fields (coordinates, verification, sources) weigh more
+      const criticalFields = ['latitude', 'longitude', 'verificationStatus', 'sourceRefs'];
+      const criticalMissing = missing.filter(f => criticalFields.includes(f));
+      const impactScore = missing.length * 2 + criticalMissing.length * 3;
+
+      return {
+        recordId: r.id,
+        name: r.name || r.fullName || 'Unknown',
+        cemetery: r.cemeteryName || r.cemeteryId || 'Unknown',
+        missingFields: missing,
+        missingCount: missing.length,
+        currentCompleteness: calculateCompleteness(r),
+        impactScore,
+        hasCoordinates: !!(r.latitude && r.longitude),
+        isVerified: r.verificationStatus === 'verified',
+        sourceCount: (r.sourceRefs || []).length
+      };
+    }).filter(p => p.missingCount > 0)
+      .sort((a, b) => b.impactScore - a.impactScore)
+      .slice(0, limit);
+
+    return jsonResponse({
+      success: true,
+      totalRecords: records.length,
+      recordsNeedingEnrichment: records.filter(r => {
+        const missing = gapFields.filter(f => {
+          const v = r[f];
+          return v == null || v === '' || (Array.isArray(v) && v.length === 0);
+        });
+        return missing.length > 0;
+      }).length,
+      priorities
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get enrichment priorities', message: error.message }, 500, cors);
   }
 }

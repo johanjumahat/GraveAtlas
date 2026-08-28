@@ -25,6 +25,9 @@ import com.putraworks.graveatlas.data.model.HealthReportSummary;
 import com.putraworks.graveatlas.data.model.FamilyLinkageResult;
 import com.putraworks.graveatlas.data.model.LinkageGraph;
 import com.putraworks.graveatlas.data.model.EventClusteringResult;
+import com.putraworks.graveatlas.data.model.EnrichmentSuggestion;
+import com.putraworks.graveatlas.data.model.EnrichmentSuggestionsResult;
+import com.putraworks.graveatlas.data.model.EnrichmentGapsResult;
 import com.putraworks.graveatlas.data.model.GlobalHealthOverview;
 import com.putraworks.graveatlas.data.model.CemeteryRecommendations;
 import com.putraworks.graveatlas.data.model.GlobalRecommendations;
@@ -87,6 +90,9 @@ import com.putraworks.graveatlas.data.model.HealthReportSummary;
 import com.putraworks.graveatlas.data.model.FamilyLinkageResult;
 import com.putraworks.graveatlas.data.model.LinkageGraph;
 import com.putraworks.graveatlas.data.model.EventClusteringResult;
+import com.putraworks.graveatlas.data.model.EnrichmentSuggestion;
+import com.putraworks.graveatlas.data.model.EnrichmentSuggestionsResult;
+import com.putraworks.graveatlas.data.model.EnrichmentGapsResult;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -1868,6 +1874,169 @@ public class ApiClient {
                         callback.onSuccess(LinkageGraph.fromJson(new JSONObject(body)));
                     } catch (Exception e) {
                         callback.onError("Failed to parse linkage graph.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    // ── Phase 16.31: AI Data Enrichment & Auto-Completion Engine ──
+
+    /**
+     * Get enrichment suggestions for a single record.
+     * GET /api/enrichment/suggestions/:recordId
+     */
+    public void getEnrichmentSuggestions(String recordId,
+            final ApiCallback<EnrichmentSuggestionsResult> callback) {
+        String url = baseUrl + "/api/enrichment/suggestions/" + recordId;
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(EnrichmentSuggestionsResult.fromJson(new JSONObject(body)));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse enrichment suggestions.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Batch enrichment for multiple records.
+     * POST /api/enrichment/batch
+     */
+    public void batchEnrichment(java.util.List<String> recordIds, int maxPerRecord,
+            final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/enrichment/batch";
+        JSONObject body = new JSONObject();
+        try {
+            body.put("recordIds", new JSONArray(recordIds));
+            body.put("maxPerRecord", maxPerRecord);
+        } catch (Exception e) { }
+
+        RequestBody rb = RequestBody.create(body.toString(), JSON);
+        Request request = new Request.Builder().url(url).post(rb).build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String respBody = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(respBody));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse batch enrichment.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get data gap analysis.
+     * GET /api/enrichment/gaps
+     */
+    public void getEnrichmentGaps(String cemeteryId, String field,
+            final ApiCallback<EnrichmentGapsResult> callback) {
+        String url = baseUrl + "/api/enrichment/gaps";
+        java.util.List<String> params = new java.util.ArrayList<>();
+        if (cemeteryId != null) params.add("cemeteryId=" + cemeteryId);
+        if (field != null) params.add("field=" + field);
+        if (!params.isEmpty()) url += "?" + String.join("&", params);
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(EnrichmentGapsResult.fromJson(new JSONObject(body)));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse enrichment gaps.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Infer a single field for a record.
+     * GET /api/enrichment/infer/:recordId/:field
+     */
+    public void inferField(String recordId, String field,
+            final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/enrichment/infer/" + recordId + "/" + field;
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse field inference.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get enrichment priorities (records ranked by missing fields + impact).
+     * GET /api/enrichment/priorities
+     */
+    public void getEnrichmentPriorities(String cemeteryId, int limit,
+            final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/enrichment/priorities?limit=" + limit;
+        if (cemeteryId != null) url += "&cemeteryId=" + cemeteryId;
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse enrichment priorities.");
                     }
                 } else {
                     callback.onError(ApiErrorHandler.getHttpMessage(response.code()));

@@ -655,6 +655,46 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.35] — 2026-08-28
+
+### Phase 16.31: AI Data Enrichment & Auto-Completion Engine
+
+**Added:**
+- `GET /api/enrichment/suggestions/:recordId` — analyzes a record and
+  suggests completions for missing fields: birth year (from death year -
+  age at death, 90% confidence), death year (from birth year + age,
+  85%), cemetery (from GPS coordinates via nearest-cemetery haversine),
+  confidence score (weighted: verification 30 + sources 15×2 + GPS 10 +
+  dates 10 + name 5), verification status (from source count >= 2),
+  section (from plot number pattern analysis).
+
+- `POST /api/enrichment/batch` — batch enrichment for up to 100 records.
+  Accepts recordIds array and optional maxPerRecord limit. Returns
+  per-record suggestions and total suggestion count.
+
+- `GET /api/enrichment/gaps` — data gap analysis identifying missing
+  fields across the dataset or a specific cemetery. Returns missing
+  count, percentage, and sample record IDs for each gap field.
+  Supports field-specific filtering.
+
+- `GET /api/enrichment/infer/:recordId/:field` — single-field inference
+  with detailed reasoning. Supports birthYear, deathYear,
+  confidenceScore, verificationStatus, cemeteryId, section, plus
+  statistical inference for other fields. Returns null if field is
+  already populated.
+
+- `GET /api/enrichment/priorities` — records ranked by enrichment
+  priority. Impact score weights critical fields (coordinates,
+  verification, sources) higher. Returns missing fields, completeness,
+  coordinate/verification/source status for each priority record.
+
+New models: EnrichmentSuggestion, EnrichmentSuggestionsResult,
+  EnrichmentGapsResult (1 inner)
+API client: 5 new methods
+AI system prompt updated with enrichment endpoint descriptions
+4 new suggested prompts
+
+
 ## [7.2.34] — 2026-08-18
 
 ### Phase 16.30: AI Cross-Reference & Linkage Engine
