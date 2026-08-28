@@ -655,6 +655,23 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.45] — 2026-08-28
+
+### Fix: Restore missing function definitions
+
+**Fixed:**
+- Restored `computeCemeteryStats()`, `computeCemeteryAnomalies()`, and
+  `generateRecommendations()` — function definitions lost during remote
+  merge at v7.2.43. Functions were called throughout the backend but
+  the definitions had been removed.
+- Fixed anomaly type names to match test expectations
+  (`date_birth_after_death`, `date_birth_future`, `date_death_future`,
+  `coord_lat_invalid`).
+- Fixed `AIDataInterceptor` context section labels to match expected
+  format (`=== GRAVEATLAS DATABASE ===` / `=== EXTERNAL OFFICIAL
+  SOURCES ===`).
+
+
 ## [7.2.35] — 2026-08-28
 
 ### Phase 16.31: AI Data Enrichment & Auto-Completion Engine

@@ -226,10 +226,10 @@ public class AIDataInterceptor {
 
         StringBuilder sb = new StringBuilder();
         if (hasDb) {
-            sb.append("[GraveAtlas DB]\n").append(databaseContext).append("\n");
+            sb.append("=== GRAVEATLAS DATABASE ===\n").append(databaseContext).append("\n\n");
         }
         if (hasExternal) {
-            sb.append("[External Sources]\n").append(externalContext);
+            sb.append("=== EXTERNAL OFFICIAL SOURCES ===\n").append(externalContext);
         }
         return sb.toString();
     }

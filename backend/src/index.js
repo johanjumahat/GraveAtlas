@@ -11351,6 +11351,207 @@ async function handleGlobalReport(request, env, cors) {
  * Computes a quick health score for a set of records.
  * Reuses the same scoring logic as Phase 16.11 but works on an in-memory array.
  */
+/**
+ * Compute cemetery-level statistics from a set of records.
+ */
+function computeCemeteryStats(records) {
+  const recordCount = records.length;
+  if (recordCount === 0) {
+    return {
+      totalRecords: 0,
+      verifiedRecords: 0,
+      unverifiedRecords: 0,
+      withPhotos: 0,
+      withInscriptions: 0,
+      withSources: 0,
+      withCoordinates: 0,
+      deathYearRange: null,
+      birthYearRange: null
+    };
+  }
+
+  let verified = 0, withPhotos = 0, withInscriptions = 0, withSources = 0, withCoords = 0;
+  let deathYears = [], birthYears = [];
+
+  for (const rec of records) {
+    if (rec.verificationStatus === 'verified') verified++;
+    if (rec.photoRefs && rec.photoRefs.length > 0) withPhotos++;
+    if (rec.inscription && rec.inscription.trim()) withInscriptions++;
+    if (rec.sourceRefs && rec.sourceRefs.length > 0) withSources++;
+    if (rec.latitude && rec.longitude) withCoords++;
+
+    const dy = rec.deathYear || (rec.deathDate ? parseInt(String(rec.deathDate).substring(0, 4)) : null);
+    const by = rec.birthYear || (rec.birthDate ? parseInt(String(rec.birthDate).substring(0, 4)) : null);
+    if (dy && !isNaN(dy)) deathYears.push(dy);
+    if (by && !isNaN(by)) birthYears.push(by);
+  }
+
+  deathYears.sort((a, b) => a - b);
+  birthYears.sort((a, b) => a - b);
+
+  return {
+    totalRecords: recordCount,
+    verifiedRecords: verified,
+    unverifiedRecords: recordCount - verified,
+    withPhotos,
+    withInscriptions,
+    withSources,
+    withCoordinates: withCoords,
+    deathYearRange: deathYears.length > 0 ? { earliest: deathYears[0], latest: deathYears[deathYears.length - 1] } : null,
+    birthYearRange: birthYears.length > 0 ? { earliest: birthYears[0], latest: birthYears[birthYears.length - 1] } : null
+  };
+}
+
+/**
+ * Compute cemetery-level anomalies from a set of records.
+ */
+function computeCemeteryAnomalies(records) {
+  const anomalies = [];
+  const currentYear = new Date().getFullYear();
+
+  for (const rec of records) {
+    // Birth after death
+    if (rec.birthDate && rec.deathDate) {
+      const by = parseInt(String(rec.birthDate).substring(0, 4));
+      const dy = parseInt(String(rec.deathDate).substring(0, 4));
+      if (!isNaN(by) && !isNaN(dy) && by > dy) {
+        anomalies.push({
+          type: 'date_birth_after_death',
+          severity: 'critical',
+          recordId: rec.id,
+          message: `Birth year ${by} is after death year ${dy}`
+        });
+      }
+    }
+
+    // Future dates
+    if (rec.birthDate) {
+      const by = parseInt(String(rec.birthDate).substring(0, 4));
+      if (!isNaN(by) && by > currentYear) {
+        anomalies.push({
+          type: 'date_birth_future',
+          severity: 'critical',
+          recordId: rec.id,
+          message: `Birth year ${by} is in the future`
+        });
+      }
+    }
+    if (rec.deathDate) {
+      const dy = parseInt(String(rec.deathDate).substring(0, 4));
+      if (!isNaN(dy) && dy > currentYear) {
+        anomalies.push({
+          type: 'date_death_future',
+          severity: 'critical',
+          recordId: rec.id,
+          message: `Death year ${dy} is in the future`
+        });
+      }
+    }
+
+    // Invalid coordinates
+    if (rec.latitude && rec.longitude) {
+      const lat = parseFloat(rec.latitude);
+      const lon = parseFloat(rec.longitude);
+      if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+        anomalies.push({
+          type: 'coord_lat_invalid',
+          severity: 'warning',
+          recordId: rec.id,
+          message: `Coordinates (${lat}, ${lon}) are out of valid range`
+        });
+      }
+    }
+
+    // Missing name
+    if (!rec.name && !rec.graveIdentifier && !rec.fullName) {
+      anomalies.push({
+        type: 'missing_name',
+        severity: 'critical',
+        recordId: rec.id,
+        message: 'Record has no name or grave identifier'
+      });
+    }
+  }
+
+  const critical = anomalies.filter(a => a.severity === 'critical');
+  const warning = anomalies.filter(a => a.severity === 'warning');
+
+  return {
+    anomalies,
+    critical: critical.length,
+    warning: warning.length,
+    total: anomalies.length,
+    byType: anomalies.reduce((acc, a) => { acc[a.type] = (acc[a.type] || 0) + 1; return acc; }, {})
+  };
+}
+
+/**
+ * Generate recommendations for improving cemetery data quality.
+ */
+function generateRecommendations(stats, anomalies, health) {
+  const recommendations = [];
+
+  if (stats.totalRecords === 0) {
+    recommendations.push({
+      priority: 'high',
+      action: 'Import records',
+      description: 'This cemetery has no published records. Start by importing or creating records.'
+    });
+    return recommendations;
+  }
+
+  const unverifiedPct = Math.round((stats.unverifiedRecords / stats.totalRecords) * 100);
+  if (unverifiedPct > 50) {
+    recommendations.push({
+      priority: 'high',
+      action: 'Verify records',
+      description: `${unverifiedPct}% of records are unverified. Review sources and mark records as verified.`
+    });
+  }
+
+  if (stats.withCoordinates === 0 || Math.round((stats.withCoordinates / stats.totalRecords) * 100) < 30) {
+    recommendations.push({
+      priority: 'high',
+      action: 'Add GPS coordinates',
+      description: 'Most records lack GPS coordinates. Survey the cemetery to map grave locations.'
+    });
+  }
+
+  if (stats.withPhotos === 0 || Math.round((stats.withPhotos / stats.totalRecords) * 100) < 20) {
+    recommendations.push({
+      priority: 'medium',
+      action: 'Photograph graves',
+      description: 'Most records lack photos. Photograph headstones to improve documentation.'
+    });
+  }
+
+  if (stats.withSources === 0 || Math.round((stats.withSources / stats.totalRecords) * 100) < 30) {
+    recommendations.push({
+      priority: 'medium',
+      action: 'Add source references',
+      description: 'Most records lack source references. Link to archival records, obituaries, or other sources.'
+    });
+  }
+
+  if (anomalies.critical > 0) {
+    recommendations.push({
+      priority: 'high',
+      action: 'Fix critical anomalies',
+      description: `${anomalies.critical} critical anomalies detected (birth after death, future dates, invalid coordinates).`
+    });
+  }
+
+  if (health && health.overallScore < 70) {
+    recommendations.push({
+      priority: 'high',
+      action: 'Improve overall data quality',
+      description: `Health score is ${health.overallScore}/100 (grade ${health.grade}). Focus on completeness and anomaly reduction.`
+    });
+  }
+
+  return recommendations;
+}
+
 function computeQuickHealth(records) {
   const recordCount = records.length;
   if (recordCount === 0) return { grade: 'N/A', overallScore: 0 };
