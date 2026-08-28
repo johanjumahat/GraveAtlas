@@ -24,6 +24,9 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
+import com.putraworks.graveatlas.data.model.EnrichmentResult;
+import java.util.ArrayList;
+import java.util.Arrays;
 
 public class EnrichmentFragment extends Fragment {
 
@@ -81,6 +84,16 @@ public class EnrichmentFragment extends Fragment {
         btnRow.addView(prioritiesBtn);
         layout.addView(btnRow);
 
+        Button batchBtn = new Button(getContext());
+        batchBtn.setText("Batch Enrichment");
+        batchBtn.setAllCaps(false);
+        layout.addView(batchBtn);
+
+        Button recordEnrichBtn = new Button(getContext());
+        recordEnrichBtn.setText("Record Enrichment");
+        recordEnrichBtn.setAllCaps(false);
+        layout.addView(recordEnrichBtn);
+
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.GONE);
         layout.addView(progressBar);
@@ -94,6 +107,36 @@ public class EnrichmentFragment extends Fragment {
         adapter = new SuggestionAdapter();
         recyclerView.setAdapter(adapter);
         layout.addView(recyclerView);
+
+        batchBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.batchEnrichment(new ArrayList<>(), 5, new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { statusText.setText(result.toString(2)); } catch (Exception e) { statusText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        recordEnrichBtn.setOnClickListener(v -> {
+            String rid = cemeteryIdField.getText().toString().trim();
+            if (rid.isEmpty()) { statusText.setText("Enter a Record ID"); return; }
+            setBusy(true);
+            apiClient.getRecordEnrichment(rid, new ApiClient.ApiCallback<EnrichmentResult>() {
+                @Override public void onSuccess(EnrichmentResult result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText(result != null ? result.toString() : "No result"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
+                }
+            });
+        });
 
         return layout;
     }
@@ -225,4 +268,9 @@ public class EnrichmentFragment extends Fragment {
         public int getItemCount() { return items.size(); }
         static class VH extends RecyclerView.ViewHolder { VH(View v) { super(v); } }
     }
+
+    private void setBusy(boolean busy) {
+        if (progressBar != null) progressBar.setVisibility(busy ? View.VISIBLE : View.GONE);
+    }
+
 }

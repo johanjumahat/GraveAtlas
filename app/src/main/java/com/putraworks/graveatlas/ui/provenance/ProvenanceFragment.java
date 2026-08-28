@@ -23,6 +23,8 @@ import com.putraworks.graveatlas.data.model.ProvenanceTimeline;
 
 import java.util.ArrayList;
 import java.util.List;
+import com.putraworks.graveatlas.data.model.SourceCoverageResult;
+import com.putraworks.graveatlas.data.model.SourceVerificationStatus;
 
 public class ProvenanceFragment extends Fragment {
 
@@ -80,6 +82,26 @@ public class ProvenanceFragment extends Fragment {
         btnRow.addView(searchBtn);
         layout.addView(btnRow);
 
+        Button coverageBtn = new Button(getContext());
+        coverageBtn.setText("Source Coverage");
+        coverageBtn.setAllCaps(false);
+        layout.addView(coverageBtn);
+
+        Button addEntryBtn = new Button(getContext());
+        addEntryBtn.setText("Add Provenance Entry");
+        addEntryBtn.setAllCaps(false);
+        layout.addView(addEntryBtn);
+
+        Button exportProvBtn = new Button(getContext());
+        exportProvBtn.setText("Export Provenance");
+        exportProvBtn.setAllCaps(false);
+        layout.addView(exportProvBtn);
+
+        Button verifyStatusBtn = new Button(getContext());
+        verifyStatusBtn.setText("Verification Status");
+        verifyStatusBtn.setAllCaps(false);
+        layout.addView(verifyStatusBtn);
+
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.GONE);
         layout.addView(progressBar);
@@ -99,6 +121,66 @@ public class ProvenanceFragment extends Fragment {
         emptyText.setPadding(0, 32, 0, 0);
         emptyText.setVisibility(View.GONE);
         layout.addView(emptyText);
+
+        coverageBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getSourceCoverage(new ApiClient.ApiCallback<SourceCoverageResult>() {
+                @Override public void onSuccess(SourceCoverageResult result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No coverage data"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        addEntryBtn.setOnClickListener(v -> {
+            String rid = recordIdField.getText().toString().trim();
+            if (rid.isEmpty()) { resultText.setText("Enter a Record ID"); return; }
+            setBusy(true);
+            apiClient.addProvenanceEntry(rid, "update", "admin", "curator", "Manual update", null, new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Entry added"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        exportProvBtn.setOnClickListener(v -> {
+            String rid = recordIdField.getText().toString().trim();
+            if (rid.isEmpty()) { resultText.setText("Enter a Record ID"); return; }
+            setBusy(true);
+            apiClient.exportProvenance(rid, new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        verifyStatusBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getSourceVerificationStatus(new ApiClient.ApiCallback<SourceVerificationStatus>() {
+                @Override public void onSuccess(SourceVerificationStatus result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No status"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
 
         return layout;
     }
@@ -226,4 +308,9 @@ public class ProvenanceFragment extends Fragment {
         public int getItemCount() { return items.size(); }
         static class VH extends RecyclerView.ViewHolder { VH(View v) { super(v); } }
     }
+
+    private void setBusy(boolean busy) {
+        if (progressBar != null) progressBar.setVisibility(busy ? View.VISIBLE : View.GONE);
+    }
+
 }

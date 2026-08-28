@@ -4,6 +4,8 @@ import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -20,12 +22,15 @@ import com.putraworks.graveatlas.data.model.GlobalHealthOverview;
 import org.json.JSONObject;
 
 import java.util.List;
+import com.putraworks.graveatlas.data.model.CemeteryRecommendations;
+import com.putraworks.graveatlas.data.model.GlobalRecommendations;
 
 public class AnalyticsFragment extends Fragment {
 
     private ApiClient apiClient;
     private ProgressBar progressBar;
-    private TextView dashboardText, healthText;
+    private TextView dashboardText, healthText, resultText;
+    private EditText cemeteryIdField;
 
     @Nullable
     @Override
@@ -41,6 +46,45 @@ public class AnalyticsFragment extends Fragment {
         title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         title.setPadding(0, 0, 0, 16);
         layout.addView(title);
+
+        cemeteryIdField = new EditText(getContext());
+        cemeteryIdField.setHint("Cemetery ID (optional)");
+        layout.addView(cemeteryIdField);
+
+        resultText = new TextView(getContext());
+        resultText.setTextSize(13);
+        resultText.setPadding(0, 16, 0, 16);
+        layout.addView(resultText);
+
+        Button trendsBtn = new Button(getContext());
+        trendsBtn.setText("Analytics Trends");
+        trendsBtn.setAllCaps(false);
+        layout.addView(trendsBtn);
+
+        Button searchAnalyticsBtn = new Button(getContext());
+        searchAnalyticsBtn.setText("Search Analytics");
+        searchAnalyticsBtn.setAllCaps(false);
+        layout.addView(searchAnalyticsBtn);
+
+        Button cemRecBtn = new Button(getContext());
+        cemRecBtn.setText("Cemetery Recommendations");
+        cemRecBtn.setAllCaps(false);
+        layout.addView(cemRecBtn);
+
+        Button globalRecBtn = new Button(getContext());
+        globalRecBtn.setText("Global Recommendations");
+        globalRecBtn.setAllCaps(false);
+        layout.addView(globalRecBtn);
+
+        Button infoBtn = new Button(getContext());
+        infoBtn.setText("Analytics Info");
+        infoBtn.setAllCaps(false);
+        layout.addView(infoBtn);
+
+        Button healthCheckBtn = new Button(getContext());
+        healthCheckBtn.setText("Health Check");
+        healthCheckBtn.setAllCaps(false);
+        layout.addView(healthCheckBtn);
 
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.VISIBLE);
@@ -77,6 +121,92 @@ public class AnalyticsFragment extends Fragment {
         layout.addView(cemeteryHealthList);
 
         loadDashboard(cemeteryHealthList);
+        trendsBtn.setOnClickListener(v -> {
+            setBusy(true);
+            String cid = cemeteryIdField.getText().toString().trim();
+            apiClient.getAnalyticsTrends(cid.isEmpty() ? null : cid, "30d", "day", new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        searchAnalyticsBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getSearchAnalytics("30d", 50, new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        cemRecBtn.setOnClickListener(v -> {
+            setBusy(true);
+            String cid = cemeteryIdField.getText().toString().trim();
+            apiClient.getCemeteryRecommendations(cid.isEmpty() ? null : cid, new ApiClient.ApiCallback<CemeteryRecommendations>() {
+                @Override public void onSuccess(CemeteryRecommendations result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No recommendations"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        globalRecBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getGlobalRecommendations(new ApiClient.ApiCallback<GlobalRecommendations>() {
+                @Override public void onSuccess(GlobalRecommendations result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No recommendations"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        infoBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getAnalyticsInfo(new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        healthCheckBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.checkHealth(new ApiClient.ApiCallback<ApiClient.HealthResult>() {
+                @Override public void onSuccess(ApiClient.HealthResult result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No data"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
         return layout;
     }
 
@@ -154,4 +284,9 @@ public class AnalyticsFragment extends Fragment {
             public void onError(String error) {}
         });
     }
+
+    private void setBusy(boolean busy) {
+        if (progressBar != null) progressBar.setVisibility(busy ? View.VISIBLE : View.GONE);
+    }
+
 }

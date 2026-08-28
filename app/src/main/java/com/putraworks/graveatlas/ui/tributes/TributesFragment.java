@@ -69,6 +69,16 @@ public class TributesFragment extends Fragment {
         submitBtn.setOnClickListener(v -> submitTribute());
         layout.addView(submitBtn);
 
+        Button deleteBtn = new Button(getContext());
+        deleteBtn.setText("Delete Tribute");
+        deleteBtn.setAllCaps(false);
+        layout.addView(deleteBtn);
+
+        Button likeBtn = new Button(getContext());
+        likeBtn.setText("Like Tribute");
+        likeBtn.setAllCaps(false);
+        layout.addView(likeBtn);
+
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.GONE);
         layout.addView(progressBar);
@@ -90,6 +100,38 @@ public class TributesFragment extends Fragment {
         layout.addView(emptyText);
 
         loadTributes();
+        deleteBtn.setOnClickListener(v -> {
+            String tid = graveIdField.getText().toString().trim();
+            if (tid.isEmpty()) { statusText.setText("Enter tribute ID"); return; }
+            setBusy(true);
+            apiClient.deleteTribute(tid, new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Deleted: " + tid); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        likeBtn.setOnClickListener(v -> {
+            String tid = graveIdField.getText().toString().trim();
+            if (tid.isEmpty()) { statusText.setText("Enter tribute ID"); return; }
+            setBusy(true);
+            apiClient.likeTribute(tid, new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { statusText.setText(result.toString(2)); } catch (Exception e) { statusText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
+                }
+            });
+        });
+
         return layout;
     }
 
@@ -191,4 +233,9 @@ public class TributesFragment extends Fragment {
         @Override public int getItemCount() { return tributes.size(); }
         static class VH extends RecyclerView.ViewHolder { VH(View v) { super(v); } }
     }
+
+    private void setBusy(boolean busy) {
+        if (progressBar != null) progressBar.setVisibility(busy ? View.VISIBLE : View.GONE);
+    }
+
 }

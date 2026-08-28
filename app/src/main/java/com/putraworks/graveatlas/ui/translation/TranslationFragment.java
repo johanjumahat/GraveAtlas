@@ -97,6 +97,16 @@ public class TranslationFragment extends Fragment {
 
         layout.addView(btnRow2);
 
+        Button infoBtn = new Button(getContext());
+        infoBtn.setText("Translation Info");
+        infoBtn.setAllCaps(false);
+        layout.addView(infoBtn);
+
+        Button langsBtn = new Button(getContext());
+        langsBtn.setText("Supported Languages");
+        langsBtn.setAllCaps(false);
+        layout.addView(langsBtn);
+
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.GONE);
         layout.addView(progressBar);
@@ -105,6 +115,34 @@ public class TranslationFragment extends Fragment {
         resultText.setTextSize(13);
         resultText.setPadding(0, 16, 0, 0);
         layout.addView(resultText);
+
+        infoBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getTranslationInfo(new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        langsBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getTranslationLanguages(new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
 
         return layout;
     }

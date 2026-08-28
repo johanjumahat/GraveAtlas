@@ -24,6 +24,7 @@ import com.putraworks.graveatlas.data.model.WatchlistCheckResult;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import com.putraworks.graveatlas.data.model.WatchlistStatus;
 
 public class WatchlistFragment extends Fragment {
 
@@ -72,6 +73,16 @@ public class WatchlistFragment extends Fragment {
         checkBtn.setOnClickListener(v -> runCheck());
         layout.addView(checkBtn);
 
+        Button removeBtn = new Button(getContext());
+        removeBtn.setText("Remove from Watchlist");
+        removeBtn.setAllCaps(false);
+        layout.addView(removeBtn);
+
+        Button statusBtn = new Button(getContext());
+        statusBtn.setText("Watchlist Status");
+        statusBtn.setAllCaps(false);
+        layout.addView(statusBtn);
+
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.GONE);
         layout.addView(progressBar);
@@ -93,6 +104,36 @@ public class WatchlistFragment extends Fragment {
         layout.addView(emptyText);
 
         loadWatchlist();
+        removeBtn.setOnClickListener(v -> {
+            String item = targetIdField.getText().toString().trim();
+            if (item.isEmpty()) { statusText.setText("Enter item ID"); return; }
+            setBusy(true);
+            apiClient.removeFromWatchlist(item, new ApiClient.ApiCallback<Boolean>() {
+                @Override public void onSuccess(Boolean result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText(result ? "Removed" : "Failed"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        statusBtn.setOnClickListener(v -> {
+            setBusy(true);
+            apiClient.getWatchlistStatus(new ApiClient.ApiCallback<WatchlistStatus>() {
+                @Override public void onSuccess(WatchlistStatus result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText(result != null ? result.toString() : "No status"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
+                }
+            });
+        });
+
         return layout;
     }
 
@@ -197,4 +238,9 @@ public class WatchlistFragment extends Fragment {
         public int getItemCount() { return items.size(); }
         static class VH extends RecyclerView.ViewHolder { VH(View v) { super(v); } }
     }
+
+    private void setBusy(boolean busy) {
+        if (progressBar != null) progressBar.setVisibility(busy ? View.VISIBLE : View.GONE);
+    }
+
 }

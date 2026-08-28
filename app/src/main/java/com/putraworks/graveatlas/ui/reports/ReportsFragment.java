@@ -17,6 +17,9 @@ import androidx.fragment.app.Fragment;
 import com.putraworks.graveatlas.data.api.ApiClient;
 import com.putraworks.graveatlas.data.model.CemeteryReport;
 import com.putraworks.graveatlas.data.model.GlobalReport;
+import com.putraworks.graveatlas.data.model.StakeholderReport;
+import com.putraworks.graveatlas.data.model.CemeteryReportSummary;
+import com.putraworks.graveatlas.data.model.AnomalyReport;
 
 public class ReportsFragment extends Fragment {
 
@@ -58,6 +61,21 @@ public class ReportsFragment extends Fragment {
         btnRow.addView(globalReportBtn);
         layout.addView(btnRow);
 
+        Button stakeholderBtn = new Button(getContext());
+        stakeholderBtn.setText("Stakeholder Report");
+        stakeholderBtn.setAllCaps(false);
+        layout.addView(stakeholderBtn);
+
+        Button summaryBtn = new Button(getContext());
+        summaryBtn.setText("Report Summary");
+        summaryBtn.setAllCaps(false);
+        layout.addView(summaryBtn);
+
+        Button anomaliesBtn = new Button(getContext());
+        anomaliesBtn.setText("Cemetery Anomalies");
+        anomaliesBtn.setAllCaps(false);
+        layout.addView(anomaliesBtn);
+
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.GONE);
         layout.addView(progressBar);
@@ -67,6 +85,53 @@ public class ReportsFragment extends Fragment {
         layout.addView(resultText);
 
         loadGlobalReport();
+        stakeholderBtn.setOnClickListener(v -> {
+            setBusy(true);
+            String cid = cemeteryIdField.getText().toString().trim();
+            apiClient.getStakeholderReport(cid.isEmpty() ? null : cid, "30d", new ApiClient.ApiCallback<StakeholderReport>() {
+                @Override public void onSuccess(StakeholderReport result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No report"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        summaryBtn.setOnClickListener(v -> {
+            setBusy(true);
+            String cid = cemeteryIdField.getText().toString().trim();
+            if (cid.isEmpty()) { setBusy(false); resultText.setText("Enter a Cemetery ID"); return; }
+            apiClient.getCemeteryReportSummary(cid, new ApiClient.ApiCallback<CemeteryReportSummary>() {
+                @Override public void onSuccess(CemeteryReportSummary result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No summary"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        anomaliesBtn.setOnClickListener(v -> {
+            setBusy(true);
+            String cid = cemeteryIdField.getText().toString().trim();
+            if (cid.isEmpty()) { setBusy(false); resultText.setText("Enter a Cemetery ID"); return; }
+            apiClient.getCemeteryAnomalies(cid, new ApiClient.ApiCallback<AnomalyReport>() {
+                @Override public void onSuccess(AnomalyReport result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No anomalies"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
         return layout;
     }
 
@@ -150,4 +215,9 @@ public class ReportsFragment extends Fragment {
             }
         });
     }
+
+    private void setBusy(boolean busy) {
+        if (progressBar != null) progressBar.setVisibility(busy ? View.VISIBLE : View.GONE);
+    }
+
 }

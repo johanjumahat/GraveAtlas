@@ -86,6 +86,11 @@ public class AIHeadstoneFragment extends Fragment {
         btnRow2.addView(listBtn);
         layout.addView(btnRow2);
 
+        Button getAnalysisBtn = new Button(getContext());
+        getAnalysisBtn.setText("Get Analysis by ID");
+        getAnalysisBtn.setAllCaps(false);
+        layout.addView(getAnalysisBtn);
+
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.GONE);
         layout.addView(progressBar);
@@ -93,6 +98,22 @@ public class AIHeadstoneFragment extends Fragment {
         resultText = new TextView(getContext());
         resultText.setTextSize(13); resultText.setPadding(0, 16, 0, 0);
         layout.addView(resultText);
+
+        getAnalysisBtn.setOnClickListener(v -> {
+            String aid = analysisIdField.getText().toString().trim();
+            if (aid.isEmpty()) { resultText.setText("Enter analysis ID"); return; }
+            setBusy(true);
+            apiClient.getHeadstoneAnalysis(aid, new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
 
         return layout;
     }

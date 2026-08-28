@@ -21,6 +21,9 @@ import com.putraworks.graveatlas.data.model.IntelligentSearchResult;
 
 import java.util.ArrayList;
 import java.util.List;
+import com.putraworks.graveatlas.data.model.GlobalSearchResponse;
+import com.putraworks.graveatlas.data.model.SearchSuggestion;
+import java.util.List;
 
 public class IntelligentSearchFragment extends Fragment {
 
@@ -62,6 +65,16 @@ public class IntelligentSearchFragment extends Fragment {
         searchBtn.setOnClickListener(v -> doSearch());
         layout.addView(searchBtn);
 
+        Button globalSearchBtn = new Button(getContext());
+        globalSearchBtn.setText("Global Search");
+        globalSearchBtn.setAllCaps(false);
+        layout.addView(globalSearchBtn);
+
+        Button suggestBtn = new Button(getContext());
+        suggestBtn.setText("Search Suggestions");
+        suggestBtn.setAllCaps(false);
+        layout.addView(suggestBtn);
+
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.GONE);
         layout.addView(progressBar);
@@ -79,6 +92,43 @@ public class IntelligentSearchFragment extends Fragment {
         adapter = new ResultAdapter();
         recyclerView.setAdapter(adapter);
         layout.addView(recyclerView);
+
+        globalSearchBtn.setOnClickListener(v -> {
+            String q = queryField.getText().toString().trim();
+            setBusy(true);
+            apiClient.globalSearch(q, null, 1, 50, null, null, null, null, null, null, new ApiClient.ApiCallback<GlobalSearchResponse>() {
+                @Override public void onSuccess(GlobalSearchResponse result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No results"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        suggestBtn.setOnClickListener(v -> {
+            String q = queryField.getText().toString().trim();
+            if (q.isEmpty()) { resultText.setText("Type something first"); return; }
+            setBusy(true);
+            apiClient.getSearchSuggestions(q, 10, new ApiClient.ApiCallback<List<SearchSuggestion>>() {
+                @Override public void onSuccess(List<SearchSuggestion> result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> {
+                        setBusy(false);
+                        if (result == null || result.isEmpty()) { resultText.setText("No suggestions"); return; }
+                        StringBuilder sb = new StringBuilder();
+                        for (SearchSuggestion s : result) sb.append(s.toString()).append("\n");
+                        resultText.setText(sb.toString());
+                    });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
 
         return layout;
     }
@@ -145,4 +195,9 @@ public class IntelligentSearchFragment extends Fragment {
         public int getItemCount() { return items.size(); }
         static class VH extends RecyclerView.ViewHolder { VH(View v) { super(v); } }
     }
+
+    private void setBusy(boolean busy) {
+        if (progressBar != null) progressBar.setVisibility(busy ? View.VISIBLE : View.GONE);
+    }
+
 }

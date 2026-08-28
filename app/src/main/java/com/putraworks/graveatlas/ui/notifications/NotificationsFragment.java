@@ -21,13 +21,14 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
+import com.putraworks.graveatlas.data.model.Notification;
 
 public class NotificationsFragment extends Fragment {
 
     private ApiClient apiClient;
     private RecyclerView recyclerView;
     private ProgressBar progressBar;
-    private TextView emptyText;
+    private TextView emptyText, resultText;
     private Button unreadBtn, allBtn, markAllBtn;
     private NotificationAdapter adapter;
 
@@ -62,6 +63,25 @@ public class NotificationsFragment extends Fragment {
         btnRow.addView(markAllBtn);
         layout.addView(btnRow);
 
+        EditText notifIdField = new EditText(getContext());
+        notifIdField.setHint("Notification ID");
+        layout.addView(notifIdField);
+
+        Button markReadBtn = new Button(getContext());
+        markReadBtn.setText("Mark Read");
+        markReadBtn.setAllCaps(false);
+        layout.addView(markReadBtn);
+
+        Button dismissBtn = new Button(getContext());
+        dismissBtn.setText("Dismiss");
+        dismissBtn.setAllCaps(false);
+        layout.addView(dismissBtn);
+
+        resultText = new TextView(getContext());
+        resultText.setTextSize(13);
+        resultText.setPadding(0, 16, 0, 0);
+        layout.addView(resultText);
+
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.GONE);
         layout.addView(progressBar);
@@ -79,6 +99,38 @@ public class NotificationsFragment extends Fragment {
         layout.addView(emptyText);
 
         loadAll();
+        markReadBtn.setOnClickListener(v -> {
+            String nid = notifIdField.getText().toString().trim();
+            if (nid.isEmpty()) { resultText.setText("Enter notification ID"); return; }
+            setBusy(true);
+            apiClient.markNotificationRead(nid, new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Marked read: " + nid); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
+        dismissBtn.setOnClickListener(v -> {
+            String nid = notifIdField.getText().toString().trim();
+            if (nid.isEmpty()) { resultText.setText("Enter notification ID"); return; }
+            setBusy(true);
+            apiClient.dismissNotification(nid, new ApiClient.ApiCallback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Dismissed: " + nid); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                }
+            });
+        });
+
         return layout;
     }
 
@@ -164,4 +216,9 @@ public class NotificationsFragment extends Fragment {
         public int getItemCount() { return notifs.size(); }
         static class VH extends RecyclerView.ViewHolder { VH(View v) { super(v); } }
     }
+
+    private void setBusy(boolean busy) {
+        if (progressBar != null) progressBar.setVisibility(busy ? View.VISIBLE : View.GONE);
+    }
+
 }

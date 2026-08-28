@@ -35,6 +35,9 @@ import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import com.putraworks.graveatlas.data.model.CemeteryRecord;
+import com.putraworks.graveatlas.data.model.SubmissionResponse;
+import java.util.HashMap;
 
 /**
  * Add grave screen — form for submitting new grave records.
@@ -172,6 +175,16 @@ public class AddGraveFragment extends Fragment {
         reviewLayout.addView(btnRow);
         layout.addView(reviewLayout);
 
+        Button submitCemeteryBtn = new Button(getContext());
+        submitCemeteryBtn.setText("Submit Cemetery");
+        submitCemeteryBtn.setAllCaps(false);
+        layout.addView(submitCemeteryBtn);
+
+        Button correctionBtn = new Button(getContext());
+        correctionBtn.setText("Submit Correction");
+        correctionBtn.setAllCaps(false);
+        layout.addView(correctionBtn);
+
         progressBar = new ProgressBar(getContext());
         progressBar.setVisibility(View.GONE);
         progressBar.setContentDescription("Loading");
@@ -180,6 +193,42 @@ public class AddGraveFragment extends Fragment {
         statusLabel = new TextView(getContext());
         statusLabel.setPadding(0, 16, 0, 0);
         layout.addView(statusLabel);
+
+        submitCemeteryBtn.setOnClickListener(v -> {
+            String name = nameField.getText().toString().trim();
+            if (name.isEmpty()) { statusLabel.setText("Enter cemetery name"); return; }
+            setBusy(true);
+            CemeteryRecord cemetery = new CemeteryRecord();
+            cemetery.name = name;
+            String loc = cemeteryField.getText().toString().trim();
+            if (!loc.isEmpty()) cemetery.locality = loc;
+            apiClient.submitCemetery(cemetery, new ApiClient.ApiCallback<SubmissionResponse>() {
+                @Override public void onSuccess(SubmissionResponse result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusLabel.setText(result != null ? result.toString() : "Cemetery submitted"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusLabel.setText("Error: " + error); });
+                }
+            });
+        });
+
+        correctionBtn.setOnClickListener(v -> {
+            String rid = nameField.getText().toString().trim();
+            if (rid.isEmpty()) { statusLabel.setText("Enter record ID to correct"); return; }
+            setBusy(true);
+            apiClient.submitCorrection(rid, "grave", new HashMap<>(), "User correction", new ApiClient.ApiCallback<SubmissionResponse>() {
+                @Override public void onSuccess(SubmissionResponse result) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusLabel.setText(result != null ? result.toString() : "Correction submitted"); });
+                }
+                @Override public void onError(String error) {
+                    if (getActivity() == null) return;
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusLabel.setText("Error: " + error); });
+                }
+            });
+        });
 
         return layout;
     }
@@ -461,4 +510,9 @@ public class AddGraveFragment extends Fragment {
         lonField.setText("");
         notesField.setText("");
     }
+
+    private void setBusy(boolean busy) {
+        if (progressBar != null) progressBar.setVisibility(busy ? View.VISIBLE : View.GONE);
+    }
+
 }
