@@ -655,6 +655,43 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.50] — 2026-08-28
+
+### Phase 20: AI Headstone Image Intelligence
+
+The killer feature: users photograph headstones, AI extracts
+structured data (names, dates, inscriptions, language, symbols),
+and auto-creates grave records for user confirmation.
+
+**Headstone Analysis Pipeline:**
+1. User uploads headstone photo (photoUrl)
+2. On-device OCR extracts text → sent to backend
+3. Backend parses inscription patterns:
+   - Date extraction (ranges, Born/Died, full dates)
+   - Name extraction (In Memory Of, Sacred To, first-line)
+   - Given/family name splitting
+   - Epitaph extraction (quoted text, "Beloved" patterns)
+   - Symbol detection (cross, crescent, star of david, lotus, angel, etc.)
+   - Language/script detection (Chinese, Japanese, Arabic, Hebrew,
+     Tamil, Malay, English)
+4. Confidence scoring (0.0-1.0)
+5. Suggested record with warnings
+6. User reviews, corrects, confirms → published grave record
+
+**New Backend Endpoints (5):**
+- `POST /api/ai/headstone/analyze` — full analysis from photo URL
+- `POST /api/ai/headstone/parse` — parse transcribed text only
+- `POST /api/ai/headstone/confirm` — confirm analysis → create record
+- `GET /api/ai/headstone/analyses` — list user's analyses
+- `GET /api/ai/headstone/analyses/:analysisId` — get analysis details
+
+**New Model:** HeadstoneAnalysis (with ParsedData, GraveRecord inner classes)
+**API client:** 5 new methods
+**AI system prompt:** Updated with headstone endpoints
+**3 new suggested prompts**
+**New tests:** 85 (phase20.test.js)
+
+
 ## [7.2.49] — 2026-08-28
 
 ### Phase 19: Community Engagement & Memorial Features

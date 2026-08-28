@@ -33,6 +33,7 @@ import com.putraworks.graveatlas.data.model.DedupStatsResult;
 import com.putraworks.graveatlas.data.model.SourceCoverageResult;
 import com.putraworks.graveatlas.data.model.Tribute;
 import com.putraworks.graveatlas.data.model.CommunityFeedItem;
+import com.putraworks.graveatlas.data.model.HeadstoneAnalysis;
 import com.putraworks.graveatlas.data.model.GlobalHealthOverview;
 import com.putraworks.graveatlas.data.model.CemeteryRecommendations;
 import com.putraworks.graveatlas.data.model.GlobalRecommendations;
@@ -103,6 +104,7 @@ import com.putraworks.graveatlas.data.model.DedupStatsResult;
 import com.putraworks.graveatlas.data.model.SourceCoverageResult;
 import com.putraworks.graveatlas.data.model.Tribute;
 import com.putraworks.graveatlas.data.model.CommunityFeedItem;
+import com.putraworks.graveatlas.data.model.HeadstoneAnalysis;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -1884,6 +1886,186 @@ public class ApiClient {
                         callback.onSuccess(LinkageGraph.fromJson(new JSONObject(body)));
                     } catch (Exception e) {
                         callback.onError("Failed to parse linkage graph.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    // ── Phase 20: AI Headstone Image Intelligence ──
+
+    /**
+     * Analyze a headstone photo for inscription extraction.
+     * POST /api/ai/headstone/analyze
+     */
+    public void analyzeHeadstone(String photoUrl, String cemeteryId,
+            Double latitude, Double longitude, String hints, String detectedText,
+            final ApiCallback<JSONObject> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("photoUrl", photoUrl);
+            if (cemeteryId != null) body.put("cemeteryId", cemeteryId);
+            if (latitude != null) body.put("latitude", latitude);
+            if (longitude != null) body.put("longitude", longitude);
+            if (hints != null) body.put("hints", hints);
+            if (detectedText != null) body.put("detectedText", detectedText);
+        } catch (Exception e) { return; }
+
+        RequestBody rb = RequestBody.create(body.toString(), JSON);
+        Request request = new Request.Builder()
+            .url(baseUrl + "/api/ai/headstone/analyze")
+            .post(rb)
+            .build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String respBody = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(respBody));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse analysis.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Parse transcribed headstone text into structured fields.
+     * POST /api/ai/headstone/parse
+     */
+    public void parseHeadstoneText(String text, String hints, String cemeteryId,
+            final ApiCallback<JSONObject> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("text", text);
+            if (hints != null) body.put("hints", hints);
+            if (cemeteryId != null) body.put("cemeteryId", cemeteryId);
+        } catch (Exception e) { return; }
+
+        RequestBody rb = RequestBody.create(body.toString(), JSON);
+        Request request = new Request.Builder()
+            .url(baseUrl + "/api/ai/headstone/parse")
+            .post(rb)
+            .build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String respBody = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(respBody));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse headstone text.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Confirm a headstone analysis and create a grave record.
+     * POST /api/ai/headstone/confirm
+     */
+    public void confirmHeadstoneAnalysis(String analysisId, JSONObject confirmedData,
+            final ApiCallback<JSONObject> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("analysisId", analysisId);
+            body.put("confirmedData", confirmedData);
+        } catch (Exception e) { return; }
+
+        RequestBody rb = RequestBody.create(body.toString(), JSON);
+        Request request = new Request.Builder()
+            .url(baseUrl + "/api/ai/headstone/confirm")
+            .post(rb)
+            .build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String respBody = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(respBody));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse confirmation.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * List headstone analyses for the current user.
+     * GET /api/ai/headstone/analyses?limit=&offset=
+     */
+    public void listHeadstoneAnalyses(int limit, int offset,
+            final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/ai/headstone/analyses?limit=" + limit + "&offset=" + offset;
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse analyses.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get details of a specific headstone analysis.
+     * GET /api/ai/headstone/analyses/:analysisId
+     */
+    public void getHeadstoneAnalysis(String analysisId,
+            final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/ai/headstone/analyses/" + analysisId;
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse analysis.");
                     }
                 } else {
                     callback.onError(ApiErrorHandler.getHttpMessage(response.code()));

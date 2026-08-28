@@ -1017,6 +1017,28 @@ async function handleRequest(request, env, ctx) {
       return await handleCommunityLeaderboard(request, env, corsHeaders);
     }
 
+    // Phase 20: AI Headstone Image Intelligence
+    if (path === '/api/ai/headstone/analyze' && method === 'POST') {
+      return await handleHeadstoneAnalyze(request, env, corsHeaders);
+    }
+
+    if (path === '/api/ai/headstone/parse' && method === 'POST') {
+      return await handleHeadstoneParse(request, env, corsHeaders);
+    }
+
+    if (path === '/api/ai/headstone/confirm' && method === 'POST') {
+      return await handleHeadstoneConfirm(request, env, corsHeaders);
+    }
+
+    if (path === '/api/ai/headstone/analyses' && method === 'GET') {
+      return await handleHeadstoneListAnalyses(request, env, corsHeaders);
+    }
+
+    if (path.match(/^\/api\/ai\/headstone\/analyses\/[^/]+$/) && method === 'GET') {
+      const analysisId = path.split('/').pop();
+      return await handleHeadstoneGetAnalysis(analysisId, request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -20649,4 +20671,584 @@ async function incrementUserContributionCount(userId, env) {
   } catch (e) {
     // Profile might not exist yet
   }
+}
+
+// ── Phase 20: AI Headstone Image Intelligence ──
+
+/**
+ * POST /api/ai/headstone/analyze
+ * Analyze a headstone photo: extract inscription, parse names/dates,
+ * detect language, and suggest a structured grave record.
+ *
+ * Body: {
+ *   photoUrl: string,         // URL of the headstone photo
+ *   cemeteryId?: string,       // Optional: cemetery context
+ *   latitude?: number,         // Optional: GPS coordinates
+ *   longitude?: number,
+ *   hints?: string             // Optional: user-provided hints (e.g., "Chinese headstone")
+ * }
+ *
+ * Returns: {
+ *   analysisId: string,
+ *   detectedText: string,      // Raw OCR/extraction result
+ *   parsedData: {
+ *     personName?: string,
+ *     givenNames?: string,
+ *     familyName?: string,
+ *     birthDate?: string,
+ *     deathDate?: string,
+ *     inscription?: string,
+ *     language?: string,       // detected language
+ *     script?: string,         // detected script (Latin, Chinese, Arabic, etc.)
+ *     epitaph?: string,        // extracted epitaph text
+ *     symbols?: string[],      // detected symbols (cross, star, crescent, etc.)
+ *     confidence: number       // 0.0-1.0
+ *   },
+ *   suggestedRecord: object,   // Pre-filled grave record for user confirmation
+ *   warnings: string[]
+ * }
+ */
+async function handleHeadstoneAnalyze(request, env, cors) {
+  try {
+    const user = await getAuthenticatedUser(request, env);
+    if (!user) {
+      return jsonResponse({ success: false, error: 'Authentication required' }, 401, cors);
+    }
+
+    const body = await request.json();
+    const { photoUrl, cemeteryId, latitude, longitude, hints } = body;
+
+    if (!photoUrl) {
+      return jsonResponse({ success: false, error: 'photoUrl is required' }, 400, cors);
+    }
+
+    const analysisId = crypto.randomUUID();
+    const timestamp = new Date().toISOString();
+
+    // Step 1: Pattern-based extraction (since we don't have an external OCR API,
+    // we provide a structured analysis framework that the Android app's
+    // on-device AI will fill in. The backend handles the parsing logic.)
+    const analysis = {
+      analysisId,
+      photoUrl,
+      submittedBy: user.userId,
+      submittedAt: timestamp,
+      status: 'analyzed',
+      detectedText: '',
+      parsedData: {
+        personName: null,
+        givenNames: null,
+        familyName: null,
+        birthDate: null,
+        deathDate: null,
+        inscription: null,
+        language: null,
+        script: null,
+        epitaph: null,
+        symbols: [],
+        confidence: 0
+      },
+      suggestedRecord: null,
+      warnings: []
+    };
+
+    // Step 2: If hints provided, use them to guide parsing
+    if (hints) {
+      analysis.parsedData.language = detectLanguageFromHints(hints);
+      analysis.parsedData.script = detectScriptFromHints(hints);
+    }
+
+    // Step 3: Extract any text from hints (if user provided transcribed text)
+    // The Android app's on-device OCR will send extracted text via the
+    // /api/ai/headstone/parse endpoint for structured parsing.
+    if (body.detectedText) {
+      const parsed = parseInscriptionText(body.detectedText, hints);
+      analysis.detectedText = body.detectedText;
+      analysis.parsedData = { ...analysis.parsedData, ...parsed };
+    }
+
+    // Step 4: Detect symbols from hints
+    if (hints) {
+      analysis.parsedData.symbols = detectSymbols(hints);
+    }
+
+    // Step 5: Build suggested record
+    if (analysis.parsedData.personName || analysis.parsedData.birthDate || analysis.parsedData.deathDate) {
+      analysis.suggestedRecord = {
+        personName: analysis.parsedData.personName || null,
+        givenNames: analysis.parsedData.givenNames || null,
+        familyName: analysis.parsedData.familyName || null,
+        birthDate: analysis.parsedData.birthDate || null,
+        deathDate: analysis.parsedData.deathDate || null,
+        cemeteryId: cemeteryId || null,
+        latitude: latitude || null,
+        longitude: longitude || null,
+        inscription: analysis.parsedData.inscription || analysis.detectedText || null,
+        language: analysis.parsedData.language || null,
+        script: analysis.parsedData.script || null,
+        sourcePhoto: photoUrl,
+        sourceAnalysis: analysisId,
+        confidenceScore: analysis.parsedData.confidence,
+        status: 'pending_confirmation'
+      };
+    }
+
+    // Step 6: Add warnings
+    if (!analysis.parsedData.personName) {
+      analysis.warnings.push('No person name detected. User confirmation required.');
+    }
+    if (!analysis.parsedData.birthDate && !analysis.parsedData.deathDate) {
+      analysis.warnings.push('No dates detected. Record may be incomplete.');
+    }
+    if (analysis.parsedData.confidence < 0.5) {
+      analysis.warnings.push('Low confidence extraction. Please verify all fields.');
+    }
+
+    // Store analysis
+    const analysisPath = `community/headstone-analyses/${analysisId}.json`;
+    await writeFile(env, analysisPath, JSON.stringify(analysis, null, 2));
+
+    return jsonResponse({
+      success: true,
+      analysis
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Analysis failed', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/ai/headstone/parse
+ * Parse transcribed headstone text into structured fields.
+ * This endpoint is called after on-device OCR extracts text from the photo.
+ *
+ * Body: { text: string, hints?: string, cemeteryId?: string }
+ */
+async function handleHeadstoneParse(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { text, hints, cemeteryId } = body;
+
+    if (!text) {
+      return jsonResponse({ success: false, error: 'text is required' }, 400, cors);
+    }
+
+    const parsed = parseInscriptionText(text, hints);
+
+    return jsonResponse({
+      success: true,
+      originalText: text,
+      parsed,
+      suggestedRecord: {
+        personName: parsed.personName || null,
+        givenNames: parsed.givenNames || null,
+        familyName: parsed.familyName || null,
+        birthDate: parsed.birthDate || null,
+        deathDate: parsed.deathDate || null,
+        inscription: text,
+        language: parsed.language || null,
+        script: parsed.script || null,
+        cemeteryId: cemeteryId || null,
+        confidenceScore: parsed.confidence,
+        status: 'pending_confirmation'
+      }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Parse failed', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/ai/headstone/confirm
+ * Confirm a headstone analysis and create a grave record.
+ * The user reviews the AI-extracted data, corrects any errors,
+ * and confirms to create a published grave record.
+ *
+ * Body: {
+ *   analysisId: string,
+ *   confirmedData: {
+ *     personName: string,
+ *     givenNames?: string,
+ *     familyName?: string,
+ *     birthDate?: string,
+ *     deathDate?: string,
+ *     cemeteryId?: string,
+ *     cemetery?: string,
+ *     inscription?: string,
+ *     latitude?: number,
+ *     longitude?: number
+ *   }
+ * }
+ */
+async function handleHeadstoneConfirm(request, env, cors) {
+  try {
+    const user = await getAuthenticatedUser(request, env);
+    if (!user) {
+      return jsonResponse({ success: false, error: 'Authentication required' }, 401, cors);
+    }
+
+    const body = await request.json();
+    const { analysisId, confirmedData } = body;
+
+    if (!analysisId || !confirmedData) {
+      return jsonResponse({ success: false, error: 'analysisId and confirmedData are required' }, 400, cors);
+    }
+    if (!confirmedData.personName) {
+      return jsonResponse({ success: false, error: 'personName is required' }, 400, cors);
+    }
+
+    // Load original analysis
+    const analysisPath = `community/headstone-analyses/${analysisId}.json`;
+    let analysis;
+    try {
+      const content = await readFile(env, analysisPath);
+      analysis = JSON.parse(content);
+    } catch (e) {
+      return jsonResponse({ success: false, error: 'Analysis not found' }, 404, cors);
+    }
+
+    // Create the grave record
+    const recordId = crypto.randomUUID();
+    const timestamp = new Date().toISOString();
+    const graveRecord = {
+      id: recordId,
+      personName: confirmedData.personName,
+      givenNames: confirmedData.givenNames || null,
+      familyName: confirmedData.familyName || null,
+      birthDate: confirmedData.birthDate || null,
+      deathDate: confirmedData.deathDate || null,
+      cemeteryId: confirmedData.cemeteryId || null,
+      cemetery: confirmedData.cemetery || null,
+      inscription: confirmedData.inscription || null,
+      latitude: confirmedData.latitude || null,
+      longitude: confirmedData.longitude || null,
+      sourcePhoto: analysis.photoUrl,
+      sourceAnalysis: analysisId,
+      submittedBy: user.userId,
+      submittedAt: timestamp,
+      status: 'published',
+      verificationStatus: 'user_confirmed',
+      confidenceScore: analysis.parsedData?.confidence || 0.5
+    };
+
+    // Store the grave record
+    const recordPath = `data/graves/${recordId}.json`;
+    await writeFile(env, recordPath, JSON.stringify(graveRecord, null, 2));
+
+    // Update analysis status
+    analysis.status = 'confirmed';
+    analysis.confirmedRecordId = recordId;
+    analysis.confirmedAt = timestamp;
+    analysis.confirmedBy = user.userId;
+    await writeFile(env, analysisPath, JSON.stringify(analysis, null, 2));
+
+    // Increment user contribution count
+    await incrementUserContributionCount(user.userId, env);
+
+    return jsonResponse({
+      success: true,
+      recordId,
+      graveRecord,
+      message: 'Grave record created successfully from headstone analysis'
+    }, 201, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Confirmation failed', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/ai/headstone/analyses
+ * List headstone analyses for the authenticated user.
+ */
+async function handleHeadstoneListAnalyses(request, env, cors) {
+  try {
+    const user = await getAuthenticatedUser(request, env);
+    if (!user) {
+      return jsonResponse({ success: false, error: 'Authentication required' }, 401, cors);
+    }
+
+    const url = new URL(request.url);
+    const limit = parseInt(url.searchParams.get('limit') || '20', 10);
+    const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+
+    let analyses = [];
+    try {
+      const files = await listFiles(env, 'community/headstone-analyses');
+      const jsonFiles = files.filter(f => f.endsWith('.json')).slice(0, 50);
+
+      for (const file of jsonFiles) {
+        try {
+          const content = await readFile(env, `community/headstone-analyses/${file}`);
+          const analysis = JSON.parse(content);
+          if (analysis.submittedBy === user.userId) {
+            analyses.push({
+              analysisId: analysis.analysisId,
+              photoUrl: analysis.photoUrl,
+              status: analysis.status,
+              submittedAt: analysis.submittedAt,
+              personName: analysis.parsedData?.personName || null,
+              confidence: analysis.parsedData?.confidence || 0,
+              confirmedRecordId: analysis.confirmedRecordId || null
+            });
+          }
+        } catch (e) { continue; }
+      }
+    } catch (e) { /* no analyses yet */ }
+
+    analyses.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+    const paginated = analyses.slice(offset, offset + limit);
+
+    return jsonResponse({
+      success: true,
+      total: analyses.length,
+      limit,
+      offset,
+      hasMore: offset + limit < analyses.length,
+      analyses: paginated
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to list analyses', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/ai/headstone/analyses/:analysisId
+ * Get details of a specific headstone analysis.
+ */
+async function handleHeadstoneGetAnalysis(analysisId, request, env, cors) {
+  try {
+    const analysisPath = `community/headstone-analyses/${analysisId}.json`;
+    let analysis;
+    try {
+      const content = await readFile(env, analysisPath);
+      analysis = JSON.parse(content);
+    } catch (e) {
+      return jsonResponse({ success: false, error: 'Analysis not found' }, 404, cors);
+    }
+
+    return jsonResponse({
+      success: true,
+      analysis
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get analysis', message: error.message }, 500, cors);
+  }
+}
+
+// ── Phase 20: Headstone Parsing Utilities ──
+
+/**
+ * Parse transcribed headstone text into structured fields.
+ * Uses pattern matching for common headstone inscription formats.
+ */
+function parseInscriptionText(text, hints) {
+  const result = {
+    personName: null,
+    givenNames: null,
+    familyName: null,
+    birthDate: null,
+    deathDate: null,
+    inscription: text,
+    language: null,
+    script: null,
+    epitaph: null,
+    symbols: [],
+    confidence: 0
+  };
+
+  if (!text) return result;
+
+  const textStr = String(text);
+  const confidenceParts = 0;
+
+  // Detect language/script from hints or text
+  result.language = detectLanguageFromHints(hints || textStr);
+  result.script = detectScriptFromHints(hints || textStr);
+
+  // Extract dates: look for patterns like 1865-1932, 1865–1932, Born 1865, Died 1932
+  // Date range pattern: YYYY/YYYY or YYYY–YYYY
+  const dateRange = textStr.match(/(\d{4})\s*[-–—]\s*(\d{4})/);
+  if (dateRange) {
+    result.birthDate = dateRange[1];
+    result.deathDate = dateRange[2];
+    result.confidence += 0.3;
+  } else {
+    // Individual date patterns
+    const bornMatch = textStr.match(/(?:born|b\.?)\s*(\d{4})/i);
+    const diedMatch = textStr.match(/(?:died|d\.?)\s*(\d{4})/i);
+
+    if (bornMatch) {
+      result.birthDate = bornMatch[1];
+      result.confidence += 0.2;
+    }
+    if (diedMatch) {
+      result.deathDate = diedMatch[1];
+      result.confidence += 0.2;
+    }
+
+    // Full date patterns: 12 Jan 1865, January 12 1865
+    const fullDatePattern = /(\d{1,2}\s+)?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d{1,2},?\s+)?(\d{4})/i;
+    const fullDates = textStr.match(new RegExp(fullDatePattern.source, 'gi'));
+    if (fullDates && fullDates.length >= 2) {
+      // First date is likely birth, second is death
+      const firstDate = fullDates[0].match(fullDatePattern);
+      const secondDate = fullDates[1].match(fullDatePattern);
+      if (firstDate && !result.birthDate) {
+        result.birthDate = firstDate[4];
+        result.confidence += 0.2;
+      }
+      if (secondDate && !result.deathDate) {
+        result.deathDate = secondDate[4];
+        result.confidence += 0.2;
+      }
+    } else if (fullDates && fullDates.length === 1) {
+      const singleDate = fullDates[0].match(fullDatePattern);
+      if (singleDate) {
+        // Single date on a headstone is usually death date
+        result.deathDate = singleDate[4];
+        result.confidence += 0.15;
+      }
+    }
+  }
+
+  // Extract name: usually the first line, or text before dates
+  // Common patterns: "In loving memory of NAME", "NAME YYYY-YYYY"
+  const inMemoryMatch = textStr.match(/(?:in\s+(?:loving\s+)?memory\s+of|in\s+remembrance\s+of|sacred\s+to\s+the\s+memory\s+of)\s+([^\n,]+)/i);
+  if (inMemoryMatch) {
+    result.personName = inMemoryMatch[1].trim();
+    result.confidence += 0.3;
+  } else {
+    // Try first non-empty line as name (excluding common prefixes)
+    const lines = textStr.split(/\n+/).map(l => l.trim()).filter(l => l.length > 0);
+    const prefixPatterns = /^(in\s+(?:loving\s+)?memory|sacred|here\s+lies|here\s+rests|rip|requiescat|in\s+memoriam)/i;
+    const nameLine = lines.find(l => !prefixPatterns.test(l) && !l.match(/^\d{4}/) && l.length >= 2);
+
+    if (nameLine) {
+      // Clean up: remove trailing dates, commas with dates
+      const cleanName = nameLine
+        .replace(/\s*\d{4}.*$/, '')
+        .replace(/\s*[-–—].*$/, '')
+        .replace(/["""'']/g, '')
+        .trim();
+
+      if (cleanName.length >= 2 && cleanName.length <= 100) {
+        result.personName = cleanName;
+        result.confidence += 0.25;
+      }
+    }
+  }
+
+  // Parse name into given/family
+  if (result.personName) {
+    const nameParts = result.personName.split(/\s+/);
+    if (nameParts.length >= 2) {
+      result.givenNames = nameParts[0];
+      result.familyName = nameParts[nameParts.length - 1];
+    } else {
+      result.givenNames = result.personName;
+    }
+  }
+
+  // Extract epitaph: text after dates, usually in quotes or after "Beloved"
+  const epitaphMatch = textStr.match(/["""]([^"""]{10,200})["""]/);
+  if (epitaphMatch) {
+    result.epitaph = epitaphMatch[1].trim();
+    result.confidence += 0.1;
+  } else {
+    // Try "Beloved X" pattern
+    const belovedMatch = textStr.match(/(?:beloved|loving|dear|cherished)\s+([^\n]+)/i);
+    if (belovedMatch) {
+      result.epitaph = belovedMatch[0].trim();
+      result.confidence += 0.05;
+    }
+  }
+
+  // Detect symbols from text
+  result.symbols = detectSymbols(textStr);
+
+  // Cap confidence at 1.0
+  result.confidence = Math.min(result.confidence, 1.0);
+
+  return result;
+}
+
+/**
+ * Detect language from text or hints.
+ */
+function detectLanguageFromHints(text) {
+  if (!text) return null;
+  const lower = text.toLowerCase();
+
+  // Check for CJK characters
+  if (/[\u4e00-\u9fff]/.test(text)) return 'Chinese';
+  if (/[\u3040-\u30ff]/.test(text)) return 'Japanese';
+  if (/[\uac00-\ud7af]/.test(text)) return 'Korean';
+  if (/[\u0600-\u06ff]/.test(text)) return 'Arabic';
+  if (/[\u0590-\u05ff]/.test(text)) return 'Hebrew';
+  if (/[\u0900-\u097f]/.test(text)) return 'Hindi';
+  if (/[\u0e00-\u0e7f]/.test(text)) return 'Thai';
+
+  // Check for language hints in text
+  if (lower.includes('chinese')) return 'Chinese';
+  if (lower.includes('malay')) return 'Malay';
+  if (lower.includes('arabic')) return 'Arabic';
+  if (lower.includes('tamil')) return 'Tamil';
+
+  // Default to English for Latin script
+  if (/^[a-z\s.,;:!?'"-]+$/i.test(text)) return 'English';
+
+  return null;
+}
+
+/**
+ * Detect script from text or hints.
+ */
+function detectScriptFromHints(text) {
+  if (!text) return null;
+  if (/[\u4e00-\u9fff]/.test(text)) return 'Chinese';
+  if (/[\u3040-\u30ff]/.test(text)) return 'Japanese';
+  if (/[\uac00-\ud7af]/.test(text)) return 'Korean';
+  if (/[\u0600-\u06ff]/.test(text)) return 'Arabic';
+  if (/[\u0590-\u05ff]/.test(text)) return 'Hebrew';
+  if (/[\u0900-\u097f]/.test(text)) return 'Devanagari';
+  if (/[\u0e00-\u0e7f]/.test(text)) return 'Thai';
+
+  const lower = text.toLowerCase();
+  if (lower.includes('chinese')) return 'Chinese';
+  if (lower.includes('arabic')) return 'Arabic';
+
+  // Default to Latin
+  return 'Latin';
+}
+
+/**
+ * Detect religious/cultural symbols from text hints.
+ */
+function detectSymbols(text) {
+  if (!text) return [];
+  const symbols = [];
+  const lower = text.toLowerCase();
+
+  const symbolMap = {
+    'cross': /\bcross\b|crucifix|christian/i,
+    'crescent': /\bcrescent\b|islamic|muslim/i,
+    'star of david': /star\s+of\s+david|menorah|jewish|hebrew/i,
+    'lotus': /\blotus\b|buddhist|buddhism/i,
+    'om': /\bom\b|hindu|sanatan/i,
+    'dove': /\bdove\b|peace/i,
+    'angel': /\bangel\b/i,
+    'anchor': /\banchor\b|hope/i,
+    'broken column': /broken\s+column/i,
+    'weeping willow': /weeping\s+willow/i,
+    'skull': /\bskull\b|memento\s+mori/i,
+    'flame': /\bflame\b|eternal/i
+  };
+
+  for (const [symbol, pattern] of Object.entries(symbolMap)) {
+    if (pattern.test(lower)) {
+      symbols.push(symbol);
+    }
+  }
+
+  return symbols;
 }
