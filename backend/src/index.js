@@ -1065,6 +1065,28 @@ async function handleRequest(request, env, ctx) {
     if (path === "/api/memorial/history" && method === "POST") {
       return await handleStoryHistory(request, env, corsHeaders);
     }
+    // Phase 25: AI Cemetery Mapping & Spatial Intelligence
+    if (path === "/api/spatial/info" && method === "GET") {
+      return await handleSpatialInfo(request, env, corsHeaders);
+    }
+    if (path === "/api/spatial/cluster" && method === "POST") {
+      return await handleSpatialCluster(request, env, corsHeaders);
+    }
+    if (path === "/api/spatial/heatmap" && method === "POST") {
+      return await handleSpatialHeatmap(request, env, corsHeaders);
+    }
+    if (path === "/api/spatial/search" && method === "POST") {
+      return await handleSpatialSearch(request, env, corsHeaders);
+    }
+    if (path === "/api/spatial/nearest" && method === "POST") {
+      return await handleSpatialNearest(request, env, corsHeaders);
+    }
+    if (path === "/api/spatial/density" && method === "POST") {
+      return await handleSpatialDensity(request, env, corsHeaders);
+    }
+    if (path === "/api/spatial/family" && method === "POST") {
+      return await handleSpatialFamily(request, env, corsHeaders);
+    }
     }
 
     // Phase 19: Community Engagement & Memorial Features
@@ -22636,5 +22658,98 @@ async function handleStoryHistory(request, env, cors) {
     return jsonResponse({ success: true, ...context }, 200, cors);
   } catch (error) {
     return jsonResponse({ success: false, error: 'Failed to get historical context', message: error.message }, 500, cors);
+  }
+}
+
+// ── Phase 25: AI Cemetery Mapping & Spatial Intelligence ──
+
+async function handleSpatialInfo(request, env, cors) {
+  return jsonResponse({
+    success: true,
+    system: 'GraveAtlas AI Cemetery Mapping & Spatial Intelligence',
+    version: '1.0',
+    features: ['GPS Clustering (DBSCAN)', 'Heatmap Generation', 'Spatial Search', 'Nearest Neighbors', 'Density Analysis', 'Family Spatial Proximity'],
+    attribution: 'GraveAtlas — AI Spatial Intelligence'
+  }, 200, cors);
+}
+
+async function handleSpatialCluster(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { records, options } = body;
+    if (!records || !Array.isArray(records)) return jsonResponse({ success: false, error: 'records array is required' }, 400, cors);
+    const { clusterGraves } = await import('./spatial/spatial-intelligence.js');
+    const result = clusterGraves(records, options || {});
+    return jsonResponse({ success: true, ...result, attribution: 'GraveAtlas — AI Spatial Intelligence' }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Clustering failed', message: error.message }, 500, cors);
+  }
+}
+
+async function handleSpatialHeatmap(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { records, options } = body;
+    if (!records || !Array.isArray(records)) return jsonResponse({ success: false, error: 'records array is required' }, 400, cors);
+    const { generateHeatmap } = await import('./spatial/spatial-intelligence.js');
+    const result = generateHeatmap(records, options || {});
+    return jsonResponse({ success: true, ...result, attribution: 'GraveAtlas — AI Spatial Intelligence' }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Heatmap generation failed', message: error.message }, 500, cors);
+  }
+}
+
+async function handleSpatialSearch(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { lat, lon, records, radiusMeters } = body;
+    if (lat == null || lon == null) return jsonResponse({ success: false, error: 'lat and lon are required' }, 400, cors);
+    if (!records || !Array.isArray(records)) return jsonResponse({ success: false, error: 'records array is required' }, 400, cors);
+    const { spatialSearch } = await import('./spatial/spatial-intelligence.js');
+    const result = spatialSearch(lat, lon, records, radiusMeters || 500);
+    return jsonResponse({ success: true, ...result, attribution: 'GraveAtlas — AI Spatial Intelligence' }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Spatial search failed', message: error.message }, 500, cors);
+  }
+}
+
+async function handleSpatialNearest(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { record, records, k } = body;
+    if (!record) return jsonResponse({ success: false, error: 'record is required' }, 400, cors);
+    if (!records || !Array.isArray(records)) return jsonResponse({ success: false, error: 'records array is required' }, 400, cors);
+    const { findNearestNeighbors } = await import('./spatial/spatial-intelligence.js');
+    const result = findNearestNeighbors(record, records, k || 5);
+    return jsonResponse({ success: true, ...result, attribution: 'GraveAtlas — AI Spatial Intelligence' }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Nearest neighbor search failed', message: error.message }, 500, cors);
+  }
+}
+
+async function handleSpatialDensity(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { records } = body;
+    if (!records || !Array.isArray(records)) return jsonResponse({ success: false, error: 'records array is required' }, 400, cors);
+    const { calculateDensity } = await import('./spatial/spatial-intelligence.js');
+    const result = calculateDensity(records);
+    return jsonResponse({ success: true, ...result, attribution: 'GraveAtlas — AI Spatial Intelligence' }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Density analysis failed', message: error.message }, 500, cors);
+  }
+}
+
+async function handleSpatialFamily(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { records, familyTree } = body;
+    if (!records || !Array.isArray(records)) return jsonResponse({ success: false, error: 'records array is required' }, 400, cors);
+    if (!familyTree) return jsonResponse({ success: false, error: 'familyTree is required' }, 400, cors);
+    const { analyzeFamilyProximity } = await import('./spatial/spatial-intelligence.js');
+    const result = analyzeFamilyProximity(records, familyTree);
+    return jsonResponse({ success: true, ...result, attribution: 'GraveAtlas — AI Spatial Intelligence' }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Family proximity analysis failed', message: error.message }, 500, cors);
   }
 }

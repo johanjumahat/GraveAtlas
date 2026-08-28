@@ -39,6 +39,7 @@ import com.putraworks.graveatlas.data.model.KuburSearchResult;
 import com.putraworks.graveatlas.data.model.InscriptionTranslationResult;
 import com.putraworks.graveatlas.data.model.FamilyTreeResult;
 import com.putraworks.graveatlas.data.model.MemorialStoryResult;
+import com.putraworks.graveatlas.data.model.SpatialIntelligenceResult;
 import com.putraworks.graveatlas.data.model.GlobalHealthOverview;
 import com.putraworks.graveatlas.data.model.CemeteryRecommendations;
 import com.putraworks.graveatlas.data.model.GlobalRecommendations;
@@ -6938,6 +6939,104 @@ public class ApiClient {
         } catch (Exception e) {
             callback.onError("Failed to build request: " + e.getMessage());
         }
+    }
+
+
+    // ── Phase 25: AI Cemetery Mapping & Spatial Intelligence ──
+
+    public void getSpatialInfo(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder().url(baseUrl + "/api/spatial/info").get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { String b = response.body() != null ? response.body().string() : "{}"; callback.onSuccess(new JSONObject(b)); } catch (Exception e) { callback.onError("Failed to parse spatial info."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); } }
+        });
+    }
+
+    public void clusterGraves(JSONArray records, JSONObject options, final ApiCallback<JSONObject> callback) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("records", records);
+            if (options != null) body.put("options", options);
+            RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+            Request request = new Request.Builder().url(baseUrl + "/api/spatial/cluster").post(requestBody).build();
+            client.newCall(request).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+                @Override public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) { try { String b = response.body() != null ? response.body().string() : "{}"; callback.onSuccess(new JSONObject(b)); } catch (Exception e) { callback.onError("Failed to parse clusters."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); } } });
+        } catch (Exception e) { callback.onError("Failed: " + e.getMessage()); }
+    }
+
+    public void generateHeatmap(JSONArray records, JSONObject options, final ApiCallback<JSONObject> callback) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("records", records);
+            if (options != null) body.put("options", options);
+            RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+            Request request = new Request.Builder().url(baseUrl + "/api/spatial/heatmap").post(requestBody).build();
+            client.newCall(request).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+                @Override public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) { try { String b = response.body() != null ? response.body().string() : "{}"; callback.onSuccess(new JSONObject(b)); } catch (Exception e) { callback.onError("Failed to parse heatmap."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); } } });
+        } catch (Exception e) { callback.onError("Failed: " + e.getMessage()); }
+    }
+
+    public void spatialSearch(double lat, double lon, JSONArray records, int radiusMeters, final ApiCallback<JSONObject> callback) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("lat", lat);
+            body.put("lon", lon);
+            body.put("records", records);
+            body.put("radiusMeters", radiusMeters);
+            RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+            Request request = new Request.Builder().url(baseUrl + "/api/spatial/search").post(requestBody).build();
+            client.newCall(request).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+                @Override public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) { try { String b = response.body() != null ? response.body().string() : "{}"; callback.onSuccess(new JSONObject(b)); } catch (Exception e) { callback.onError("Failed to parse search results."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); } } });
+        } catch (Exception e) { callback.onError("Failed: " + e.getMessage()); }
+    }
+
+    public void findNearestNeighbors(JSONObject record, JSONArray records, int k, final ApiCallback<JSONObject> callback) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("record", record);
+            body.put("records", records);
+            if (k > 0) body.put("k", k);
+            RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+            Request request = new Request.Builder().url(baseUrl + "/api/spatial/nearest").post(requestBody).build();
+            client.newCall(request).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+                @Override public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) { try { String b = response.body() != null ? response.body().string() : "{}"; callback.onSuccess(new JSONObject(b)); } catch (Exception e) { callback.onError("Failed to parse nearest neighbors."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); } } });
+        } catch (Exception e) { callback.onError("Failed: " + e.getMessage()); }
+    }
+
+    public void calculateDensity(JSONArray records, final ApiCallback<JSONObject> callback) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("records", records);
+            RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+            Request request = new Request.Builder().url(baseUrl + "/api/spatial/density").post(requestBody).build();
+            client.newCall(request).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+                @Override public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) { try { String b = response.body() != null ? response.body().string() : "{}"; callback.onSuccess(new JSONObject(b)); } catch (Exception e) { callback.onError("Failed to parse density."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); } } });
+        } catch (Exception e) { callback.onError("Failed: " + e.getMessage()); }
+    }
+
+    public void analyzeFamilyProximity(JSONArray records, JSONObject familyTree, final ApiCallback<JSONObject> callback) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("records", records);
+            body.put("familyTree", familyTree);
+            RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+            Request request = new Request.Builder().url(baseUrl + "/api/spatial/family").post(requestBody).build();
+            client.newCall(request).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+                @Override public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) { try { String b = response.body() != null ? response.body().string() : "{}"; callback.onSuccess(new JSONObject(b)); } catch (Exception e) { callback.onError("Failed to parse family proximity."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); } } });
+        } catch (Exception e) { callback.onError("Failed: " + e.getMessage()); }
     }
 
     public interface ApiCallback<T> {

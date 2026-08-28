@@ -655,6 +655,62 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.57] — 2026-08-28
+
+### Phase 25: AI Cemetery Mapping & Spatial Intelligence
+
+GPS-based grave clustering, cemetery heatmap generation, spatial search,
+density analysis, and family spatial proximity detection. Adds the
+spatial dimension to complement the genealogy family tree builder.
+
+**Clustering (DBSCAN-style):**
+- Groups graves by GPS proximity with configurable eps (meters) and minPoints
+- Identifies noise points (isolated graves)
+- Cluster center, radius, and member extraction
+- Sorted by cluster size (largest first)
+
+**Heatmap Generation:**
+- Grid-based density visualization (configurable grid size)
+- Intensity values per cell
+- Sorted cells for rendering priority
+- Bounding box and density metrics
+
+**Spatial Search:**
+- Find graves within a radius of any point (Haversine distance)
+- Results sorted by distance (nearest first)
+- Distance in meters for each result
+
+**Nearest Neighbors:**
+- Find k nearest graves to any record
+- Average and minimum distance metrics
+- Sorted by distance
+
+**Density Analysis:**
+- Total graves, area in square meters
+- Density per square meter and per hectare
+- Bounding box with center point
+
+**Family Spatial Proximity:**
+- Integrates with Phase 23 family tree
+- Measures distances between family members
+- Identifies proximate families (within 100m)
+- Average family distance analysis
+
+**New Backend Endpoints (7):**
+- GET /api/spatial/info — system info
+- POST /api/spatial/cluster — GPS clustering
+- POST /api/spatial/heatmap — heatmap generation
+- POST /api/spatial/search — spatial radius search
+- POST /api/spatial/nearest — nearest neighbor search
+- POST /api/spatial/density — density analysis
+- POST /api/spatial/family — family spatial proximity
+
+**New Module:** backend/src/spatial/spatial-intelligence.js
+**New Model:** SpatialIntelligenceResult (2 inner classes)
+**API client:** 7 new methods
+**New tests:** 72 (phase25.test.js)
+
+
 ## [7.2.56] — 2026-08-28
 
 ### Phase 24: AI Memorial Story Generator
