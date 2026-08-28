@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import com.putraworks.graveatlas.data.model.SourceCoverageResult;
 import com.putraworks.graveatlas.data.model.SourceVerificationStatus;
+import org.json.JSONObject;
 
 public class ProvenanceFragment extends Fragment {
 
@@ -127,43 +128,43 @@ public class ProvenanceFragment extends Fragment {
             apiClient.getSourceCoverage(new ApiClient.ApiCallback<SourceCoverageResult>() {
                 @Override public void onSuccess(SourceCoverageResult result) {
                     if (getActivity() == null) return;
-                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No coverage data"); });
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText(result != null ? result.toString() : "No coverage data"); });
                 }
                 @Override public void onError(String error) {
                     if (getActivity() == null) return;
-                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
                 }
             });
         });
 
         addEntryBtn.setOnClickListener(v -> {
             String rid = recordIdField.getText().toString().trim();
-            if (rid.isEmpty()) { resultText.setText("Enter a Record ID"); return; }
+            if (rid.isEmpty()) { statusText.setText("Enter a Record ID"); return; }
             setBusy(true);
             apiClient.addProvenanceEntry(rid, "update", "admin", "curator", "Manual update", null, new ApiClient.ApiCallback<JSONObject>() {
                 @Override public void onSuccess(JSONObject result) {
                     if (getActivity() == null) return;
-                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Entry added"); });
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Entry added"); });
                 }
                 @Override public void onError(String error) {
                     if (getActivity() == null) return;
-                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
                 }
             });
         });
 
         exportProvBtn.setOnClickListener(v -> {
             String rid = recordIdField.getText().toString().trim();
-            if (rid.isEmpty()) { resultText.setText("Enter a Record ID"); return; }
+            if (rid.isEmpty()) { statusText.setText("Enter a Record ID"); return; }
             setBusy(true);
             apiClient.exportProvenance(rid, new ApiClient.ApiCallback<JSONObject>() {
                 @Override public void onSuccess(JSONObject result) {
                     if (getActivity() == null) return;
-                    getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { statusText.setText(result.toString(2)); } catch (Exception e) { statusText.setText(result.toString()); } });
                 }
                 @Override public void onError(String error) {
                     if (getActivity() == null) return;
-                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
                 }
             });
         });
@@ -173,11 +174,11 @@ public class ProvenanceFragment extends Fragment {
             apiClient.getSourceVerificationStatus(new ApiClient.ApiCallback<SourceVerificationStatus>() {
                 @Override public void onSuccess(SourceVerificationStatus result) {
                     if (getActivity() == null) return;
-                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No status"); });
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText(result != null ? result.toString() : "No status"); });
                 }
                 @Override public void onError(String error) {
                     if (getActivity() == null) return;
-                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
                 }
             });
         });

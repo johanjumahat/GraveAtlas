@@ -99,33 +99,33 @@ public class IntelligentSearchFragment extends Fragment {
             apiClient.globalSearch(q, null, 1, 50, null, null, null, null, null, null, new ApiClient.ApiCallback<GlobalSearchResponse>() {
                 @Override public void onSuccess(GlobalSearchResponse result) {
                     if (getActivity() == null) return;
-                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No results"); });
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText(result != null ? result.toString() : "No results"); });
                 }
                 @Override public void onError(String error) {
                     if (getActivity() == null) return;
-                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
                 }
             });
         });
 
         suggestBtn.setOnClickListener(v -> {
             String q = queryField.getText().toString().trim();
-            if (q.isEmpty()) { resultText.setText("Type something first"); return; }
+            if (q.isEmpty()) { statusText.setText("Type something first"); return; }
             setBusy(true);
             apiClient.getSearchSuggestions(q, 10, new ApiClient.ApiCallback<List<SearchSuggestion>>() {
                 @Override public void onSuccess(List<SearchSuggestion> result) {
                     if (getActivity() == null) return;
                     getActivity().runOnUiThread(() -> {
                         setBusy(false);
-                        if (result == null || result.isEmpty()) { resultText.setText("No suggestions"); return; }
+                        if (result == null || result.isEmpty()) { statusText.setText("No suggestions"); return; }
                         StringBuilder sb = new StringBuilder();
                         for (SearchSuggestion s : result) sb.append(s.toString()).append("\n");
-                        resultText.setText(sb.toString());
+                        statusText.setText(sb.toString());
                     });
                 }
                 @Override public void onError(String error) {
                     if (getActivity() == null) return;
-                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText("Error: " + error); });
                 }
             });
         });
