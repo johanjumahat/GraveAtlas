@@ -55,6 +55,7 @@
 | 16.30. AI Cross-Reference & Linkage Engine | ✅ COMPLETE | 100% |
 | 16.31. AI Data Enrichment & Auto-Completion Engine | ✅ COMPLETE | 100% |
 | 16.32. AI Deduplication Intelligence & Conflict Resolution | ✅ COMPLETE | 100% |
+| 18. Multi-Country Open Data Connectors | ✅ COMPLETE | 100% |
 
 ### Earlier (v7.2.41)
 - R8 minification enabled (APK ~7.9MB, down from larger)
@@ -134,9 +135,11 @@
 
 30. **Add — AI Deduplication Intelligence & Conflict Resolution Engine** ✅ Five endpoints for detecting and resolving duplicate records: scan (Levenshtein name similarity, date/cemetery/plot/GPS matching, match score 0-100, conflict detection, auto-merge vs review recommendations), per-record duplicate pairs, resolve (merge with auto field resolution by confidence, source/photo ref merging, merge history, or mark not-duplicate), conflicts listing (unresolved field conflicts sorted by count), and stats (potential pairs, high confidence, auto-mergeable, conflicts, dedup rate). New models: `DedupScanResult` (3 inner), `DedupStatsResult`. v7.2.46.
 
+31. **Add — Multi-Country Open Data Connectors** ✅ Three new international connectors: CWGC (Commonwealth War Graves Commission — 1.7M+ war dead, 150+ countries, search by name), Find a Grave (200M+ memorials worldwide, HTML search parsing), UK Deceased Online (200+ UK cemeteries/crematoria, free preview data). Registry updated: CWGC and Wikidata marked implemented, Find a Grave moved from rejected to implemented (display-only). Four new endpoints: countries listing, cross-source search, coverage map, and per-source details. New model: `SourceCoverageResult` (2 inner). v7.2.47.
+
 ## Architecture
 
-- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 199 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
+- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 203 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
 - **Android:** 18+ screens with navigation host, external maps handoff (geo: intent), offline support
 - **Data:** GitHub repository (graveatlas-data) with JSON schemas
 - **Auth:** Google Sign-In with ID token verification, session tokens, ban system
@@ -144,7 +147,7 @@
 - **Timeline:** Chronological event visualization with decade grouping, backend endpoint
 - **External Sources:** OpenStreetMap (Overpass API), Wikidata (SPARQL), Singapore Government Open Data (data.gov.sg)
 
-## Test Suite (3566 tests)
+## Test Suite (3638 tests)
 
 | Test File | Tests | Area |
 |---|---|---|

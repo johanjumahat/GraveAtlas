@@ -30,6 +30,7 @@ import com.putraworks.graveatlas.data.model.EnrichmentSuggestionsResult;
 import com.putraworks.graveatlas.data.model.EnrichmentGapsResult;
 import com.putraworks.graveatlas.data.model.DedupScanResult;
 import com.putraworks.graveatlas.data.model.DedupStatsResult;
+import com.putraworks.graveatlas.data.model.SourceCoverageResult;
 import com.putraworks.graveatlas.data.model.GlobalHealthOverview;
 import com.putraworks.graveatlas.data.model.CemeteryRecommendations;
 import com.putraworks.graveatlas.data.model.GlobalRecommendations;
@@ -97,6 +98,7 @@ import com.putraworks.graveatlas.data.model.EnrichmentSuggestionsResult;
 import com.putraworks.graveatlas.data.model.EnrichmentGapsResult;
 import com.putraworks.graveatlas.data.model.DedupScanResult;
 import com.putraworks.graveatlas.data.model.DedupStatsResult;
+import com.putraworks.graveatlas.data.model.SourceCoverageResult;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -1878,6 +1880,124 @@ public class ApiClient {
                         callback.onSuccess(LinkageGraph.fromJson(new JSONObject(body)));
                     } catch (Exception e) {
                         callback.onError("Failed to parse linkage graph.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    // ── Phase 18: Multi-Country Open Data Connectors ──
+
+    /**
+     * Get list of countries covered by data sources.
+     * GET /api/sources/countries
+     */
+    public void getSourceCountries(final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/sources/countries";
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse countries.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Search across all implemented external sources.
+     * GET /api/sources/search?q=...&country=...&source=...&limit=...
+     */
+    public void searchExternalSources(String query, String country, String source, int limit,
+            final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/sources/search?q=" + query + "&limit=" + limit;
+        if (country != null) url += "&country=" + country;
+        if (source != null) url += "&source=" + source;
+
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse source search.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get global source coverage map.
+     * GET /api/sources/coverage
+     */
+    public void getSourceCoverage(final ApiCallback<SourceCoverageResult> callback) {
+        String url = baseUrl + "/api/sources/coverage";
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(SourceCoverageResult.fromJson(new JSONObject(body)));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse coverage.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get details about a specific data source.
+     * GET /api/sources/:sourceId/details
+     */
+    public void getSourceDetails(String sourceId, final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/sources/" + sourceId + "/details";
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse source details.");
                     }
                 } else {
                     callback.onError(ApiErrorHandler.getHttpMessage(response.code()));

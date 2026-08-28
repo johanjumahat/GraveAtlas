@@ -957,6 +957,25 @@ async function handleRequest(request, env, ctx) {
       return await handleDedupStats(request, env, corsHeaders);
     }
 
+    // Phase 18: Multi-Country Open Data Connectors
+    if (path === '/api/sources/countries' && method === 'GET') {
+      return await handleSourceCountries(request, env, corsHeaders);
+    }
+
+    if (path === '/api/sources/search' && method === 'GET') {
+      return await handleSourceSearch(request, env, corsHeaders);
+    }
+
+    if (path === '/api/sources/coverage' && method === 'GET') {
+      return await handleSourceCoverage(request, env, corsHeaders);
+    }
+
+    if (path.startsWith('/api/sources/') && path.endsWith('/details') && method === 'GET') {
+      const parts = path.split('/');
+      const sourceId = parts[parts.length - 2];
+      return await handleSourceDetails(sourceId, request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -19880,5 +19899,214 @@ async function handleDedupStats(request, env, cors) {
     }, 200, cors);
   } catch (error) {
     return jsonResponse({ success: false, error: 'Failed to get dedup stats', message: error.message }, 500, cors);
+  }
+}
+
+// ── Phase 18: Multi-Country Open Data Connectors ──
+
+/**
+ * GET /api/sources/countries
+ * Lists all countries covered by implemented data sources.
+ */
+async function handleSourceCountries(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, countries: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const sources = getImplementedSources();
+    const countryMap = {};
+
+    for (const source of sources) {
+      const country = source.countryRegion || 'Global';
+      if (!countryMap[country]) {
+        countryMap[country] = { country, sources: [], totalSources: 0 };
+      }
+      countryMap[country].sources.push({
+        sourceId: source.sourceId,
+        sourceName: source.sourceName,
+        dataType: source.dataType,
+        coverage: source.geographicCoverage || null,
+        license: source.licensing,
+        attribution: source.attributionRequirement
+      });
+      countryMap[country].totalSources++;
+    }
+
+    const countries = Object.values(countryMap).sort((a, b) => {
+      if (a.country === 'Global') return -1;
+      if (b.country === 'Global') return 1;
+      return a.country.localeCompare(b.country);
+    });
+
+    return jsonResponse({
+      success: true,
+      totalCountries: countries.length,
+      totalSources: sources.length,
+      countries
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to list source countries', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/sources/search
+ * Search across all implemented sources by name and optional country.
+ * Query params: q (required), country (optional), source (optional), limit (default 50)
+ */
+async function handleSourceSearch(request, env, cors) {
+  if (!env.GITHUB_APP_ID) {
+    return jsonResponse({ success: true, results: [], message: 'GitHub not configured' }, 200, cors);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const searchQuery = url.searchParams.get('q') || '';
+    const country = url.searchParams.get('country');
+    const specificSource = url.searchParams.get('source');
+    const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+
+    if (!searchQuery) {
+      return jsonResponse({ success: false, error: 'Query parameter "q" is required' }, 400, cors);
+    }
+
+    let sourcesToQuery = getImplementedSources();
+    if (specificSource) {
+      sourcesToQuery = sourcesToQuery.filter(s => s.sourceId === specificSource);
+    }
+    if (country && country !== 'Global') {
+      sourcesToQuery = sourcesToQuery.filter(s =>
+        s.countryRegion === country || s.countryRegion === 'Global' ||
+        (s.countryRegion || '').includes(country)
+      );
+    }
+
+    const query = { search: searchQuery, limit };
+    const results = [];
+
+    for (const source of sourcesToQuery) {
+      try {
+        const result = await querySource(source.sourceId, query, env);
+        const records = result.records || [];
+        results.push({
+          sourceId: source.sourceId,
+          sourceName: source.sourceName,
+          country: source.countryRegion,
+          status: result.status || 'ok',
+          recordCount: records.length,
+          records: records.slice(0, limit),
+          attribution: source.attributionRequirement,
+          license: source.licensing
+        });
+      } catch (error) {
+        results.push({
+          sourceId: source.sourceId,
+          sourceName: source.sourceName,
+          status: 'error',
+          error: error.message,
+          recordCount: 0,
+          records: []
+        });
+      }
+    }
+
+    const totalRecords = results.reduce((sum, r) => sum + r.recordCount, 0);
+
+    return jsonResponse({
+      success: true,
+      query: searchQuery,
+      totalSources: sourcesToQuery.length,
+      totalRecords,
+      results
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to search sources', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/sources/:sourceId/details
+ * Get details about a specific data source.
+ */
+async function handleSourceDetails(sourceId, request, env, cors) {
+  try {
+    const source = getSource(sourceId);
+    if (!source) {
+      return jsonResponse({ success: false, error: 'Source not found' }, 404, cors);
+    }
+
+    return jsonResponse({
+      success: true,
+      source: {
+        sourceId: source.sourceId,
+        sourceName: source.sourceName,
+        organization: source.organization,
+        countryRegion: source.countryRegion,
+        apiBaseUrl: source.apiBaseUrl,
+        documentationUrl: source.documentationUrl,
+        dataType: source.dataType,
+        authenticationRequirement: source.authenticationRequirement,
+        rateLimits: source.rateLimits,
+        licensing: source.licensing,
+        licenseVerified: source.licenseVerified,
+        commercialUseStatus: source.commercialUseStatus,
+        attributionRequirement: source.attributionRequirement,
+        privacyRestrictions: source.privacyRestrictions,
+        geographicCoverage: source.geographicCoverage,
+        updateFrequency: source.updateFrequency,
+        integrationStatus: source.integrationStatus,
+        lastVerificationDate: source.lastVerificationDate,
+        verificationEvidence: source.verificationEvidence,
+        notes: source.notes
+      }
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get source details', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/sources/coverage
+ * Returns global coverage map: which countries have data sources.
+ */
+async function handleSourceCoverage(request, env, cors) {
+  try {
+    const sources = getImplementedSources();
+    const coverage = {
+      global: [],
+      byCountry: {},
+      totalSources: sources.length,
+      implementedSources: sources.filter(s => s.integrationStatus === 'implemented').length,
+      totalCountries: 0
+    };
+
+    for (const source of sources) {
+      const country = source.countryRegion || 'Global';
+      const entry = {
+        sourceId: source.sourceId,
+        sourceName: source.sourceName,
+        dataType: source.dataType,
+        coverage: source.geographicCoverage
+      };
+
+      if (country === 'Global') {
+        coverage.global.push(entry);
+      } else {
+        if (!coverage.byCountry[country]) {
+          coverage.byCountry[country] = [];
+        }
+        coverage.byCountry[country].push(entry);
+      }
+    }
+
+    coverage.totalCountries = Object.keys(coverage.byCountry).length + (coverage.global.length > 0 ? 1 : 0);
+
+    return jsonResponse({
+      success: true,
+      ...coverage
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get coverage', message: error.message }, 500, cors);
   }
 }

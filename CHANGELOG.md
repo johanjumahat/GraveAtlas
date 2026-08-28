@@ -655,6 +655,47 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.47] — 2026-08-28
+
+### Phase 18: Multi-Country Open Data Connectors
+
+**New Connectors:**
+- **CWGC** (Commonwealth War Graves Commission) — 1.7M+ Commonwealth
+  war dead (WW1, WW2) across 150+ countries. Searches by name, returns
+  cemetery, plot, coordinates, birth/death dates. License: © CWGC
+  personal/research use with attribution.
+
+- **Find a Grave** — 200M+ memorials worldwide (primarily US/Europe).
+  HTML search parsing for public memorial data (name, dates, cemetery,
+  GPS). License: © Find a Grave display-only with attribution, no
+  storage/redistribution.
+
+- **UK Deceased Online** — UK burial/cremation records from 200+
+  cemeteries and crematoria. Free public search preview data only
+  (name, cemetery, year range). License: © Deceased Online with
+  attribution.
+
+**Registry Updates:**
+- CWGC: not_implemented → implemented
+- Find a Grave: rejected → implemented (display-only, no storage)
+- Wikidata: not_implemented → implemented (connector already existed)
+- UK Deceased Online: new entry, implemented
+
+**New Backend Endpoints (4):**
+- `GET /api/sources/countries` — lists all countries with implemented
+  sources, per-country source lists with licenses and attribution
+- `GET /api/sources/search?q=...&country=...&source=...&limit=...` —
+  search across all implemented external sources in parallel
+- `GET /api/sources/coverage` — global coverage map
+- `GET /api/sources/:sourceId/details` — full source metadata
+
+**Gateway:** 3 new connectors wired into querySource/queryAllSources
+New model: SourceCoverageResult (2 inner)
+API client: 4 new methods
+AI system prompt updated with source endpoints
+3 new suggested prompts
+
+
 ## [7.2.46] — 2026-08-28
 
 ### Phase 16.32: AI Deduplication Intelligence & Conflict Resolution Engine

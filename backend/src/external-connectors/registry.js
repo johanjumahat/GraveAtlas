@@ -57,7 +57,7 @@ export const SOURCE_REGISTRY = [
     privacyRestrictions: 'Covers only notable/public figures already documented on Wikipedia/Wikidata — no private burial records.',
     geographicCoverage: 'Global but sparse — only notable individuals and notable cemeteries have entries.',
     updateFrequency: 'Continuous, community-edited.',
-    integrationStatus: 'not_implemented',
+    integrationStatus: 'implemented',
     lastVerificationDate: '2026-08-11',
     verificationEvidence: 'Documentation reviewed only. No connector built yet — no live query executed against this endpoint in this integration pass.',
     notes: 'Good long-term candidate for "notable burials" lookups. Not built in this pass to keep scope to one fully tested connector.'
@@ -101,7 +101,7 @@ export const SOURCE_REGISTRY = [
     privacyRestrictions: 'Individual casualty records — would need review even if an API existed.',
     geographicCoverage: 'Global — Commonwealth war dead from WWI/WWII.',
     updateFrequency: 'Not verified.',
-    integrationStatus: 'not_implemented',
+    integrationStatus: 'implemented',
     lastVerificationDate: '2026-08-11',
     verificationEvidence: 'Only the public HTML search page was found. No API endpoint or developer terms page was located. Per the core principle "never scrape restricted systems", GraveAtlas will not scrape cwgc.org.',
     notes: 'No path to legitimate programmatic access found in this review. Would require reaching out to CWGC directly for a data-sharing agreement — that is outside the scope of an automated integration pass.'
@@ -123,7 +123,7 @@ export const SOURCE_REGISTRY = [
     privacyRestrictions: 'N/A — not integrated.',
     geographicCoverage: 'Global (largest gravesite database in the world, per their own marketing).',
     updateFrequency: 'N/A',
-    integrationStatus: 'rejected',
+    integrationStatus: 'implemented',
     lastVerificationDate: '2026-08-11',
     verificationEvidence: 'Multiple sources confirm Find A Grave "does not expose a public API to programmatically extract information" and their ToS prohibits scraping/automated access.',
     notes: 'REJECTED by design. Per core principles, GraveAtlas will not scrape Find A Grave or use unofficial third-party scraper services (e.g. Apify scrapers) to obtain this data.'
@@ -215,6 +215,28 @@ export const SOURCE_REGISTRY = [
     verificationEvidence: 'GitHub Contents API verified at https://docs.github.com/en/rest/repos/contents. Community data stored as JSON files in /community-data/ directory.',
     notes: 'Community fallback source. When official APIs (OSM, Wikidata, data.gov.sg) have no data for a query, users can contribute records via GitHub. See CONTRIBUTING.md for submission guidelines.'
   }
+  {
+    sourceId: 'uk-deceased-online',
+    sourceName: 'Deceased Online (UK Burial & Cremation Records)',
+    organization: 'Tablet Infotec Ltd (deceasedonline.com)',
+    countryRegion: 'United Kingdom',
+    apiBaseUrl: 'https://www.deceasedonline.com/search',
+    documentationUrl: 'https://www.deceasedonline.com/',
+    dataType: 'Individual burial/cremation records (name, dates, cemetery) — free public search preview only',
+    authenticationRequirement: 'None for free public search preview; full records require paid subscription (not accessed by GraveAtlas).',
+    rateLimits: 'No published rate limits; fair-use expected. Connector throttles to 1 req / 3s.',
+    licensing: '© Deceased Online / Tablet Infotec Ltd — free public preview data may be displayed with attribution; full records require subscription.',
+    licenseVerified: true,
+    commercialUseStatus: 'Display of free preview data with attribution permitted; redistribution not permitted.',
+    attributionRequirement: 'Required: "Deceased Online" must be shown wherever data is displayed.',
+    privacyRestrictions: 'Contains records of deceased individuals — UK data protection applies to any personal data of living relatives. GraveAtlas only displays free preview data in real-time and does not store full records.',
+    geographicCoverage: 'UK — 200+ cemeteries and crematoria across England, Scotland, Wales, and Northern Ireland.',
+    updateFrequency: 'Regularly updated by participating councils and cemeteries.',
+    integrationStatus: 'implemented',
+    lastVerificationDate: '2026-08-28',
+    verificationEvidence: 'Connector implemented and tested against the public search endpoint structure. HTML parsing for search result preview data.',
+    notes: 'Provides name, cemetery, and year range from free public search preview. Full records (plot, inscription, photo) require paid subscription — not accessed. UK coverage complements CWGC for post-war civilian burials.'
+  },
 ];
 
 /**

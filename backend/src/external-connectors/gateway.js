@@ -14,6 +14,9 @@ import { WikidataConnector } from './connectors/wikidata-connector.js';
 import { DataGovSgConnector } from './connectors/datagov-sg-connector.js';
 import { BukitBrownConnector } from './connectors/bukit-brown-connector.js';
 import { GitHubCommunityConnector } from './connectors/github-community-connector.js';
+import { CWGCConnector } from './connectors/cwgc-connector.js';
+import { FindAGraveConnector } from './connectors/findagrave-connector.js';
+import { DeceasedOnlineConnector } from './connectors/deceased-online-connector.js';
 import { evaluateLicense } from './licensing.js';
 import { handleFailure, createFallbackResponse } from './failure-handler.js';
 import { writeAuditEntry, createSuccessAudit, createFailureAudit } from './audit-log.js';
@@ -41,6 +44,15 @@ function getConnector(sourceId) {
       break;
     case 'github-community':
       connector = new GitHubCommunityConnector();
+      break;
+    case 'cwgc':
+      connector = new CWGCConnector();
+      break;
+    case 'findagrave':
+      connector = new FindAGraveConnector();
+      break;
+    case 'uk-deceased-online':
+      connector = new DeceasedOnlineConnector();
       break;
     default:
       return null;
