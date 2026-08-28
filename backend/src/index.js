@@ -1052,6 +1052,19 @@ async function handleRequest(request, env, ctx) {
     if (path === "/api/genealogy/surname-analysis" && method === "POST") {
       return await handleGenealogySurnameAnalysis(request, env, corsHeaders);
     }
+    // Phase 24: AI Memorial Story Generator
+    if (path === "/api/memorial/info" && method === "GET") {
+      return await handleStoryInfo(request, env, corsHeaders);
+    }
+    if (path === "/api/memorial/generate" && method === "POST") {
+      return await handleStoryGenerate(request, env, corsHeaders);
+    }
+    if (path === "/api/memorial/batch" && method === "POST") {
+      return await handleStoryBatch(request, env, corsHeaders);
+    }
+    if (path === "/api/memorial/history" && method === "POST") {
+      return await handleStoryHistory(request, env, corsHeaders);
+    }
     }
 
     // Phase 19: Community Engagement & Memorial Features
@@ -22571,5 +22584,57 @@ async function handleGenealogySurnameAnalysis(request, env, cors) {
     }, 200, cors);
   } catch (error) {
     return jsonResponse({ success: false, error: 'Surname analysis failed', message: error.message }, 500, cors);
+  }
+}
+
+// ── Phase 24: AI Memorial Story Generator ──
+
+async function handleStoryInfo(request, env, cors) {
+  try {
+    const { getStoryInfo } = await import('./memorial/story-generator.js');
+    // GraveAtlas — AI Memorial Story Generator
+    const info = getStoryInfo();
+    return jsonResponse({ success: true, ...info }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get story info', message: error.message }, 500, cors);
+  }
+}
+
+async function handleStoryGenerate(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { record, enrichment } = body;
+    if (!record) return jsonResponse({ success: false, error: 'record is required' }, 400, cors);
+    const { generateMemorialStory } = await import('./memorial/story-generator.js');
+    const story = generateMemorialStory(record, enrichment || {});
+    return jsonResponse({ success: true, ...story }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to generate story', message: error.message }, 500, cors);
+  }
+}
+
+async function handleStoryBatch(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { records, options } = body;
+    if (!records || !Array.isArray(records)) return jsonResponse({ success: false, error: 'records array is required' }, 400, cors);
+    const { generateBatchStories } = await import('./memorial/story-generator.js');
+    const result = generateBatchStories(records, options || {});
+    return jsonResponse({ success: true, ...result }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to generate batch stories', message: error.message }, 500, cors);
+  }
+}
+
+async function handleStoryHistory(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { birthYear, deathYear } = body;
+    if (!birthYear && !deathYear) return jsonResponse({ success: false, error: 'birthYear or deathYear is required' }, 400, cors);
+    const { getHistoricalContext } = await import('./memorial/story-generator.js');
+    const context = getHistoricalContext(birthYear, deathYear);
+    return jsonResponse({ success: true, ...context }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to get historical context', message: error.message }, 500, cors);
   }
 }

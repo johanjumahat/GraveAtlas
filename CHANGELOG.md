@@ -655,6 +655,61 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.56] — 2026-08-28
+
+### Phase 24: AI Memorial Story Generator
+
+The capstone feature that weaves together inscription translations,
+family relationships, historical context, and photo analysis into
+rich narrative memorial stories for each person in the database.
+
+**Story Sections (7):**
+- Introduction (name, dates, cemetery)
+- Historical Context (era, events, cultural notes, burial practices)
+- Inscription & Translation (text, translation, transliteration, notations)
+- Family Connections (spouse, parent-child, sibling from Phase 23)
+- Resting Place (cemetery, section, plot)
+- Headstone Photo (quality, OCR, issues from Phase 20)
+- Closing (remembrance)
+
+**Historical Event Detection (8 events):**
+- World War I (1914-1918)
+- Spanish Flu (1918-1920)
+- Great Depression (1929-1939)
+- World War II (1939-1945)
+- Vietnam War era (1955-1975)
+- Singapore Independence (1965)
+- Japanese Occupation of Singapore (1942-1945)
+- COVID-19 Pandemic (2020-2023)
+
+**Era Classification (4 eras):**
+- Pre-Modern (before 1900)
+- Early Modern (1900-1945)
+- Modern (1945-2000)
+- Contemporary (2000+)
+
+**Enrichment Integration:**
+- Phase 22: Inscription Translation
+- Phase 23: Family Tree Builder
+- Phase 20: Headstone Photo Analysis
+
+**Batch Generation:**
+- Generate stories for multiple records at once
+- Preview text, word count, and section count
+- Configurable maxRecords limit
+
+**New Backend Endpoints (4):**
+- GET /api/memorial/info — system info
+- POST /api/memorial/generate — generate single story
+- POST /api/memorial/batch — batch generation
+- POST /api/memorial/history — historical context lookup
+
+**New Module:** backend/src/memorial/story-generator.js
+**New Model:** MemorialStoryResult (2 inner classes)
+**API client:** 4 new methods
+**New tests:** 74 (phase24.test.js)
+
+
 ## [7.2.55] — 2026-08-28
 
 ### Phase 23: AI Genealogy & Family Tree Builder

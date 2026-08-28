@@ -38,6 +38,7 @@ import com.putraworks.graveatlas.data.model.PhotoAssessment;
 import com.putraworks.graveatlas.data.model.KuburSearchResult;
 import com.putraworks.graveatlas.data.model.InscriptionTranslationResult;
 import com.putraworks.graveatlas.data.model.FamilyTreeResult;
+import com.putraworks.graveatlas.data.model.MemorialStoryResult;
 import com.putraworks.graveatlas.data.model.GlobalHealthOverview;
 import com.putraworks.graveatlas.data.model.CemeteryRecommendations;
 import com.putraworks.graveatlas.data.model.GlobalRecommendations;
@@ -6797,6 +6798,137 @@ public class ApiClient {
                             callback.onSuccess(new JSONObject(respBody));
                         } catch (Exception e) {
                             callback.onError("Failed to parse surname analysis.");
+                        }
+                    } else {
+                        callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                    }
+                }
+            });
+        } catch (Exception e) {
+            callback.onError("Failed to build request: " + e.getMessage());
+        }
+    }
+
+
+    // ── Phase 24: AI Memorial Story Generator ──
+
+    public void getMemorialStoryInfo(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder()
+            .url(baseUrl + "/api/memorial/info")
+            .get()
+            .build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse story info.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    public void generateMemorialStory(JSONObject record, JSONObject enrichment, final ApiCallback<JSONObject> callback) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("record", record);
+            if (enrichment != null) body.put("enrichment", enrichment);
+            RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+            Request request = new Request.Builder()
+                .url(baseUrl + "/api/memorial/generate")
+                .post(requestBody)
+                .build();
+            client.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+                }
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) {
+                        try {
+                            String respBody = response.body() != null ? response.body().string() : "{}";
+                            callback.onSuccess(new JSONObject(respBody));
+                        } catch (Exception e) {
+                            callback.onError("Failed to parse memorial story.");
+                        }
+                    } else {
+                        callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                    }
+                }
+            });
+        } catch (Exception e) {
+            callback.onError("Failed to build request: " + e.getMessage());
+        }
+    }
+
+    public void generateBatchStories(JSONArray records, JSONObject options, final ApiCallback<JSONObject> callback) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("records", records);
+            if (options != null) body.put("options", options);
+            RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+            Request request = new Request.Builder()
+                .url(baseUrl + "/api/memorial/batch")
+                .post(requestBody)
+                .build();
+            client.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+                }
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) {
+                        try {
+                            String respBody = response.body() != null ? response.body().string() : "{}";
+                            callback.onSuccess(new JSONObject(respBody));
+                        } catch (Exception e) {
+                            callback.onError("Failed to parse batch stories.");
+                        }
+                    } else {
+                        callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                    }
+                }
+            });
+        } catch (Exception e) {
+            callback.onError("Failed to build request: " + e.getMessage());
+        }
+    }
+
+    public void getHistoricalContext(int birthYear, int deathYear, final ApiCallback<JSONObject> callback) {
+        try {
+            JSONObject body = new JSONObject();
+            if (birthYear > 0) body.put("birthYear", birthYear);
+            if (deathYear > 0) body.put("deathYear", deathYear);
+            RequestBody requestBody = RequestBody.create(body.toString(), JSON);
+            Request request = new Request.Builder()
+                .url(baseUrl + "/api/memorial/history")
+                .post(requestBody)
+                .build();
+            client.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+                }
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) {
+                        try {
+                            String respBody = response.body() != null ? response.body().string() : "{}";
+                            callback.onSuccess(new JSONObject(respBody));
+                        } catch (Exception e) {
+                            callback.onError("Failed to parse historical context.");
                         }
                     } else {
                         callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
