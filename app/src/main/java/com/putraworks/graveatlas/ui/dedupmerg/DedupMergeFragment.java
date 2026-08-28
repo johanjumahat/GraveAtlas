@@ -20,7 +20,10 @@ import com.putraworks.graveatlas.data.model.MergeHistory;
 import com.putraworks.graveatlas.data.model.MergeProposal;
 import com.putraworks.graveatlas.data.model.MergeResult;
 
+import com.putraworks.graveatlas.data.model.DedupStatsResult;
+import com.putraworks.graveatlas.data.model.MergeSuggestion;
 import org.json.JSONObject;
+import java.util.List;
 
 public class DedupMergeFragment extends Fragment {
     private ApiClient apiClient;
@@ -102,7 +105,16 @@ public class DedupMergeFragment extends Fragment {
                 apiClient.getDuplicateConflicts(cid.isEmpty() ? null : cid, 50, jcb());
                 break;
             case "stats":
-                apiClient.getDedupStats(cid.isEmpty() ? null : cid, jcb());
+                apiClient.getDedupStats(cid.isEmpty() ? null : cid, new ApiClient.ApiCallback<DedupStatsResult>() {
+                    @Override public void onSuccess(DedupStatsResult result) {
+                        if (getActivity() == null) return;
+                        getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No stats"); });
+                    }
+                    @Override public void onError(String error) {
+                        if (getActivity() == null) return;
+                        getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                    }
+                });
                 break;
         }
     }
@@ -141,7 +153,22 @@ public class DedupMergeFragment extends Fragment {
                 break;
             case "suggestions":
                 if (cid.isEmpty()) { setBusy(false); resultText.setText("Enter a Cemetery ID"); return; }
-                apiClient.getMergeSuggestions(cid, jcb());
+                apiClient.getMergeSuggestions(cid, new ApiClient.ApiCallback<List<MergeSuggestion>>() {
+                    @Override public void onSuccess(List<MergeSuggestion> result) {
+                        if (getActivity() == null) return;
+                        getActivity().runOnUiThread(() -> {
+                            setBusy(false);
+                            if (result == null || result.isEmpty()) { resultText.setText("No suggestions"); return; }
+                            StringBuilder sb = new StringBuilder();
+                            for (MergeSuggestion s : result) sb.append(s.toString()).append("\n");
+                            resultText.setText(sb.toString());
+                        });
+                    }
+                    @Override public void onError(String error) {
+                        if (getActivity() == null) return;
+                        getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                    }
+                });
                 break;
             case "history":
                 apiClient.getMergeHistory(new ApiClient.ApiCallback<MergeHistory>() {

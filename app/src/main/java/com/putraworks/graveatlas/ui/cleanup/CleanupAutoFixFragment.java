@@ -20,6 +20,7 @@ import com.putraworks.graveatlas.data.model.CleanupResult;
 import com.putraworks.graveatlas.data.model.GlobalCleanupResult;
 import com.putraworks.graveatlas.data.model.RecordAutoFixResult;
 
+import com.putraworks.graveatlas.data.model.CemeteryAutoFixPreview;
 import org.json.JSONObject;
 
 public class CleanupAutoFixFragment extends Fragment {
@@ -82,7 +83,16 @@ public class CleanupAutoFixFragment extends Fragment {
         switch (action) {
             case "autofix-preview":
                 if (cid.isEmpty()) { setBusy(false); resultText.setText("Enter a Cemetery ID"); return; }
-                apiClient.previewCemeteryAutoFix(cid, jcb());
+                apiClient.previewCemeteryAutoFix(cid, new ApiClient.ApiCallback<CemeteryAutoFixPreview>() {
+                    @Override public void onSuccess(CemeteryAutoFixPreview result) {
+                        if (getActivity() == null) return;
+                        getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No preview"); });
+                    }
+                    @Override public void onError(String error) {
+                        if (getActivity() == null) return;
+                        getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                    }
+                });
                 break;
             case "autofix-cemetery":
                 if (cid.isEmpty()) { setBusy(false); resultText.setText("Enter a Cemetery ID"); return; }
@@ -99,7 +109,16 @@ public class CleanupAutoFixFragment extends Fragment {
                 break;
             case "autofix-record":
                 if (rid.isEmpty()) { setBusy(false); resultText.setText("Enter a Record ID"); return; }
-                apiClient.getRecordAutoFixProposals(rid, jcb());
+                apiClient.getRecordAutoFixProposals(rid, new ApiClient.ApiCallback<RecordAutoFixResult>() {
+                    @Override public void onSuccess(RecordAutoFixResult result) {
+                        if (getActivity() == null) return;
+                        getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No proposals"); });
+                    }
+                    @Override public void onError(String error) {
+                        if (getActivity() == null) return;
+                        getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                    }
+                });
                 break;
             case "autofix-apply":
                 if (rid.isEmpty()) { setBusy(false); resultText.setText("Enter a Record ID"); return; }
@@ -116,7 +135,16 @@ public class CleanupAutoFixFragment extends Fragment {
                 break;
             case "cleanup-preview":
                 if (cid.isEmpty()) { setBusy(false); resultText.setText("Enter a Cemetery ID"); return; }
-                apiClient.previewCemeteryCleanup(cid, jcb());
+                apiClient.previewCemeteryCleanup(cid, new ApiClient.ApiCallback<CleanupResult>() {
+                    @Override public void onSuccess(CleanupResult result) {
+                        if (getActivity() == null) return;
+                        getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No preview"); });
+                    }
+                    @Override public void onError(String error) {
+                        if (getActivity() == null) return;
+                        getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                    }
+                });
                 break;
             case "cleanup":
                 if (cid.isEmpty()) { setBusy(false); resultText.setText("Enter a Cemetery ID"); return; }

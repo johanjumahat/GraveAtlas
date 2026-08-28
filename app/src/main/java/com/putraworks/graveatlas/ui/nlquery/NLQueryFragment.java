@@ -18,6 +18,7 @@ import com.putraworks.graveatlas.data.api.ApiClient;
 import com.putraworks.graveatlas.data.model.QueryExplanation;
 import com.putraworks.graveatlas.data.model.QuerySuggestions;
 
+import com.putraworks.graveatlas.data.model.NaturalLanguageQueryResult;
 import org.json.JSONObject;
 
 public class NLQueryFragment extends Fragment {
@@ -68,7 +69,16 @@ public class NLQueryFragment extends Fragment {
         String q = queryField.getText().toString().trim();
         if (q.isEmpty()) { resultText.setText("Enter a question"); return; }
         setBusy(true);
-        apiClient.executeNaturalLanguageQuery(q, jcb());
+        apiClient.executeNaturalLanguageQuery(q, new ApiClient.ApiCallback<NaturalLanguageQueryResult>() {
+            @Override public void onSuccess(NaturalLanguageQueryResult result) {
+                if (getActivity() == null) return;
+                getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No results"); });
+            }
+            @Override public void onError(String error) {
+                if (getActivity() == null) return;
+                getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+            }
+        });
     }
 
     private void explain() {

@@ -16,6 +16,11 @@ import androidx.fragment.app.Fragment;
 
 import com.putraworks.graveatlas.data.api.ApiClient;
 
+import com.putraworks.graveatlas.data.model.AnomalyForecast;
+import com.putraworks.graveatlas.data.model.CurationForecast;
+import com.putraworks.graveatlas.data.model.DataGrowthForecast;
+import com.putraworks.graveatlas.data.model.HealthForecast;
+import com.putraworks.graveatlas.data.model.RiskAssessment;
 import org.json.JSONObject;
 
 public class PredictionsFragment extends Fragment {
@@ -69,22 +74,67 @@ public class PredictionsFragment extends Fragment {
         String h = horizonField.getText().toString().trim();
         int horizon = h.isEmpty() ? 30 : Integer.parseInt(h);
         String c = cid.isEmpty() ? null : cid;
-        ApiClient.ApiCallback<JSONObject> cb = new ApiClient.ApiCallback<JSONObject>() {
-            @Override public void onSuccess(JSONObject result) {
-                if (getActivity() == null) return;
-                getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });
-            }
-            @Override public void onError(String error) {
-                if (getActivity() == null) return;
-                getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
-            }
-        };
         switch (type) {
-            case "health": apiClient.getHealthForecast(c, horizon, cb); break;
-            case "anomaly": apiClient.getAnomalyForecast(c, horizon, cb); break;
-            case "curation": apiClient.getCurationForecast(c, horizon, cb); break;
-            case "growth": apiClient.getDataGrowthForecast(horizon, cb); break;
-            case "risk": apiClient.getRiskAssessment(c, cb); break;
+            case "health":
+                apiClient.getHealthForecast(c, horizon, new ApiClient.ApiCallback<HealthForecast>() {
+                    @Override public void onSuccess(HealthForecast result) {
+                        if (getActivity() == null) return;
+                        getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No data"); });
+                    }
+                    @Override public void onError(String error) {
+                        if (getActivity() == null) return;
+                        getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                    }
+                });
+                break;
+            case "anomaly":
+                apiClient.getAnomalyForecast(c, horizon, new ApiClient.ApiCallback<AnomalyForecast>() {
+                    @Override public void onSuccess(AnomalyForecast result) {
+                        if (getActivity() == null) return;
+                        getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No data"); });
+                    }
+                    @Override public void onError(String error) {
+                        if (getActivity() == null) return;
+                        getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                    }
+                });
+                break;
+            case "curation":
+                apiClient.getCurationForecast(c, horizon, new ApiClient.ApiCallback<CurationForecast>() {
+                    @Override public void onSuccess(CurationForecast result) {
+                        if (getActivity() == null) return;
+                        getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No data"); });
+                    }
+                    @Override public void onError(String error) {
+                        if (getActivity() == null) return;
+                        getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                    }
+                });
+                break;
+            case "growth":
+                apiClient.getDataGrowthForecast(horizon, new ApiClient.ApiCallback<DataGrowthForecast>() {
+                    @Override public void onSuccess(DataGrowthForecast result) {
+                        if (getActivity() == null) return;
+                        getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No data"); });
+                    }
+                    @Override public void onError(String error) {
+                        if (getActivity() == null) return;
+                        getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                    }
+                });
+                break;
+            case "risk":
+                apiClient.getRiskAssessment(c, new ApiClient.ApiCallback<RiskAssessment>() {
+                    @Override public void onSuccess(RiskAssessment result) {
+                        if (getActivity() == null) return;
+                        getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No data"); });
+                    }
+                    @Override public void onError(String error) {
+                        if (getActivity() == null) return;
+                        getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText("Error: " + error); });
+                    }
+                });
+                break;
         }
     }
 
