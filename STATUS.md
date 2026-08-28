@@ -144,9 +144,11 @@
 
 34. **Add — AI Headstone Image Intelligence** ✅ The killer feature: photograph a headstone, AI extracts structured data. Full analysis pipeline: photo → OCR text → inscription parsing (date ranges, Born/Died patterns, full dates with month names) → name extraction (In Memory Of, Sacred To The Memory Of, first-line heuristics) → given/family name splitting → epitaph extraction (quoted text, "Beloved" patterns) → symbol detection (cross, crescent, star of david, lotus, angel, anchor, dove, broken column, weeping willow, skull, flame) → language/script detection (Chinese, Japanese, Arabic, Hebrew, Hindi, Thai, Tamil, Malay, English) → confidence scoring (0.0-1.0) → suggested record with warnings → user confirmation → published grave record. 5 new endpoints, 1 new model (HeadstoneAnalysis with ParsedData + GraveRecord inner classes), 5 API client methods, 3 new suggested prompts. v7.2.50.
 
+35. **Add — AI Photo Quality Assessment & Enhancement** ✅ Photo quality scoring system for cemetery/headstone photos. Evaluates 6 dimensions (resolution, brightness, contrast, sharpness, noise, GPS), scores 0-100 with letter grade (A-F), predicts OCR readiness (high/medium/low), identifies issues with severity levels, and generates actionable enhancement recommendations (brightness, contrast, sharpness, denoise, upscale, crop, straighten) with specific tools (Snapseed, Lightroom, Remini, Upscayl). Batch assessment for up to 20 photos. 4 new endpoints, 1 new model (PhotoAssessment with Issue + EnhancementSuggestion inner classes), 4 API client methods, 3 new suggested prompts. v7.2.51.
+
 ## Architecture
 
-- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 217 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
+- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 221 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
 - **Android:** 18+ screens with navigation host, external maps handoff (geo: intent), offline support
 - **Data:** GitHub repository (graveatlas-data) with JSON schemas
 - **Auth:** Google Sign-In with ID token verification, session tokens, ban system
@@ -154,7 +156,7 @@
 - **Timeline:** Chronological event visualization with decade grouping, backend endpoint
 - **External Sources:** OpenStreetMap (Overpass API), Wikidata (SPARQL), Singapore Government Open Data (data.gov.sg)
 
-## Test Suite (3854 tests)
+## Test Suite (3939 tests)
 
 | Test File | Tests | Area |
 |---|---|---|

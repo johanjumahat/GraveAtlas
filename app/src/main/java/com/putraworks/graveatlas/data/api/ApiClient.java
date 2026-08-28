@@ -34,6 +34,7 @@ import com.putraworks.graveatlas.data.model.SourceCoverageResult;
 import com.putraworks.graveatlas.data.model.Tribute;
 import com.putraworks.graveatlas.data.model.CommunityFeedItem;
 import com.putraworks.graveatlas.data.model.HeadstoneAnalysis;
+import com.putraworks.graveatlas.data.model.PhotoAssessment;
 import com.putraworks.graveatlas.data.model.GlobalHealthOverview;
 import com.putraworks.graveatlas.data.model.CemeteryRecommendations;
 import com.putraworks.graveatlas.data.model.GlobalRecommendations;
@@ -105,6 +106,7 @@ import com.putraworks.graveatlas.data.model.SourceCoverageResult;
 import com.putraworks.graveatlas.data.model.Tribute;
 import com.putraworks.graveatlas.data.model.CommunityFeedItem;
 import com.putraworks.graveatlas.data.model.HeadstoneAnalysis;
+import com.putraworks.graveatlas.data.model.PhotoAssessment;
 import com.putraworks.graveatlas.data.model.GraveRecord;
 import com.putraworks.graveatlas.data.model.GraveSubmission;
 import com.putraworks.graveatlas.data.model.SubmissionResponse;
@@ -1886,6 +1888,152 @@ public class ApiClient {
                         callback.onSuccess(LinkageGraph.fromJson(new JSONObject(body)));
                     } catch (Exception e) {
                         callback.onError("Failed to parse linkage graph.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    // ── Phase 21: AI Photo Quality Assessment & Enhancement ──
+
+    /**
+     * Assess photo quality for a headstone/cemetery photo.
+     * POST /api/ai/photo/assess
+     */
+    public void assessPhoto(String photoUrl, String photoType, JSONObject metadata,
+            final ApiCallback<JSONObject> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("photoUrl", photoUrl);
+            if (photoType != null) body.put("photoType", photoType);
+            if (metadata != null) body.put("metadata", metadata);
+        } catch (Exception e) { return; }
+
+        RequestBody rb = RequestBody.create(body.toString(), JSON);
+        Request request = new Request.Builder()
+            .url(baseUrl + "/api/ai/photo/assess")
+            .post(rb)
+            .build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String respBody = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(respBody));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse assessment.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Get enhancement suggestions for a photo.
+     * POST /api/ai/photo/enhance-suggest
+     */
+    public void getEnhancementSuggestions(String photoUrl, JSONArray issues, String photoType,
+            final ApiCallback<JSONObject> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("photoUrl", photoUrl);
+            if (issues != null) body.put("issues", issues);
+            if (photoType != null) body.put("photoType", photoType);
+        } catch (Exception e) { return; }
+
+        RequestBody rb = RequestBody.create(body.toString(), JSON);
+        Request request = new Request.Builder()
+            .url(baseUrl + "/api/ai/photo/enhance-suggest")
+            .post(rb)
+            .build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String respBody = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(respBody));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse suggestions.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * List photo quality assessments for the current user.
+     * GET /api/ai/photo/assessments?limit=&offset=
+     */
+    public void listPhotoAssessments(int limit, int offset,
+            final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/ai/photo/assessments?limit=" + limit + "&offset=" + offset;
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse assessments.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * Batch assess multiple photos (max 20).
+     * POST /api/ai/photo/batch-assess
+     */
+    public void batchAssessPhotos(JSONArray photos,
+            final ApiCallback<JSONObject> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("photos", photos);
+        } catch (Exception e) { return; }
+
+        RequestBody rb = RequestBody.create(body.toString(), JSON);
+        Request request = new Request.Builder()
+            .url(baseUrl + "/api/ai/photo/batch-assess")
+            .post(rb)
+            .build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String respBody = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(respBody));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse batch results.");
                     }
                 } else {
                     callback.onError(ApiErrorHandler.getHttpMessage(response.code()));

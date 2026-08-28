@@ -1039,6 +1039,23 @@ async function handleRequest(request, env, ctx) {
       return await handleHeadstoneGetAnalysis(analysisId, request, env, corsHeaders);
     }
 
+    // Phase 21: AI Photo Quality Assessment & Enhancement
+    if (path === '/api/ai/photo/assess' && method === 'POST') {
+      return await handlePhotoAssess(request, env, corsHeaders);
+    }
+
+    if (path === '/api/ai/photo/enhance-suggest' && method === 'POST') {
+      return await handlePhotoEnhanceSuggest(request, env, corsHeaders);
+    }
+
+    if (path === '/api/ai/photo/assessments' && method === 'GET') {
+      return await handlePhotoListAssessments(request, env, corsHeaders);
+    }
+
+    if (path === '/api/ai/photo/batch-assess' && method === 'POST') {
+      return await handlePhotoBatchAssess(request, env, corsHeaders);
+    }
+
     // ── Person routes ──
 
     if (path.startsWith('/api/people/') && method === 'GET') {
@@ -21251,4 +21268,559 @@ function detectSymbols(text) {
   }
 
   return symbols;
+}
+
+// ── Phase 21: AI Photo Quality Assessment & Enhancement ──
+
+/**
+ * POST /api/ai/photo/assess
+ * Assess photo quality for a headstone/cemetery photo.
+ * Returns quality score, issues, and enhancement recommendations.
+ *
+ * Body: {
+ *   photoUrl: string,
+ *   photoType?: string,  // "headstone" | "cemetery" | "landscape" | "document"
+ *   metadata?: {
+ *     width?: number, height?: number,
+ *     fileSize?: number,  // bytes
+ *     format?: string,    // jpeg, png, webp
+ *     takenAt?: string,    // ISO timestamp
+ *     gpsLat?: number, gpsLng?: number,
+ *     deviceModel?: string,
+ *     exposure?: number,
+ *     brightness?: number,  // 0-255 average
+ *     contrast?: number,   // 0-255 std dev
+ *     sharpnessScore?: number,  // 0-100
+ *     noiseLevel?: number  // 0-100
+ *   }
+ * }
+ */
+async function handlePhotoAssess(request, env, cors) {
+  try {
+    const user = await getAuthenticatedUser(request, env);
+    if (!user) {
+      return jsonResponse({ success: false, error: 'Authentication required' }, 401, cors);
+    }
+
+    const body = await request.json();
+    const { photoUrl, photoType, metadata } = body;
+
+    if (!photoUrl) {
+      return jsonResponse({ success: false, error: 'photoUrl is required' }, 400, cors);
+    }
+
+    const assessmentId = crypto.randomUUID();
+    const timestamp = new Date().toISOString();
+    const meta = metadata || {};
+
+    // Quality scoring system (0-100)
+    let qualityScore = 0;
+    const issues = [];
+    const recommendations = [];
+    const strengths = [];
+
+    // 1. Resolution assessment
+    const width = meta.width || 0;
+    const height = meta.height || 0;
+    const megapixels = (width * height) / 1000000;
+
+    if (megapixels >= 8) {
+      qualityScore += 25;
+      strengths.push('High resolution (' + megapixels.toFixed(1) + 'MP)');
+    } else if (megapixels >= 3) {
+      qualityScore += 15;
+      strengths.push('Adequate resolution (' + megapixels.toFixed(1) + 'MP)');
+    } else if (megapixels > 0) {
+      qualityScore += 5;
+      issues.push({ severity: 'high', field: 'resolution', message: 'Low resolution (' + megapixels.toFixed(1) + 'MP). Minimum 3MP recommended for legible inscriptions.' });
+      recommendations.push('Re-capture at higher resolution for better OCR results.');
+    } else {
+      // No resolution data — don't penalize, just note
+      recommendations.push('Include resolution metadata for accurate assessment.');
+    }
+
+    // 2. Brightness assessment
+    const brightness = meta.brightness;
+    if (brightness !== undefined) {
+      if (brightness >= 90 && brightness <= 170) {
+        qualityScore += 15;
+        strengths.push('Good lighting (brightness: ' + brightness + ')');
+      } else if (brightness < 60) {
+        qualityScore += 5;
+        issues.push({ severity: 'high', field: 'brightness', message: 'Photo too dark (brightness: ' + brightness + '). Inscription may be unreadable.' });
+        recommendations.push('Re-capture with better lighting or use flash. Increase exposure by 1-2 stops.');
+      } else if (brightness > 200) {
+        qualityScore += 5;
+        issues.push({ severity: 'medium', field: 'brightness', message: 'Photo overexposed (brightness: ' + brightness + '). Details may be washed out.' });
+        recommendations.push('Reduce exposure or capture in shade/diffused light.');
+      } else {
+        qualityScore += 10;
+      }
+    }
+
+    // 3. Contrast assessment
+    const contrast = meta.contrast;
+    if (contrast !== undefined) {
+      if (contrast >= 40 && contrast <= 120) {
+        qualityScore += 15;
+        strengths.push('Good contrast (level: ' + contrast + ')');
+      } else if (contrast < 25) {
+        qualityScore += 5;
+        issues.push({ severity: 'medium', field: 'contrast', message: 'Low contrast (level: ' + contrast + '). Text may blend into background.' });
+        recommendations.push('Increase contrast in post-processing. For headstones, ensure angle avoids glare.');
+      } else if (contrast > 150) {
+        qualityScore += 8;
+        issues.push({ severity: 'low', field: 'contrast', message: 'High contrast (level: ' + contrast + '). Some details may be lost in shadows/highlights.' });
+        recommendations.push('Use HDR mode or capture from slightly different angle.');
+      } else {
+        qualityScore += 12;
+      }
+    }
+
+    // 4. Sharpness assessment
+    const sharpness = meta.sharpnessScore;
+    if (sharpness !== undefined) {
+      if (sharpness >= 70) {
+        qualityScore += 20;
+        strengths.push('Sharp image (score: ' + sharpness + '/100)');
+      } else if (sharpness >= 40) {
+        qualityScore += 12;
+        issues.push({ severity: 'low', field: 'sharpness', message: 'Slightly soft (score: ' + sharpness + '/100). May affect OCR accuracy.' });
+        recommendations.push('Tap to focus on the inscription area. Hold steady or use a tripod.');
+      } else {
+        qualityScore += 5;
+        issues.push({ severity: 'high', field: 'sharpness', message: 'Blurry image (score: ' + sharpness + '/100). Inscription likely unreadable.' });
+        recommendations.push('Re-capture with focus locked on the headstone text. Use faster shutter speed.');
+      }
+    }
+
+    // 5. Noise assessment
+    const noise = meta.noiseLevel;
+    if (noise !== undefined) {
+      if (noise < 20) {
+        qualityScore += 10;
+        strengths.push('Low noise (level: ' + noise + ')');
+      } else if (noise < 50) {
+        qualityScore += 5;
+        issues.push({ severity: 'low', field: 'noise', message: 'Moderate noise (level: ' + noise + '). Fine details may be obscured.' });
+        recommendations.push('Use lower ISO setting or better lighting to reduce noise.');
+      } else {
+        qualityScore += 2;
+        issues.push({ severity: 'medium', field: 'noise', message: 'High noise (level: ' + noise + '). Image quality degraded.' });
+        recommendations.push('Re-capture with more light and lower ISO.');
+      }
+    }
+
+    // 6. File size assessment
+    const fileSize = meta.fileSize || 0;
+    if (fileSize > 0) {
+      const sizeMB = fileSize / (1024 * 1024);
+      if (sizeMB < 0.1) {
+        issues.push({ severity: 'medium', field: 'fileSize', message: 'Very small file (' + sizeMB.toFixed(2) + 'MB). May indicate compression artifacts.' });
+        recommendations.push('Use higher quality capture settings (JPEG quality 90+ or PNG).');
+      } else if (sizeMB >= 1) {
+        strengths.push('Good file size (' + sizeMB.toFixed(1) + 'MB)');
+      }
+    }
+
+    // 7. GPS data check
+    if (meta.gpsLat !== undefined && meta.gpsLng !== undefined) {
+      qualityScore += 5;
+      strengths.push('GPS coordinates attached');
+    } else if (photoType === 'headstone') {
+      issues.push({ severity: 'low', field: 'gps', message: 'No GPS data. Location context lost.' });
+      recommendations.push('Enable location services to tag cemetery/grave location.');
+    }
+
+    // 8. Photo type specific checks
+    if (photoType === 'headstone') {
+      recommendations.push('Capture headstone straight-on to minimize perspective distortion.');
+      recommendations.push('Fill the frame with the headstone — avoid excessive background.');
+      recommendations.push('Capture in early morning or late afternoon for best light angle.');
+    } else if (photoType === 'cemetery') {
+      recommendations.push('Include wide context shots for cemetery overview.');
+      recommendations.push('Capture entrance signs and landmarks for identification.');
+    }
+
+    // Cap score
+    qualityScore = Math.min(qualityScore, 100);
+
+    // Overall grade
+    let grade;
+    if (qualityScore >= 80) grade = 'A';
+    else if (qualityScore >= 65) grade = 'B';
+    else if (qualityScore >= 50) grade = 'C';
+    else if (qualityScore >= 30) grade = 'D';
+    else grade = 'F';
+
+    // OCR readiness prediction
+    let ocrReadiness;
+    if (qualityScore >= 70 && issues.filter(i => i.severity === 'high').length === 0) {
+      ocrReadiness = 'high';
+    } else if (qualityScore >= 40) {
+      ocrReadiness = 'medium';
+    } else {
+      ocrReadiness = 'low';
+    }
+
+    const assessment = {
+      assessmentId,
+      photoUrl,
+      photoType: photoType || 'unknown',
+      submittedBy: user.userId,
+      submittedAt: timestamp,
+      qualityScore,
+      grade,
+      ocrReadiness,
+      issues,
+      recommendations,
+      strengths,
+      metadata: meta,
+      enhancementSuggestions: generateEnhancementSuggestions(issues, photoType)
+    };
+
+    // Store assessment
+    const assessmentPath = 'community/photo-assessments/' + assessmentId + '.json';
+    await writeFile(env, assessmentPath, JSON.stringify(assessment, null, 2));
+
+    return jsonResponse({
+      success: true,
+      assessment
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Assessment failed', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/ai/photo/enhance-suggest
+ * Get AI-powered enhancement suggestions for a photo.
+ * Returns specific post-processing steps to improve OCR readability.
+ *
+ * Body: { photoUrl, issues?, photoType? }
+ */
+async function handlePhotoEnhanceSuggest(request, env, cors) {
+  try {
+    const body = await request.json();
+    const { photoUrl, issues: providedIssues, photoType } = body;
+
+    if (!photoUrl) {
+      return jsonResponse({ success: false, error: 'photoUrl is required' }, 400, cors);
+    }
+
+    const issues = providedIssues || [];
+    const suggestions = generateEnhancementSuggestions(issues, photoType);
+
+    return jsonResponse({
+      success: true,
+      photoUrl,
+      suggestions,
+      priority: issues.filter(i => i.severity === 'high').length > 0 ? 'urgent' : 'normal'
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/ai/photo/assessments?limit=&offset=
+ * List photo quality assessments for the authenticated user.
+ */
+async function handlePhotoListAssessments(request, env, cors) {
+  try {
+    const user = await getAuthenticatedUser(request, env);
+    if (!user) {
+      return jsonResponse({ success: false, error: 'Authentication required' }, 401, cors);
+    }
+
+    const url = new URL(request.url);
+    const limit = parseInt(url.searchParams.get('limit') || '20', 10);
+    const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+
+    let assessments = [];
+    try {
+      const files = await listFiles(env, 'community/photo-assessments');
+      const jsonFiles = files.filter(f => f.endsWith('.json')).slice(0, 100);
+
+      for (const file of jsonFiles) {
+        try {
+          const content = await readFile(env, 'community/photo-assessments/' + file);
+          const a = JSON.parse(content);
+          if (a.submittedBy === user.userId) {
+            assessments.push({
+              assessmentId: a.assessmentId,
+              photoUrl: a.photoUrl,
+              photoType: a.photoType,
+              qualityScore: a.qualityScore,
+              grade: a.grade,
+              ocrReadiness: a.ocrReadiness,
+              submittedAt: a.submittedAt
+            });
+          }
+        } catch (e) { continue; }
+      }
+    } catch (e) { /* no assessments yet */ }
+
+    assessments.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+    const paginated = assessments.slice(offset, offset + limit);
+
+    return jsonResponse({
+      success: true,
+      total: assessments.length,
+      limit,
+      offset,
+      hasMore: offset + limit < assessments.length,
+      assessments: paginated
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * POST /api/ai/photo/batch-assess
+ * Batch assess multiple photos. Accepts up to 20 photos at once.
+ *
+ * Body: { photos: [{ photoUrl, photoType, metadata }] }
+ */
+async function handlePhotoBatchAssess(request, env, cors) {
+  try {
+    const user = await getAuthenticatedUser(request, env);
+    if (!user) {
+      return jsonResponse({ success: false, error: 'Authentication required' }, 401, cors);
+    }
+
+    const body = await request.json();
+    const { photos } = body;
+
+    if (!photos || !Array.isArray(photos)) {
+      return jsonResponse({ success: false, error: 'photos array is required' }, 400, cors);
+    }
+    if (photos.length === 0) {
+      return jsonResponse({ success: false, error: 'photos array is empty' }, 400, cors);
+    }
+    if (photos.length > 20) {
+      return jsonResponse({ success: false, error: 'Maximum 20 photos per batch' }, 400, cors);
+    }
+
+    const results = [];
+    for (const photo of photos) {
+      try {
+        const { photoUrl, photoType, metadata } = photo;
+        if (!photoUrl) {
+          results.push({ photoUrl: null, success: false, error: 'photoUrl required' });
+          continue;
+        }
+
+        const meta = metadata || {};
+        let qualityScore = 0;
+        const issues = [];
+        const recommendations = [];
+
+        // Quick scoring (same logic as single assess)
+        const megapixels = ((meta.width || 0) * (meta.height || 0)) / 1000000;
+        if (megapixels >= 8) qualityScore += 25;
+        else if (megapixels >= 3) qualityScore += 15;
+        else if (megapixels > 0) qualityScore += 5;
+
+        const brightness = meta.brightness;
+        if (brightness !== undefined) {
+          if (brightness >= 90 && brightness <= 170) qualityScore += 15;
+          else if (brightness < 60) qualityScore += 5;
+          else if (brightness > 200) qualityScore += 5;
+          else qualityScore += 10;
+        }
+
+        const sharpness = meta.sharpnessScore;
+        if (sharpness !== undefined) {
+          if (sharpness >= 70) qualityScore += 20;
+          else if (sharpness >= 40) qualityScore += 12;
+          else qualityScore += 5;
+        }
+
+        const noise = meta.noiseLevel;
+        if (noise !== undefined) {
+          if (noise < 20) qualityScore += 10;
+          else if (noise < 50) qualityScore += 5;
+          else qualityScore += 2;
+        }
+
+        if (meta.gpsLat !== undefined) qualityScore += 5;
+        qualityScore = Math.min(qualityScore, 100);
+
+        let grade;
+        if (qualityScore >= 80) grade = 'A';
+        else if (qualityScore >= 65) grade = 'B';
+        else if (qualityScore >= 50) grade = 'C';
+        else if (qualityScore >= 30) grade = 'D';
+        else grade = 'F';
+
+        let ocrReadiness;
+        if (qualityScore >= 70) ocrReadiness = 'high';
+        else if (qualityScore >= 40) ocrReadiness = 'medium';
+        else ocrReadiness = 'low';
+
+        results.push({
+          photoUrl,
+          success: true,
+          qualityScore,
+          grade,
+          ocrReadiness
+        });
+      } catch (e) {
+        results.push({ photoUrl: photo.photoUrl, success: false, error: e.message });
+      }
+    }
+
+    // Summary
+    const validResults = results.filter(r => r.success);
+    const avgScore = validResults.length > 0
+      ? Math.round(validResults.reduce((sum, r) => sum + r.qualityScore, 0) / validResults.length)
+      : 0;
+
+    return jsonResponse({
+      success: true,
+      total: photos.length,
+      assessed: validResults.length,
+      averageScore: avgScore,
+      results
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Batch assessment failed', message: error.message }, 500, cors);
+  }
+}
+
+// ── Phase 21: Enhancement Suggestion Generator ──
+
+function generateEnhancementSuggestions(issues, photoType) {
+  const suggestions = [];
+
+  for (const issue of issues) {
+    switch (issue.field) {
+      case 'brightness':
+        if (issue.message.includes('dark')) {
+          suggestions.push({
+            step: 1,
+            action: 'brightness_increase',
+            description: 'Increase brightness by 20-30%',
+            tool: 'any photo editor',
+            impact: 'high'
+          });
+          suggestions.push({
+            step: 2,
+            action: 'shadow_recovery',
+            description: 'Recover shadow details in dark areas',
+            tool: 'Snapseed, Lightroom',
+            impact: 'medium'
+          });
+        } else {
+          suggestions.push({
+            step: 1,
+            action: 'brightness_decrease',
+            description: 'Decrease brightness by 15-20%',
+            tool: 'any photo editor',
+            impact: 'high'
+          });
+          suggestions.push({
+            step: 2,
+            action: 'highlight_recovery',
+            description: 'Recover blown-out highlights',
+            tool: 'Snapseed, Lightroom',
+            impact: 'medium'
+          });
+        }
+        break;
+
+      case 'contrast':
+        suggestions.push({
+          step: 1,
+          action: 'contrast_increase',
+          description: 'Increase contrast by 15-25% to separate text from background',
+          tool: 'any photo editor',
+          impact: 'high'
+        });
+        suggestions.push({
+          step: 2,
+          action: 'local_contrast',
+          description: 'Apply local contrast / clarity enhancement to inscription area',
+          tool: 'Snapseed (Details), Lightroom (Texture)',
+          impact: 'medium'
+        });
+        break;
+
+      case 'sharpness':
+        suggestions.push({
+          step: 1,
+          action: 'sharpen',
+          description: 'Apply unsharp mask or clarity enhancement',
+          tool: 'Snapseed (Details/Sharpening), Lightroom (Sharpening)',
+          impact: 'high'
+        });
+        suggestions.push({
+          step: 2,
+          action: 'deblur',
+          description: 'If possible, use AI deblur tool',
+          tool: 'Remini, Google Photos enhance',
+          impact: 'medium'
+        });
+        break;
+
+      case 'noise':
+        suggestions.push({
+          step: 1,
+          action: 'denoise',
+          description: 'Apply noise reduction (luminance 10-30)',
+          tool: 'Lightroom (Noise Reduction), Snapseed',
+          impact: 'medium'
+        });
+        break;
+
+      case 'resolution':
+        suggestions.push({
+          step: 1,
+          action: 'upscale',
+          description: 'Upscale using AI super-resolution (2x)',
+          tool: 'Remini, Upscayl, Real-ESRGAN',
+          impact: 'medium'
+        });
+        break;
+
+      case 'fileSize':
+        suggestions.push({
+          step: 1,
+          action: 'recompress',
+          description: 'Re-save at higher quality (JPEG 90+ or PNG)',
+          tool: 'any photo editor',
+          impact: 'low'
+        });
+        break;
+
+      case 'gps':
+        // GPS can't be added in post-processing easily
+        break;
+    }
+  }
+
+  // Always suggest for headstone photos
+  if (photoType === 'headstone' && suggestions.length === 0) {
+    suggestions.push({
+      step: 1,
+      action: 'crop_tight',
+      description: 'Crop tightly to the headstone, removing excess background',
+      tool: 'any photo editor',
+      impact: 'medium'
+    });
+    suggestions.push({
+      step: 2,
+      action: 'straighten',
+      description: 'Straighten perspective so text lines are horizontal',
+      tool: 'Snapseed (Perspective), Lightroom (Geometry)',
+      impact: 'medium'
+    });
+  }
+
+  // Sort by step
+  suggestions.sort((a, b) => a.step - b.step);
+
+  return suggestions;
 }

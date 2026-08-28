@@ -655,6 +655,48 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.51] — 2026-08-28
+
+### Phase 21: AI Photo Quality Assessment & Enhancement
+
+Photo quality scoring system for cemetery and headstone photos.
+Evaluates 6 quality dimensions and provides actionable enhancement
+recommendations.
+
+**Quality Scoring (0-100, graded A-F):**
+- Resolution (megapixels): 8MP+ = 25pts, 3MP+ = 15pts
+- Brightness (0-255): optimal 90-170 = 15pts
+- Contrast (0-255): optimal 40-120 = 15pts
+- Sharpness (0-100): 70+ = 20pts, 40+ = 12pts
+- Noise (0-100): <20 = 10pts, <50 = 5pts
+- GPS data: +5pts
+
+**OCR Readiness Prediction:**
+- high: score >=70, no high-severity issues
+- medium: score >=40
+- low: score <40
+
+**Enhancement Suggestions (per-issue):**
+- brightness_increase/decrease, shadow_recovery, highlight_recovery
+- contrast_increase, local_contrast
+- sharpen, deblur (AI tools: Remini, Google Photos)
+- denoise (Lightroom, Snapseed)
+- upscale (Remini, Upscayl, Real-ESRGAN)
+- crop_tight, straighten (perspective correction)
+
+**New Backend Endpoints (4):**
+- POST /api/ai/photo/assess — single photo quality assessment
+- POST /api/ai/photo/enhance-suggest — enhancement recommendations
+- GET /api/ai/photo/assessments — list user's assessments
+- POST /api/ai/photo/batch-assess — batch assess up to 20 photos
+
+**New Model:** PhotoAssessment (Issue + EnhancementSuggestion inner classes)
+**API client:** 4 new methods
+**AI system prompt:** Updated with photo assessment endpoints
+**3 new suggested prompts**
+**New tests:** 80 (phase21.test.js)
+
+
 ## [7.2.50] — 2026-08-28
 
 ### Phase 20: AI Headstone Image Intelligence
