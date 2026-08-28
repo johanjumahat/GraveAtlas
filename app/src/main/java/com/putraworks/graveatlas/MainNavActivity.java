@@ -50,6 +50,19 @@ import com.putraworks.graveatlas.ui.provenance.ProvenanceFragment;
 import com.putraworks.graveatlas.ui.enrichment.EnrichmentFragment;
 import com.putraworks.graveatlas.ui.aiheadstone.AIHeadstoneFragment;
 import com.putraworks.graveatlas.ui.sources.SourceVerificationFragment;
+import com.putraworks.graveatlas.ui.spatial.SpatialFragment;
+import com.putraworks.graveatlas.ui.photoassess.PhotoAssessmentsFragment;
+import com.putraworks.graveatlas.ui.predictions.PredictionsFragment;
+import com.putraworks.graveatlas.ui.nlquery.NLQueryFragment;
+import com.putraworks.graveatlas.ui.summaries.SummariesFragment;
+import com.putraworks.graveatlas.ui.linkage.LinkageFragment;
+import com.putraworks.graveatlas.ui.dedupmerg.DedupMergeFragment;
+import com.putraworks.graveatlas.ui.cleanup.CleanupAutoFixFragment;
+import com.putraworks.graveatlas.ui.alerts.AlertsFragment;
+import com.putraworks.graveatlas.ui.governance.GovernanceFragment;
+import com.putraworks.graveatlas.ui.curation.CurationFragment;
+import com.putraworks.graveatlas.ui.confidence.ConfidenceFragment;
+import com.putraworks.graveatlas.ui.importbatch.ImportBatchFragment;
 
 /**
  * GraveAtlas — Main Activity with bottom navigation (NurOne-style).
@@ -301,6 +314,50 @@ public class MainNavActivity extends AppCompatActivity {
                 selectHomeTabSilently();
             });
         } catch (Exception e) { /* IDs not in layout yet */ }
+
+        // === Phase 18: Advanced Tools — 13 new feature fragments ===
+        try {
+            sheetView.findViewById(R.id.moreSpatial).setOnClickListener(v -> {
+                dialog.dismiss(); loadFragment(new SpatialFragment()); selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.morePredictions).setOnClickListener(v -> {
+                dialog.dismiss(); loadFragment(new PredictionsFragment()); selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.moreNLQuery).setOnClickListener(v -> {
+                dialog.dismiss(); loadFragment(new NLQueryFragment()); selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.moreSummaries).setOnClickListener(v -> {
+                dialog.dismiss(); loadFragment(new SummariesFragment()); selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.moreLinkage).setOnClickListener(v -> {
+                dialog.dismiss(); loadFragment(new LinkageFragment()); selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.moreDedup).setOnClickListener(v -> {
+                dialog.dismiss(); loadFragment(new DedupMergeFragment()); selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.moreCleanup).setOnClickListener(v -> {
+                dialog.dismiss(); loadFragment(new CleanupAutoFixFragment()); selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.moreAlerts).setOnClickListener(v -> {
+                dialog.dismiss(); loadFragment(new AlertsFragment()); selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.moreGovernance).setOnClickListener(v -> {
+                dialog.dismiss(); loadFragment(new GovernanceFragment()); selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.moreCuration).setOnClickListener(v -> {
+                dialog.dismiss(); loadFragment(new CurationFragment()); selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.moreConfidence).setOnClickListener(v -> {
+                dialog.dismiss(); loadFragment(new ConfidenceFragment()); selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.moreImport).setOnClickListener(v -> {
+                dialog.dismiss(); loadFragment(new ImportBatchFragment()); selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.morePhotoAssess).setOnClickListener(v -> {
+                dialog.dismiss(); loadFragment(new PhotoAssessmentsFragment()); selectHomeTabSilently();
+            });
+        } catch (Exception e) { /* IDs not in layout yet */ }
+
 
         dialog.show();
     }
