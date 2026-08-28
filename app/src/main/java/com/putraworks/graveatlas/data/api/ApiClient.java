@@ -1888,6 +1888,64 @@ public class ApiClient {
         });
     }
 
+    // ── Kubur SG — Singapore Community Burial Records ──
+
+    /**
+     * List known Singapore Muslim/community cemeteries.
+     * GET /api/kubur-sg/cemeteries
+     */
+    public void getKuburSGCemeteries(final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/kubur-sg/cemeteries";
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse cemeteries.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * List Kubur SG data sources.
+     * GET /api/kubur-sg/sources
+     */
+    public void getKuburSGSources(final ApiCallback<JSONObject> callback) {
+        String url = baseUrl + "/api/kubur-sg/sources";
+        Request request = new Request.Builder().url(url).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage()));
+            }
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try {
+                        String body = response.body() != null ? response.body().string() : "{}";
+                        callback.onSuccess(new JSONObject(body));
+                    } catch (Exception e) {
+                        callback.onError("Failed to parse sources.");
+                    }
+                } else {
+                    callback.onError(ApiErrorHandler.getHttpMessage(response.code()));
+                }
+            }
+        });
+    }
+
     // ── Phase 18: Multi-Country Open Data Connectors ──
 
     /**

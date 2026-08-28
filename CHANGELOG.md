@@ -655,6 +655,42 @@ All 28 parts of the Grave/Cemetery API Integration master prompt are now complet
 
 # CHANGELOG
 
+## [7.2.48] — 2026-08-28
+
+### Kubur SG Connector — Singapore Community Burial Records
+
+**New Connector:**
+- **Kubur SG** — Singapore Muslim/Malay community burial records.
+  "Kubur" (Malay for "grave/cemetery") serves the Muslim community's
+  need to locate and memorialize ancestral burial sites not covered
+  by NEA's official datasets.
+
+**Coverage:** 6 known Singapore Muslim cemeteries with coordinates:
+- Pusara Aman Muslim Cemetery (Lim Chu Kang)
+- Pusara Abadi Muslim Cemetery (Lim Chu Kang)
+- Choa Chu Kang Muslim Cemetery
+- Lim Chu Kang Muslim Cemetery
+- Bidadari Muslim Cemetery (closed)
+- Jalan Kubor Cemetery (heritage site, Kampong Glam)
+
+**Data Sources (5):**
+- Community-contributed records (GitHub /kubur-sg/, CC-BY-SA 4.0)
+- NEA Choa Chu Kang burial plot search portal
+- MUIS cemetery listings
+- Pusara Aman cemetery committee records
+- Pusara Abadi cemetery committee records
+
+**New Backend Endpoints (2):**
+- `GET /api/kubur-sg/cemeteries` — list all known SG Muslim cemeteries
+- `GET /api/kubur-sg/sources` — list Kubur SG data sources
+
+**Gateway:** KuburSGConnector wired into querySource/queryAllSources
+**API client:** 2 new methods
+**AI system prompt:** Updated with Kubur SG endpoints
+**2 new suggested prompts**
+**New tests:** 45 (kubur-sg.test.js)
+
+
 ## [7.2.47] — 2026-08-28
 
 ### Phase 18: Multi-Country Open Data Connectors

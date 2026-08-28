@@ -33,6 +33,7 @@ import { reviewPrivacy, sanitizeResponse } from './external-connectors/privacy-s
 import { validateBatch } from './external-connectors/data-quality.js';
 import { wantsExternalSearch, executeExternalSearch, combinedSearch } from './external-connectors/ai-external-search.js';
 import { DataGovSgConnector } from './external-connectors/connectors/datagov-sg-connector.js';
+import { KuburSGConnector } from './external-connectors/connectors/kubur-sg-connector.js';
 import { validateNormalizedRecord } from './external-connectors/normalized-schema.js';
 
 import {
@@ -974,6 +975,15 @@ async function handleRequest(request, env, ctx) {
       const parts = path.split('/');
       const sourceId = parts[parts.length - 2];
       return await handleSourceDetails(sourceId, request, env, corsHeaders);
+    }
+
+    // Kubur SG endpoints
+    if (path === '/api/kubur-sg/cemeteries' && method === 'GET') {
+      return await handleKuburSGCemeteries(request, env, corsHeaders);
+    }
+
+    if (path === '/api/kubur-sg/sources' && method === 'GET') {
+      return await handleKuburSGSources(request, env, corsHeaders);
     }
 
     // ── Person routes ──
@@ -20108,5 +20118,50 @@ async function handleSourceCoverage(request, env, cors) {
     }, 200, cors);
   } catch (error) {
     return jsonResponse({ success: false, error: 'Failed to get coverage', message: error.message }, 500, cors);
+  }
+}
+
+
+// ── Kubur SG Handler Functions ──
+
+/**
+ * GET /api/kubur-sg/cemeteries
+ * Lists all known Singapore Muslim/community cemeteries.
+ */
+async function handleKuburSGCemeteries(request, env, cors) {
+  try {
+    const connector = new KuburSGConnector();
+    const cemeteries = connector.listCemeteries();
+
+    return jsonResponse({
+      success: true,
+      totalCemeteries: cemeteries.length,
+      cemeteries,
+      attribution: 'Kubur SG Community Burial Records, GraveAtlas',
+      license: 'CC-BY-SA 4.0'
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to list cemeteries', message: error.message }, 500, cors);
+  }
+}
+
+/**
+ * GET /api/kubur-sg/sources
+ * Lists all data sources within the Kubur SG connector.
+ */
+async function handleKuburSGSources(request, env, cors) {
+  try {
+    const connector = new KuburSGConnector();
+    const sources = connector.listSources();
+    const sourceInfo = connector.getSourceInfo();
+
+    return jsonResponse({
+      success: true,
+      ...sourceInfo,
+      totalSources: sources.length,
+      sources
+    }, 200, cors);
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Failed to list sources', message: error.message }, 500, cors);
   }
 }

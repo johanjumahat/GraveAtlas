@@ -137,9 +137,11 @@
 
 31. **Add — Multi-Country Open Data Connectors** ✅ Three new international connectors: CWGC (Commonwealth War Graves Commission — 1.7M+ war dead, 150+ countries, search by name), Find a Grave (200M+ memorials worldwide, HTML search parsing), UK Deceased Online (200+ UK cemeteries/crematoria, free preview data). Registry updated: CWGC and Wikidata marked implemented, Find a Grave moved from rejected to implemented (display-only). Four new endpoints: countries listing, cross-source search, coverage map, and per-source details. New model: `SourceCoverageResult` (2 inner). v7.2.47.
 
+32. **Add — Kubur SG Connector** ✅ Singapore Muslim/Malay community burial records connector. "Kubur" (Malay for "grave") serves the Muslim community's need to locate ancestral burial sites not covered by NEA's official datasets. 6 known SG Muslim cemeteries with coordinates (Pusara Aman, Pusara Abadi, CCK Muslim, LCK Muslim, Bidadari closed, Jalan Kubor heritage). 5 data sources: community GitHub records (CC-BY-SA 4.0), NEA CCK portal, MUIS listings, Pusara Aman/Abadi committees. Two new endpoints: cemeteries listing and sources listing. v7.2.48.
+
 ## Architecture
 
-- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 203 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
+- **Backend:** Cloudflare Worker (TypeScript/JavaScript) with 205 API routes, deployed at https://graveatlas.putraworks-2026.workers.dev
 - **Android:** 18+ screens with navigation host, external maps handoff (geo: intent), offline support
 - **Data:** GitHub repository (graveatlas-data) with JSON schemas
 - **Auth:** Google Sign-In with ID token verification, session tokens, ban system
@@ -147,7 +149,7 @@
 - **Timeline:** Chronological event visualization with decade grouping, backend endpoint
 - **External Sources:** OpenStreetMap (Overpass API), Wikidata (SPARQL), Singapore Government Open Data (data.gov.sg)
 
-## Test Suite (3638 tests)
+## Test Suite (3684 tests)
 
 | Test File | Tests | Area |
 |---|---|---|

@@ -237,6 +237,28 @@ export const SOURCE_REGISTRY = [
     verificationEvidence: 'Connector implemented and tested against the public search endpoint structure. HTML parsing for search result preview data.',
     notes: 'Provides name, cemetery, and year range from free public search preview. Full records (plot, inscription, photo) require paid subscription — not accessed. UK coverage complements CWGC for post-war civilian burials.'
   },
+  {
+    sourceId: 'kubur-sg',
+    sourceName: 'Kubur SG — Singapore Community Burial Records',
+    organization: 'GraveAtlas Community (Singapore Muslim/Malay cemetery records)',
+    countryRegion: 'Singapore',
+    apiBaseUrl: 'https://api.github.com/repos/putraworks2026/graveatlas-data/contents/kubur-sg',
+    documentationUrl: 'https://github.com/putraworks2026/graveatlas-data/tree/main/kubur-sg',
+    dataType: 'Individual burial records and cemetery listings for Muslim/Malay cemeteries in Singapore (community-contributed)',
+    authenticationRequirement: 'GitHub App token for community data repo; NEA/MUIS portal data is public read-only.',
+    rateLimits: 'GitHub API: 5000 req/hour with App token. NEA portal: fair use. Connector throttles to 1 req/s.',
+    licensing: 'Community data: CC-BY-SA 4.0. Government portal data: © NEA / MUIS — display with attribution, not redistributed.',
+    licenseVerified: true,
+    commercialUseStatus: 'Community data: permitted with attribution and share-alike. Government data: display only.',
+    attributionRequirement: 'Required: "Kubur SG Community Burial Records, GraveAtlas" for community data; "NEA" or "MUIS" for government portal data.',
+    privacyRestrictions: 'Contains records of deceased individuals. Singapore PDPA applies to any personal data of living relatives. Community data is voluntarily contributed and publicly memorial in nature.',
+    geographicCoverage: 'Singapore — Pusara Aman, Pusara Abadi, Choa Chu Kang Muslim Cemetery, Lim Chu Kang Muslim Cemetery, Bidadari Muslim Cemetery (closed), Jalan Kubor Cemetery (heritage).',
+    updateFrequency: 'Community data: updated as contributed. Government portal: real-time.',
+    integrationStatus: 'implemented',
+    lastVerificationDate: '2026-08-28',
+    verificationEvidence: 'Connector implemented with static cemetery listings (6 known SG Muslim cemeteries with coordinates) and GitHub-hosted community record fetching via /kubur-sg/ directory in graveatlas-data repo.',
+    notes: '"Kubur" is Malay for "grave/cemetery". This connector serves Singapore Muslim community burial record needs — covering cemeteries not well-represented in NEA data.gov.sg datasets (which focus on facility locations, not individual burial records). Community contributions welcome via GitHub PR to graveatlas-data/kubur-sg/. Complements existing Bukit Brown connector (Chinese cemetery) and data.gov.sg connector (government facility data).'
+  },
 ];
 
 /**
