@@ -228,4 +228,9 @@ public class ExportFragment extends Fragment {
             }
         });
     }
+
+    private void setBusy(boolean busy) {
+        if (progressBar != null) progressBar.setVisibility(busy ? View.VISIBLE : View.GONE);
+    }
+
 }

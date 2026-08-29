@@ -405,4 +405,9 @@ public class CemeteryFragment extends Fragment implements ApiClient.ApiCallback<
             });
         }
     }
+
+    private void setBusy(boolean busy) {
+        if (progressBar != null) progressBar.setVisibility(busy ? View.VISIBLE : View.GONE);
+    }
+
 }

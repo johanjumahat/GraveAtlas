@@ -244,10 +244,10 @@ public class ProvenanceFragment extends Fragment {
 
         verifyCemSrcBtn.setOnClickListener(v -> {
             setBusy(true);
-            apiClient.verifyCemeterySources("", new ApiClient.ApiCallback<JSONObject>() {
-                @Override public void onSuccess(JSONObject result) {
+            apiClient.verifyCemeterySources("", new ApiClient.ApiCallback<CemeterySourceVerification>() {
+                @Override public void onSuccess(CemeterySourceVerification result) {
                     if (getActivity() == null) return;
-                    getActivity().runOnUiThread(() -> { setBusy(false); try { statusText.setText(result.toString(2)); } catch (Exception e) { statusText.setText(result.toString()); } });
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusText.setText(result != null ? result.toString() : "No data"); });
                 }
                 @Override public void onError(String error) {
                     if (getActivity() == null) return;

@@ -24,7 +24,6 @@ import org.json.JSONObject;
 
 import java.util.List;
 import com.putraworks.graveatlas.data.model.CurationTask;
-import com.putraworks.graveatlas.data.model.SubmissionStatus;
 
 public class CurationFragment extends Fragment {
     private ApiClient apiClient;
@@ -116,8 +115,8 @@ public class CurationFragment extends Fragment {
 
         correctionStatusBtn.setOnClickListener(v -> {
             setBusy(true);
-            apiClient.getCorrectionStatus("", new ApiClient.ApiCallback<SubmissionStatus>() {
-                @Override public void onSuccess(SubmissionStatus result) {
+            apiClient.getCorrectionStatus("", new ApiClient.ApiCallback<ApiClient.SubmissionStatus>() {
+                @Override public void onSuccess(ApiClient.SubmissionStatus result) {
                     if (getActivity() == null) return;
                     getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No data"); });
                 }

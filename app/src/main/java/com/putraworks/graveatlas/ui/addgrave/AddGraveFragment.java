@@ -245,10 +245,10 @@ public class AddGraveFragment extends Fragment {
 
         submitWithKeyBtn.setOnClickListener(v -> {
             setBusy(true);
-            apiClient.submitGraveWithKey(new com.putraworks.graveatlas.data.model.GraveSubmission(), "key-" + System.currentTimeMillis(), new ApiClient.ApiCallback<JSONObject>() {
-                @Override public void onSuccess(JSONObject result) {
+            apiClient.submitGraveWithKey(new com.putraworks.graveatlas.data.model.GraveSubmission(), "key-" + System.currentTimeMillis(), new ApiClient.ApiCallback<SubmissionResponse>() {
+                @Override public void onSuccess(SubmissionResponse result) {
                     if (getActivity() == null) return;
-                    getActivity().runOnUiThread(() -> { setBusy(false); try { statusLabel.setText(result.toString(2)); } catch (Exception e) { statusLabel.setText(result.toString()); } });
+                    getActivity().runOnUiThread(() -> { setBusy(false); statusLabel.setText(result != null ? result.toString() : "No data"); });
                 }
                 @Override public void onError(String error) {
                     if (getActivity() == null) return;

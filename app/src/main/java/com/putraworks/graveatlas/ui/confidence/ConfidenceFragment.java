@@ -20,6 +20,7 @@ import com.putraworks.graveatlas.data.model.ConfidenceLeaderboard;
 import com.putraworks.graveatlas.data.model.ConfidenceScore;
 
 import org.json.JSONObject;
+import com.putraworks.graveatlas.data.model.RecordSourceVerification;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -67,10 +68,10 @@ public class ConfidenceFragment extends Fragment {
 
         batchVerifyBtn.setOnClickListener(v -> {
             setBusy(true);
-            apiClient.batchVerifySources(new java.util.ArrayList<>(), new ApiClient.ApiCallback<JSONObject>() {
-                @Override public void onSuccess(JSONObject result) {
+            apiClient.batchVerifySources(new java.util.ArrayList<>(), new ApiClient.ApiCallback<java.util.List<RecordSourceVerification>>() {
+                @Override public void onSuccess(java.util.List<RecordSourceVerification> result) {
                     if (getActivity() == null) return;
-                    getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });
+                    getActivity().runOnUiThread(() -> { setBusy(false); if (result == null || result.isEmpty()) { resultText.setText("No results"); return; } StringBuilder sb = new StringBuilder(); for (RecordSourceVerification item : result) sb.append(item.toString()).append("\n"); resultText.setText(sb.toString()); });
                 }
                 @Override public void onError(String error) {
                     if (getActivity() == null) return;
