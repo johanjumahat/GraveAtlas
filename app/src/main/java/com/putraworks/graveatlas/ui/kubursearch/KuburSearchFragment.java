@@ -32,7 +32,7 @@ public class KuburSearchFragment extends Fragment {
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
-        apiClient = new ApiClient(getContext());
+        apiClient = new ApiClient();
 
         ScrollView scroll = new ScrollView(getContext());
         ViewGroup layout = createLayout();
