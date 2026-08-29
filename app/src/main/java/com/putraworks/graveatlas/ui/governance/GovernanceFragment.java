@@ -71,7 +71,7 @@ public class GovernanceFragment extends Fragment {
 
         createPolicyBtn.setOnClickListener(v -> {
             setBusy(true);
-            apiClient.createGovernancePolicy("retention", "Test Policy", "Test description", 365, "public, new ApiClient.ApiCallback<GovernancePolicy>() {
+            apiClient.createGovernancePolicy("retention", "Test Policy", "Test description", 365, "public", new ApiClient.ApiCallback<GovernancePolicy>() {
                 @Override public void onSuccess(GovernancePolicy result) {
                     if (getActivity() == null) return;
                     getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result != null ? result.toString() : "No data"); });
