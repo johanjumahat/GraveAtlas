@@ -75,7 +75,7 @@ public class AlertsFragment extends Fragment {
             apiClient.deleteAlertRule("", new ApiClient.ApiCallback<JSONObject>() {
                 @Override public void onSuccess(JSONObject result) {
                     if (getActivity() == null) return;
-                    getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); }); });
+                    getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });
                 }
                 @Override public void onError(String error) {
                     if (getActivity() == null) return;
@@ -89,7 +89,7 @@ public class AlertsFragment extends Fragment {
             apiClient.createNotification("info", "low", "Test", "Test notification", null, null, new ApiClient.ApiCallback<Notification>() {
                 @Override public void onSuccess(Notification result) {
                     if (getActivity() == null) return;
-                    getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString()); });
+                    getActivity().runOnUiThread(() -> { setBusy(false); resultText.setText(result.toString()); });
                 }
                 @Override public void onError(String error) {
                     if (getActivity() == null) return;
@@ -160,9 +160,9 @@ public class AlertsFragment extends Fragment {
 
     private ApiClient.ApiCallback<JSONObject> jcb() {
         return new ApiClient.ApiCallback<JSONObject>() {
-            @Override public void onSuccess(Notification result) {
+            @Override public void onSuccess(JSONObject result) {
                 if (getActivity() == null) return;
-                getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); }); });
+                getActivity().runOnUiThread(() -> { setBusy(false); try { resultText.setText(result.toString(2)); } catch (Exception e) { resultText.setText(result.toString()); } });
             }
             @Override public void onError(String error) {
                 if (getActivity() == null) return;
