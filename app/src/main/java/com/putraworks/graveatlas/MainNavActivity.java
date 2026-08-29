@@ -63,6 +63,7 @@ import com.putraworks.graveatlas.ui.governance.GovernanceFragment;
 import com.putraworks.graveatlas.ui.curation.CurationFragment;
 import com.putraworks.graveatlas.ui.confidence.ConfidenceFragment;
 import com.putraworks.graveatlas.ui.importbatch.ImportBatchFragment;
+import com.putraworks.graveatlas.ui.kubursearch.KuburSearchFragment;
 
 /**
  * GraveAtlas — Main Activity with bottom navigation (NurOne-style).
@@ -355,6 +356,9 @@ public class MainNavActivity extends AppCompatActivity {
             });
             sheetView.findViewById(R.id.morePhotoAssess).setOnClickListener(v -> {
                 dialog.dismiss(); loadFragment(new PhotoAssessmentsFragment()); selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.moreKuburSearch).setOnClickListener(v -> {
+                dialog.dismiss(); loadFragment(new KuburSearchFragment()); selectHomeTabSilently();
             });
         } catch (Exception e) { /* IDs not in layout yet */ }
 
