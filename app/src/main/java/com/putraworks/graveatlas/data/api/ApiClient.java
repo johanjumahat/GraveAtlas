@@ -3340,6 +3340,402 @@ public class ApiClient {
         });
     }
 
+    // ==================== Core Browsing API ====================
+
+    /** GET /api/browse — browse by location */
+    public void browseByLocation(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder().url(baseUrl + "/api/browse").get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse browse."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    /** GET /api/cities — list cities */
+    public void getCities(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder().url(baseUrl + "/api/cities").get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse cities."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    /** GET /api/regions — list regions */
+    public void getRegions(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder().url(baseUrl + "/api/regions").get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse regions."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    /** GET /api/nearby — nearby search */
+    public void nearbySearch(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder().url(baseUrl + "/api/nearby").get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse nearby."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    /** GET /api/timeline — global timeline */
+    public void getGlobalTimeline(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder().url(baseUrl + "/api/timeline").get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse timeline."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    // ==================== Map Query API ====================
+
+    /** GET /api/map/query — AI map query */
+    public void mapQuery(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder().url(baseUrl + "/api/map/query").get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse map query."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    /** GET /api/map/viewport — viewport search */
+    public void mapViewport(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder().url(baseUrl + "/api/map/viewport").get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse viewport."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    // ==================== Contributions API ====================
+
+    /** POST /api/contributions — create contribution */
+    public void createContribution(JSONObject data, final ApiCallback<JSONObject> callback) {
+        MediaType JSON = MediaType.get("application/json; charset=utf-8");
+        RequestBody body = RequestBody.create(data != null ? data.toString() : "{}", JSON);
+        Request request = new Request.Builder().url(baseUrl + "/api/contributions").post(body).build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse contribution."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    /** GET /api/contributions — list user contributions */
+    public void listContributions(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder().url(baseUrl + "/api/contributions").get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse contributions."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    /** GET /api/contributions/{id} — get single contribution */
+    public void getContribution(String id, final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder().url(baseUrl + "/api/contributions/" + id).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse contribution."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    /** POST /api/contributions/{id}/cancel — cancel contribution */
+    public void cancelContribution(String id, final ApiCallback<JSONObject> callback) {
+        MediaType JSON = MediaType.get("application/json; charset=utf-8");
+        RequestBody body = RequestBody.create("{}", JSON);
+        Request request = new Request.Builder().url(baseUrl + "/api/contributions/" + id + "/cancel").post(body).build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse cancel."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    /** POST /api/contributions/check-duplicate — check for duplicates */
+    public void checkContributionDuplicate(JSONObject data, final ApiCallback<JSONObject> callback) {
+        MediaType JSON = MediaType.get("application/json; charset=utf-8");
+        RequestBody body = RequestBody.create(data != null ? data.toString() : "{}", JSON);
+        Request request = new Request.Builder().url(baseUrl + "/api/contributions/check-duplicate").post(body).build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse duplicate check."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    // ==================== Drafts API ====================
+
+    /** POST /api/drafts — create draft */
+    public void createDraft(JSONObject data, final ApiCallback<JSONObject> callback) {
+        MediaType JSON = MediaType.get("application/json; charset=utf-8");
+        RequestBody body = RequestBody.create(data != null ? data.toString() : "{}", JSON);
+        Request request = new Request.Builder().url(baseUrl + "/api/drafts").post(body).build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse draft."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    /** GET /api/drafts — list drafts */
+    public void listDrafts(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder().url(baseUrl + "/api/drafts").get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse drafts."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    /** GET /api/drafts/{id} — get single draft */
+    public void getDraft(String id, final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder().url(baseUrl + "/api/drafts/" + id).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse draft."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    /** PUT /api/drafts/{id} — update draft */
+    public void updateDraft(String id, JSONObject data, final ApiCallback<JSONObject> callback) {
+        MediaType JSON = MediaType.get("application/json; charset=utf-8");
+        RequestBody body = RequestBody.create(data != null ? data.toString() : "{}", JSON);
+        Request request = new Request.Builder().url(baseUrl + "/api/drafts/" + id).put(body).build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse draft update."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    /** DELETE /api/drafts/{id} — delete draft */
+    public void deleteDraft(String id, final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder().url(baseUrl + "/api/drafts/" + id).delete().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse draft deletion."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    /** POST /api/drafts/{id}/submit — submit draft for review */
+    public void submitDraft(String id, final ApiCallback<JSONObject> callback) {
+        MediaType JSON = MediaType.get("application/json; charset=utf-8");
+        RequestBody body = RequestBody.create("{}", JSON);
+        Request request = new Request.Builder().url(baseUrl + "/api/drafts/" + id + "/submit").post(body).build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse submission."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    // ==================== Auth API ====================
+
+    /** POST /api/auth/google/verify — verify Google token */
+    public void verifyGoogleAuth(JSONObject tokenData, final ApiCallback<JSONObject> callback) {
+        MediaType JSON = MediaType.get("application/json; charset=utf-8");
+        RequestBody body = RequestBody.create(tokenData != null ? tokenData.toString() : "{}", JSON);
+        Request request = new Request.Builder().url(baseUrl + "/api/auth/google/verify").post(body).build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse auth response."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    /** GET /api/auth/session — check session */
+    public void checkAuthSession(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder().url(baseUrl + "/api/auth/session").get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse session."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    /** POST /api/auth/logout — logout */
+    public void logout(final ApiCallback<JSONObject> callback) {
+        MediaType JSON = MediaType.get("application/json; charset=utf-8");
+        RequestBody body = RequestBody.create("{}", JSON);
+        Request request = new Request.Builder().url(baseUrl + "/api/auth/logout").post(body).build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse logout."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    // ==================== User API ====================
+
+    /** POST /api/user/register — register user */
+    public void registerUser(JSONObject userData, final ApiCallback<JSONObject> callback) {
+        MediaType JSON = MediaType.get("application/json; charset=utf-8");
+        RequestBody body = RequestBody.create(userData != null ? userData.toString() : "{}", JSON);
+        Request request = new Request.Builder().url(baseUrl + "/api/user/register").post(body).build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse registration."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    /** POST /api/user/session — create session */
+    public void createUserSession(JSONObject sessionData, final ApiCallback<JSONObject> callback) {
+        MediaType JSON = MediaType.get("application/json; charset=utf-8");
+        RequestBody body = RequestBody.create(sessionData != null ? sessionData.toString() : "{}", JSON);
+        Request request = new Request.Builder().url(baseUrl + "/api/user/session").post(body).build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse session."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    /** DELETE /api/user/session — revoke session */
+    public void revokeUserSession(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder().url(baseUrl + "/api/user/session").delete().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse session revoke."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    /** GET /api/user/profile — get own profile */
+    public void getUserProfile(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder().url(baseUrl + "/api/user/profile").get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse profile."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    /** PUT /api/user/profile — update profile */
+    public void updateUserProfile(JSONObject profile, final ApiCallback<JSONObject> callback) {
+        MediaType JSON = MediaType.get("application/json; charset=utf-8");
+        RequestBody body = RequestBody.create(profile != null ? profile.toString() : "{}", JSON);
+        Request request = new Request.Builder().url(baseUrl + "/api/user/profile").put(body).build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse profile update."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    // ==================== Governance Extras API ====================
+
+    /** GET /api/governance/audit — audit log */
+    public void getGovernanceAudit(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder().url(baseUrl + "/api/governance/audit").get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse audit log."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    /** POST /api/governance/audit — log audit event */
+    public void logGovernanceAudit(JSONObject data, final ApiCallback<JSONObject> callback) {
+        MediaType JSON = MediaType.get("application/json; charset=utf-8");
+        RequestBody body = RequestBody.create(data != null ? data.toString() : "{}", JSON);
+        Request request = new Request.Builder().url(baseUrl + "/api/governance/audit").post(body).build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse audit log."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    /** GET /api/governance/consent — get consent status */
+    public void getGovernanceConsent(final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder().url(baseUrl + "/api/governance/consent").get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse consent."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    /** POST /api/governance/consent — record consent */
+    public void recordGovernanceConsent(JSONObject data, final ApiCallback<JSONObject> callback) {
+        MediaType JSON = MediaType.get("application/json; charset=utf-8");
+        RequestBody body = RequestBody.create(data != null ? data.toString() : "{}", JSON);
+        Request request = new Request.Builder().url(baseUrl + "/api/governance/consent").post(body).build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse consent."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    /** POST /api/governance/retention — apply retention policy */
+    public void applyGovernanceRetention(JSONObject data, final ApiCallback<JSONObject> callback) {
+        MediaType JSON = MediaType.get("application/json; charset=utf-8");
+        RequestBody body = RequestBody.create(data != null ? data.toString() : "{}", JSON);
+        Request request = new Request.Builder().url(baseUrl + "/api/governance/retention").post(body).build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse retention."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
+    // ==================== Summaries API ====================
+
+    /** GET /api/summaries/record/{id} — record summary */
+    public void getRecordSummary(String recordId, final ApiCallback<JSONObject> callback) {
+        Request request = new Request.Builder().url(baseUrl + "/api/summaries/record/" + recordId).get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) { callback.onError(ApiErrorHandler.getNetworkMessage(e.getMessage())); }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) { try { callback.onSuccess(new JSONObject(response.body() != null ? response.body().string() : "{}")); } catch (Exception e) { callback.onError("Failed to parse record summary."); } } else { callback.onError(ApiErrorHandler.getHttpMessage(response.code())); }
+            }
+        });
+    }
+
     // ── Phase 18: Multi-Country Open Data Connectors ──
 
     /**

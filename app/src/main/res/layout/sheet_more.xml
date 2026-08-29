@@ -1118,6 +1118,70 @@
                 android:layout_marginTop="6dp"
                 android:clickable="false" android:focusable="false" />
         </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/moreContributions"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_more_add"
+                android:background="@android:color/transparent"
+                app:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="My Drafts"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/moreMisc"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_more_add"
+                android:background="@android:color/transparent"
+                app:tint="@color/gold"
+                android:scaleType="centerInside"
+                android:padding="2dp"
+                android:clickable="false" android:focusable="false" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="More Tools"
+                android:textSize="11sp"
+                android:textColor="@color/text_secondary_dark"
+                android:layout_marginTop="6dp"
+                android:clickable="false" android:focusable="false" />
+        </LinearLayout>
     </LinearLayout>
 
     <!-- Divider -->
