@@ -65,6 +65,7 @@ import com.putraworks.graveatlas.ui.confidence.ConfidenceFragment;
 import com.putraworks.graveatlas.ui.importbatch.ImportBatchFragment;
 import com.putraworks.graveatlas.ui.kubursearch.KuburSearchFragment;
 import com.putraworks.graveatlas.ui.externalconnectors.ExternalConnectorsFragment;
+import com.putraworks.graveatlas.ui.admin.AdminFragment;
 
 /**
  * GraveAtlas — Main Activity with bottom navigation (NurOne-style).
@@ -363,6 +364,9 @@ public class MainNavActivity extends AppCompatActivity {
             });
             sheetView.findViewById(R.id.moreExtConnectors).setOnClickListener(v -> {
                 dialog.dismiss(); loadFragment(new ExternalConnectorsFragment()); selectHomeTabSilently();
+            });
+            sheetView.findViewById(R.id.moreAdmin).setOnClickListener(v -> {
+                dialog.dismiss(); loadFragment(new AdminFragment()); selectHomeTabSilently();
             });
         } catch (Exception e) { /* IDs not in layout yet */ }
 
