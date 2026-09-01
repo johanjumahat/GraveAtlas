@@ -92,7 +92,7 @@ dependencies {
     implementation 'androidx.fragment:fragment:1.6.2'
 
     // Google Sign-In
-    implementation 'com.google.android.gms:play-services-auth:21.6.0'
+    implementation 'com.google.android.gms:play-services-auth:22.0.0'
 
     // Encrypted SharedPreferences
     implementation 'androidx.security:security-crypto:1.1.0'
